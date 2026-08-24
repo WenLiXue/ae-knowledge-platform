@@ -144,11 +144,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                     sx={{
                       borderRadius: 2,
                       mb: 0.5,
+                      // 选中态对齐原型 .session.active：浅蓝底 + 主蓝文字
                       "&.Mui-selected": {
-                        bgcolor: "primary.main",
-                        color: "#fff",
-                        "& .MuiListItemIcon-root": { color: "#fff" },
-                        "&:hover": { bgcolor: "primary.dark" },
+                        bgcolor: "#e6f4ff",
+                        color: "#0958d9",
+                        "& .MuiListItemIcon-root": { color: "#0958d9" },
+                        "& .MuiListItemText-primary": { fontWeight: 600 },
+                        "&:hover": { bgcolor: "#e6f4ff" },
                       },
                     }}
                   >

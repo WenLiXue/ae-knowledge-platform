@@ -22,8 +22,8 @@ interface StatusChipProps {
   kind: StatusKind;
 }
 
-/** 后端状态 → 统一 Chip 展示。 */
+/** 后端状态 → 原型风格的状态标签（浅底 + 语义色文字）。 */
 export function StatusChip({ value, kind }: StatusChipProps) {
   const meta = statusLabel(META_BY_KIND[kind], value);
-  return <Chip label={meta.label} color={meta.color} variant="outlined" />;
+  return <Chip size="small" label={meta.label} sx={{ bgcolor: meta.bg, color: meta.fg }} />;
 }

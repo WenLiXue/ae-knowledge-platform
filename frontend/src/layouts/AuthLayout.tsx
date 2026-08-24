@@ -1,7 +1,7 @@
 import { Box } from "@mui/material";
 import type { ReactNode } from "react";
 
-/** 登录等公开页面布局：全屏浅色背景，内容垂直居中。 */
+/** 登录等公开页面布局：全屏浅色背景，内容垂直居中（画布对齐原型 login-page #eef2f6）。 */
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <Box
@@ -10,7 +10,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        bgcolor: "background.default",
+        bgcolor: "#eef2f6",
         px: 2,
         py: 6,
       }}

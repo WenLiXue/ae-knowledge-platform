@@ -9,8 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .auth.deps import get_optional_feishu_token
 from .core.config import get_settings
 from .db.session import get_db
+from .feishu_provider.base import AUTH, NOT_FOUND, FeishuError
+from .feishu_provider.factory import get_feishu_provider
 from .knowledge import service
 
 router = APIRouter(prefix="/api/v1/feishu", tags=["feishu"])
@@ -51,45 +54,33 @@ class SubmitResult(BaseModel):
     duplicate: bool = False
 
 
-# 演示数据：真实飞书文档发现 API 接入前，用固定样本验证页面链路。
-# 已提交状态与 source_id 由数据库决定，不再来自内存字典。
-_DOCUMENTS = [
-    FeishuDocument(
-        resource_token="wiki-hardware-spec",
-        title="AE 产品硬件规格",
-        resource_type=ResourceType.WIKI,
-        modified_at=datetime(2026, 8, 12, 2, 0, tzinfo=timezone.utc),
-        owner_name="测试团队",
-    ),
-    FeishuDocument(
-        resource_token="docx-product-whitepaper",
-        title="AE 产品白皮书",
-        resource_type=ResourceType.DOCX,
-        modified_at=datetime(2026, 8, 10, 7, 30, tzinfo=timezone.utc),
-        owner_name="产品团队",
-    ),
-    FeishuDocument(
-        resource_token="wiki-seg-cases",
-        title="SEG 问题案件沉淀",
-        resource_type=ResourceType.WIKI,
-        modified_at=datetime(2026, 8, 8, 9, 15, tzinfo=timezone.utc),
-        owner_name="SEG 支持团队",
-    ),
-]
-
-_TITLE_BY_TOKEN = {doc.resource_token: doc.title for doc in _DOCUMENTS}
+def _map_feishu_error(exc: FeishuError) -> HTTPException:
+    if exc.category == NOT_FOUND:
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": exc.code, "message": exc.message},
+        )
+    if exc.category == AUTH:
+        return HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": exc.code, "message": exc.message},
+        )
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail={"code": exc.code, "message": exc.message},
+    )
 
 
 @router.get("/connection")
 def get_connection() -> dict[str, object]:
-    """Temporary connection contract until Feishu OAuth is integrated."""
+    """查询飞书绑定与授权可用状态（OAuth 接入前为占位）。"""
 
     return {
         "data": {
             "connected": True,
             "provider": "feishu",
             "display_name": "当前用户",
-            "mode": "mock",
+            "mode": get_settings().feishu_provider,
         }
     }
 
@@ -99,39 +90,51 @@ def list_documents(
     query: str | None = Query(default=None, max_length=100),
     resource_type: Annotated[list[ResourceType] | None, Query()] = None,
     limit: int = Query(default=50, ge=1, le=50),
+    user_access_token: str | None = Depends(get_optional_feishu_token),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    filtered = _DOCUMENTS
-    if query:
-        keyword = query.casefold()
-        filtered = [item for item in filtered if keyword in item.title.casefold()]
-    if resource_type:
-        allowed = set(resource_type)
-        filtered = [item for item in filtered if item.resource_type in allowed]
+    provider = get_feishu_provider()
+    resource_types = [r.value for r in resource_type] if resource_type else None
+    try:
+        result = provider.list_documents(
+            user_access_token=user_access_token,
+            query=query,
+            resource_types=resource_types,
+            limit=limit,
+        )
+    except FeishuError as exc:
+        raise _map_feishu_error(exc) from exc
 
-    tokens = [item.resource_token for item in filtered[:limit]]
-    # 已提交状态以数据库为准：真实 token 存在非下线来源即视为已提交
+    tokens = [d.canonical_token or d.resource_token for d in result.items]
     submitted_map = service.find_submitted_sources(db, tokens)
 
-    items = [
-        item.model_copy(
-            update={
-                "submitted": item.resource_token in submitted_map,
-                "source_id": (
-                    str(submitted_map[item.resource_token].id)
-                    if item.resource_token in submitted_map
-                    else None
-                ),
-            }
+    items: list[FeishuDocument] = []
+    for doc in result.items:
+        token = doc.canonical_token or doc.resource_token
+        try:
+            rtype = ResourceType(doc.resource_type)
+        except ValueError:
+            continue  # 仅展示 wiki/docx
+        submitted = token in submitted_map
+        items.append(
+            FeishuDocument(
+                resource_token=doc.resource_token,
+                title=doc.title,
+                resource_type=rtype,
+                modified_at=doc.modified_at or datetime(1970, 1, 1, tzinfo=timezone.utc),
+                owner_name=doc.owner_name or "",
+                submitted=submitted,
+                source_id=str(submitted_map[token].id) if submitted else None,
+            )
         )
-        for item in filtered[:limit]
-    ]
-    return {"data": {"items": items, "next_cursor": None}}
+    return {"data": {"items": items, "next_cursor": result.next_cursor}}
 
 
 @router.post("/documents/submit", status_code=status.HTTP_202_ACCEPTED)
 def submit_documents(
-    payload: SubmitRequest, db: Session = Depends(get_db)
+    payload: SubmitRequest,
+    user_access_token: str | None = Depends(get_optional_feishu_token),
+    db: Session = Depends(get_db),
 ) -> dict[str, object]:
     # 同一次请求内不允许重复提交同一 token
     seen: set[str] = set()
@@ -144,17 +147,29 @@ def submit_documents(
         seen.add(item.resource_token)
 
     owner_user_id = uuid.UUID(get_settings().default_owner_user_id)
-    submit_items = [
-        service.SubmitItemIn(
-            client_item_id=item.client_item_id,
-            resource_token=item.resource_token,
-            resource_type=item.resource_type.value,
-            title=_TITLE_BY_TOKEN.get(item.resource_token),
-        )
-        for item in payload.items
-    ]
-    outcomes = service.submit_feishu_sources(db, submit_items, owner_user_id)
+    provider = get_feishu_provider()
 
+    submit_items: list[service.SubmitItemIn] = []
+    for item in payload.items:
+        try:
+            meta = provider.get_metadata(
+                user_access_token, item.resource_token, item.resource_type.value
+            )
+        except FeishuError as exc:
+            raise _map_feishu_error(exc) from exc
+        submit_items.append(
+            service.SubmitItemIn(
+                client_item_id=item.client_item_id,
+                resource_token=item.resource_token,
+                resource_type=item.resource_type.value,
+                title=meta.title,
+                revision=meta.revision,
+                modified_at=meta.modified_at,
+                owner_name=meta.owner_name,
+            )
+        )
+
+    outcomes = service.submit_feishu_sources(db, submit_items, owner_user_id)
     results = [
         SubmitResult(
             client_item_id=outcome.client_item_id,

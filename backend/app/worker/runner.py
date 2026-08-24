@@ -23,6 +23,11 @@ from ..core.config import get_settings
 from ..db.models.knowledge import DocumentVersion, KnowledgeSource
 from ..db.models.task import ProcessingTask, TaskAttempt
 from ..db.session import SessionLocal
+from ..feishu_auth.base import FeishuOAuthClient
+from ..feishu_auth.factory import get_feishu_oauth_client
+from ..feishu_provider.base import FeishuDocumentProvider
+from ..feishu_provider.factory import get_feishu_provider
+from ..storage.local import LocalObjectStore
 from . import pipeline
 
 logger = logging.getLogger(__name__)
@@ -43,6 +48,9 @@ class WorkerRunner:
         lease_seconds: int | None = None,
         retry_base_delay_seconds: float | None = None,
         batch_size: int | None = None,
+        provider: FeishuDocumentProvider | None = None,
+        oauth_client: FeishuOAuthClient | None = None,
+        store=None,
     ):
         settings = get_settings()
         self.session_factory = session_factory or SessionLocal
@@ -56,6 +64,10 @@ class WorkerRunner:
             else settings.retry_base_delay_seconds
         )
         self.batch_size = batch_size or settings.worker_batch_size
+        # 文档读取走适配器；Fake/Real 由配置决定，Worker 不直接依赖飞书 SDK
+        self.provider = provider or get_feishu_provider(settings)
+        self.oauth_client = oauth_client or get_feishu_oauth_client(settings)
+        self.store = store or LocalObjectStore(settings.storage_root)
 
     def claim_and_execute(self, batch_size: int | None = None) -> list[str]:
         """执行一个轮询周期：领取一批任务并逐个执行，返回每个任务的执行结果。"""
@@ -148,7 +160,13 @@ class WorkerRunner:
                     return "ABANDONED"
 
                 try:
-                    next_type = pipeline.execute_stage(session, locked)
+                    next_type = pipeline.execute_stage(
+                        session,
+                        locked,
+                        provider=self.provider,
+                        oauth_client=self.oauth_client,
+                        store=self.store,
+                    )
                 except pipeline.PipelineError as exc:
                     return self._handle_failure(session, locked, exc)
 

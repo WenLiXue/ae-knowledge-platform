@@ -1,30 +1,29 @@
-"""Mock 文档处理流水线。
+"""文档处理流水线。
 
-在真实飞书 API / LLM 分类器 / 向量库接入前，用确定性 mock 推进各处理阶段，
-使任务 Worker 与状态机可端到端测试、可演示。阶段顺序对齐 DD-04 §5：
+阶段顺序对齐 DD-04 §5：FETCH → PARSE → CLASSIFY → CHUNK → EMBED → INDEX → FINALIZE。
 
-    FETCH → PARSE → CLASSIFY → CHUNK → EMBED → INDEX → FINALIZE
-
-失败与分类结果通过来源 canonical_key 中的标记注入，保证测试确定性：
-
-- fail-once  ：FETCH 首次尝试可重试失败，第二次成功（验证重试恢复）
-- transient  ：FETCH 持续可重试失败（验证重试耗尽 → FAILED）
-- permanent  ：FETCH 不可重试失败（验证立即 FAILED）
-- uncertain  ：CLASSIFY 判定 UNCERTAIN → 来源/版本进入 PENDING_CONFIRMATION
-- irrelevant ：CLASSIFY 判定 IRRELEVANT → 来源 OFFLINE（明确无关）
-
-其余 token 正常走完全流程并激活。真实实现接入后，用相同阶段契约替换各 handler。
+- FETCH 通过 FeishuDocumentProvider 读取真实/模拟正文，raw 内容写入对象存储（本地实现），
+  并记录 revision / modified_at；获取到的 revision 与已记录版本不一致时终止当前版本、
+  创建新版本重新处理（DD-04 §6.2）。
+- CLASSIFY 目前为确定性 mock 判定：token 含 uncertain → PENDING_CONFIRMATION，
+  irrelevant → 来源 OFFLINE（明确无关）；其余视为相关继续流水线。
+- 真实飞书 / LLM 分类 / 向量库接入后，以相同阶段契约替换各 handler。
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models.knowledge import DocumentVersion, KnowledgeSource
+from ..auth.feishu import get_user_access_token
+from ..db.models.knowledge import DocumentVersion, FeishuSourceDetail, KnowledgeSource
+from ..db.models.task import ProcessingTask
+from ..feishu_auth.base import FeishuOAuthClient
+from ..feishu_provider.base import FeishuError, FeishuDocumentProvider
 
 # 阶段任务类型 → 版本 processing_stage 值
 STAGE_NAMES = {
@@ -60,8 +59,15 @@ class PipelineError(Exception):
         self.retryable = retryable
 
 
-def execute_stage(session: Session, task) -> str | None:
-    """执行一个阶段任务，返回下一个任务类型；None 表示流水线终止（正常或分类决定）。"""
+def execute_stage(
+    session: Session,
+    task,
+    *,
+    provider: FeishuDocumentProvider,
+    oauth_client: FeishuOAuthClient,
+    store,
+) -> str | None:
+    """执行一个阶段任务，返回下一个任务类型；None 表示流水线终止。"""
     source = session.get(KnowledgeSource, task.source_id)
     version = session.get(DocumentVersion, task.version_id)
     if source is None or version is None:
@@ -72,7 +78,7 @@ def execute_stage(session: Session, task) -> str | None:
     version.processing_stage = STAGE_NAMES[task.task_type]
 
     handlers = {
-        "FETCH": _mock_fetch,
+        "FETCH": _fetch,
         "PARSE": _mock_parse,
         "CLASSIFY": _mock_classify,
         "CHUNK": _mock_chunk,
@@ -80,32 +86,90 @@ def execute_stage(session: Session, task) -> str | None:
         "INDEX": _mock_index,
         "FINALIZE": _mock_finalize,
     }
-    return handlers[task.task_type](session, source, version, task)
+    try:
+        return handlers[task.task_type](
+            session, source, version, task,
+            provider=provider, oauth_client=oauth_client, store=store,
+        )
+    except FeishuError as exc:
+        raise PipelineError(exc.category, exc.code, exc.message, retryable=exc.retryable) from exc
 
 
-def _inject_failure(source: KnowledgeSource, task) -> None:
-    marker = source.canonical_key
-    if "fail-once" in marker and task.attempt_count == 1:
-        raise PipelineError("TRANSIENT", "MOCK_TRANSIENT", "模拟首次尝试失败，可重试", retryable=True)
-    if "transient" in marker:
-        raise PipelineError("TRANSIENT", "MOCK_TRANSIENT", "模拟持续可重试失败", retryable=True)
-    if "permanent" in marker:
-        raise PipelineError("VALIDATION", "MOCK_PERMANENT", "模拟不可重试失败", retryable=False)
-
-
-def _mock_fetch(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+def _fetch(
+    session: Session,
+    source: KnowledgeSource,
+    version: DocumentVersion,
+    task,
+    *,
+    provider: FeishuDocumentProvider,
+    oauth_client: FeishuOAuthClient,
+    store,
 ) -> str | None:
-    _inject_failure(source, task)
-    version.raw_object_key = f"raw/{source.id}/{version.id}/original.mock"
-    version.external_revision = "mock-rev-1"
-    version.source_modified_at = datetime.now(timezone.utc)
-    version.content_sha256 = hashlib.sha256(b"mock-content").hexdigest()
+    detail = session.get(FeishuSourceDetail, source.id)
+    resource_token = detail.resource_token if detail else source.canonical_key
+    resource_type = (detail.resource_type.casefold() if detail and detail.resource_type else "wiki")
+
+    # user_access_token 由来源 owner 的飞书绑定解析（未绑定则 None，Fake 忽略、Real 需凭据）
+    user_access_token = get_user_access_token(session, source.owner_user_id, oauth_client)
+    content = provider.fetch_content(user_access_token, resource_token, resource_type)
+
+    if version.external_revision and content.revision and version.external_revision != content.revision:
+        return _bump_version(session, source, version, content)
+
+    raw_key = f"raw/{source.id}/{version.id}/original.json"
+    store.put(raw_key, json.dumps(content.raw_payload, ensure_ascii=False).encode("utf-8"))
+    version.raw_object_key = raw_key
+    version.external_revision = content.revision
+    version.source_modified_at = content.modified_at
+    version.content_sha256 = hashlib.sha256(content.text.encode("utf-8")).hexdigest()
     return NEXT_STAGE["FETCH"]
 
 
+def _bump_version(
+    session: Session, source: KnowledgeSource, version: DocumentVersion, content
+) -> None:
+    """文档已更新：终止当前版本，为最新 revision 创建新版本并从 FETCH 重跑（DD-04 §6.2）。"""
+    new_version = DocumentVersion(
+        source_id=source.id,
+        version_no=version.version_no + 1,
+        status="PROCESSING",
+        processing_stage="FETCHING",
+        external_revision=content.revision,
+        source_modified_at=content.modified_at,
+    )
+    session.add(new_version)
+    session.flush()
+    source.pending_version_id = new_version.id
+
+    version.status = "FAILED"
+    version.error_code = "DOC_REVISION_CHANGED"
+    version.error_summary = "获取到的版本与已记录版本不一致，已创建新版本重新处理"
+    version.processing_stage = None
+
+    session.add(
+        ProcessingTask(
+            task_type="FETCH",
+            status="PENDING",
+            idempotency_key=f"version:{new_version.id}:stage:fetch",
+            scheduled_at=datetime.now(timezone.utc),
+            source_id=source.id,
+            version_id=new_version.id,
+            payload={
+                "source_id": str(source.id),
+                "version_id": str(new_version.id),
+                "reason": "DOC_UPDATED",
+            },
+            priority=100,
+            max_attempts=3,
+            created_by_user_id=source.owner_user_id,
+        )
+    )
+    return None
+
+
 def _mock_parse(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+    session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
+    provider, oauth_client, store,
 ) -> str | None:
     version.parsed_object_key = f"parsed/{source.id}/{version.id}/document-v1.json"
     version.parser_name = "mock-parser"
@@ -114,7 +178,8 @@ def _mock_parse(
 
 
 def _mock_classify(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+    session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
+    provider, oauth_client, store,
 ) -> str | None:
     marker = source.canonical_key
     if "uncertain" in marker:
@@ -132,14 +197,16 @@ def _mock_classify(
 
 
 def _mock_chunk(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+    session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
+    provider, oauth_client, store,
 ) -> str | None:
     # 真实切片会写入 document_chunks；mock 阶段只推进流水线
     return NEXT_STAGE["CHUNK"]
 
 
 def _mock_embed(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+    session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
+    provider, oauth_client, store,
 ) -> str | None:
     version.embedding_model_key = "mock-embedding"
     version.embedding_dimension = 384
@@ -147,14 +214,16 @@ def _mock_embed(
 
 
 def _mock_index(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+    session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
+    provider, oauth_client, store,
 ) -> str | None:
     version.index_generation = f"v{version.version_no}-1"
     return NEXT_STAGE["INDEX"]
 
 
 def _mock_finalize(
-    session: Session, source: KnowledgeSource, version: DocumentVersion, task
+    session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
+    provider, oauth_client, store,
 ) -> str | None:
     """激活事务（DD-02 §7.3）：锁定来源，校验未下线，原子切换 current_version。"""
     locked_source = session.execute(

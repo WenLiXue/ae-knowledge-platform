@@ -28,3 +28,6 @@ Thumbs.db
 .coverage
 htmlcov/
 logs/
+
+# Local object storage (Worker FETCH raw content, pre-object-store)
+backend/storage/

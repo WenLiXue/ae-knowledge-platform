@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .auth.api import router as auth_router
 from .feishu import router as feishu_router
 from .knowledge_sources import router as knowledge_sources_router
 
@@ -19,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(feishu_router)
 app.include_router(knowledge_sources_router)
 

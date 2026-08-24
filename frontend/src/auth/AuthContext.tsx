@@ -8,50 +8,43 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { logoutRequest, passwordLogin } from "../api/auth";
+import { getCurrentUser, logoutRequest, passwordLogin } from "../api/auth";
 import { FullPageLoading } from "../components/LoadingState";
 import type { User } from "../types/auth";
-
-const STORAGE_KEY = "ae-knowledge.auth.user";
 
 interface AuthContextValue {
   user: User | null;
   /** 首次加载是否正在恢复登录状态。 */
   initializing: boolean;
   login: (username: string, password: string) => Promise<void>;
-  loginWithFeishu: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function readStoredUser(): User | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as User;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => readStoredUser());
+  const [user, setUser] = useState<User | null>(null);
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    // MOCK: 真实实现会在加载时调用 GET /api/v1/auth/me 恢复会话。
-    const timer = setTimeout(() => setInitializing(false), 300);
-    return () => clearTimeout(timer);
+    let active = true;
+    void getCurrentUser()
+      .then((next) => {
+        if (active) setUser(next);
+      })
+      .catch(() => {
+        if (active) setUser(null);
+      })
+      .finally(() => {
+        if (active) setInitializing(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const persist = useCallback((next: User | null) => {
     setUser(next);
-    if (next) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
   }, []);
 
   const login = useCallback(
@@ -62,18 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
-  const loginWithFeishu = useCallback(async () => {
-    // MOCK: 真实实现走飞书授权回调后登录；当前直接模拟登录成功。
-    const next: User = {
-      id: "00000000-0000-0000-0000-000000000001",
-      username: "demo",
-      display_name: "演示用户",
-      role: "admin",
-      feishu_bound: true,
-    };
-    persist(next);
-  }, [persist]);
-
   const logout = useCallback(async () => {
     try {
       await logoutRequest();
@@ -83,8 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [persist]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, initializing, login, loginWithFeishu, logout }),
-    [user, initializing, login, loginWithFeishu, logout],
+    () => ({ user, initializing, login, logout }),
+    [user, initializing, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

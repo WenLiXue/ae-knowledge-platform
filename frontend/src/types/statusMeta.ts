@@ -3,52 +3,64 @@
  *
  * 来源 / 版本 / 任务 / 处理阶段 的状态值来自后端，前端统一在此维护
  * 中文标签与颜色，避免各页面各自硬编码。
+ *
+ * bg / fg 取自原型状态标签配色（styles.css）：
+ * - 处理中 / 运行中：蓝底 #e6f4ff + #0958d9
+ * - 待确认 / 重试：黄底 #fffbe6 + #874d00
+ * - 成功 / 就绪：绿底 #f6ffed + #237804
+ * - 失败：红底 #fff2f0 + #cf1322
+ * - 中性（已下线 / 已取消等）：灰底 #f2f3f5 + #646a73
  */
-import type { ChipProps } from "@mui/material";
-
 export interface StatusMeta {
   label: string;
-  color: ChipProps["color"];
+  bg: string;
+  fg: string;
 }
+
+const INFO: StatusMeta = { label: "", bg: "#e6f4ff", fg: "#0958d9" };
+const WARNING: StatusMeta = { label: "", bg: "#fffbe6", fg: "#874d00" };
+const SUCCESS: StatusMeta = { label: "", bg: "#f6ffed", fg: "#237804" };
+const ERROR: StatusMeta = { label: "", bg: "#fff2f0", fg: "#cf1322" };
+const NEUTRAL: StatusMeta = { label: "", bg: "#f2f3f5", fg: "#646a73" };
 
 /** 知识来源状态。 */
 export const SOURCE_STATUS_META: Record<string, StatusMeta> = {
-  PROCESSING: { label: "处理中", color: "info" },
-  PENDING_CONFIRMATION: { label: "待确认", color: "warning" },
-  QUERYABLE: { label: "可查询", color: "success" },
-  FAILED: { label: "失败", color: "error" },
-  OFFLINE: { label: "已下线", color: "default" },
+  PROCESSING: { ...INFO, label: "处理中" },
+  PENDING_CONFIRMATION: { ...WARNING, label: "待确认" },
+  QUERYABLE: { ...SUCCESS, label: "可查询" },
+  FAILED: { ...ERROR, label: "失败" },
+  OFFLINE: { ...NEUTRAL, label: "已下线" },
 };
 
 /** 文档版本状态。 */
 export const VERSION_STATUS_META: Record<string, StatusMeta> = {
-  CREATED: { label: "已创建", color: "default" },
-  PROCESSING: { label: "处理中", color: "info" },
-  PENDING_CONFIRMATION: { label: "待确认", color: "warning" },
-  READY: { label: "就绪", color: "success" },
-  FAILED: { label: "失败", color: "error" },
-  SUPERSEDED: { label: "已取代", color: "default" },
+  CREATED: { ...NEUTRAL, label: "已创建" },
+  PROCESSING: { ...INFO, label: "处理中" },
+  PENDING_CONFIRMATION: { ...WARNING, label: "待确认" },
+  READY: { ...SUCCESS, label: "就绪" },
+  FAILED: { ...ERROR, label: "失败" },
+  SUPERSEDED: { ...NEUTRAL, label: "已取代" },
 };
 
 /** 处理任务状态。 */
 export const TASK_STATUS_META: Record<string, StatusMeta> = {
-  PENDING: { label: "等待中", color: "default" },
-  RUNNING: { label: "运行中", color: "info" },
-  RETRY_WAIT: { label: "等待重试", color: "warning" },
-  SUCCEEDED: { label: "成功", color: "success" },
-  FAILED: { label: "失败", color: "error" },
-  CANCELED: { label: "已取消", color: "default" },
+  PENDING: { ...NEUTRAL, label: "等待中" },
+  RUNNING: { ...INFO, label: "运行中" },
+  RETRY_WAIT: { ...WARNING, label: "等待重试" },
+  SUCCEEDED: { ...SUCCESS, label: "成功" },
+  FAILED: { ...ERROR, label: "失败" },
+  CANCELED: { ...NEUTRAL, label: "已取消" },
 };
 
-/** 文档处理阶段。 */
+/** 文档处理阶段（均为进行中）。 */
 export const STAGE_META: Record<string, StatusMeta> = {
-  FETCHING: { label: "抓取中", color: "info" },
-  PARSING: { label: "解析中", color: "info" },
-  CLASSIFYING: { label: "分类中", color: "info" },
-  CHUNKING: { label: "分块中", color: "info" },
-  EMBEDDING: { label: "向量化中", color: "info" },
-  INDEXING: { label: "索引中", color: "info" },
-  FINALIZING: { label: "收尾中", color: "info" },
+  FETCHING: { ...INFO, label: "抓取中" },
+  PARSING: { ...INFO, label: "解析中" },
+  CLASSIFYING: { ...INFO, label: "分类中" },
+  CHUNKING: { ...INFO, label: "分块中" },
+  EMBEDDING: { ...INFO, label: "向量化中" },
+  INDEXING: { ...INFO, label: "索引中" },
+  FINALIZING: { ...INFO, label: "收尾中" },
 };
 
 /** 任务类型展示。 */
@@ -70,8 +82,8 @@ export const RESOURCE_TYPE_LABEL: Record<string, string> = {
   docx: "文档",
 };
 
-/** 获取任意状态的中文标签（未收录时展示原值）。 */
+/** 获取任意状态的中文标签（未收录时展示原值、中性配色）。 */
 export function statusLabel(meta: Record<string, StatusMeta>, value: string | null | undefined): StatusMeta {
-  const fallback: StatusMeta = { label: value || "未知", color: "default" };
+  const fallback: StatusMeta = { label: value || "未知", bg: NEUTRAL.bg, fg: NEUTRAL.fg };
   return (value && meta[value]) || fallback;
 }

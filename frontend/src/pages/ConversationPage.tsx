@@ -82,9 +82,9 @@ function CitationList({ citations }: { citations: Citation[] }) {
                 <Typography
                   variant="caption"
                   sx={{
-                    color: "primary.main",
+                    color: "#0958d9",
                     fontWeight: 700,
-                    bgcolor: "primary.light",
+                    bgcolor: "#e6f4ff",
                     borderRadius: 1,
                     px: 0.75,
                     py: 0.25,
@@ -146,7 +146,8 @@ function CitationList({ citations }: { citations: Citation[] }) {
 function AnswerBlockView({ block }: { block: AnswerBlock }) {
   if (block.type === "paragraph") {
     return (
-      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+      // 答案正文对齐原型 .answer-copy：15px / 1.75 行高
+      <Typography sx={{ fontSize: 15, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
         {block.content as string}
       </Typography>
     );
@@ -159,7 +160,7 @@ function AnswerBlockView({ block }: { block: AnswerBlock }) {
           <TableHead>
             <TableRow>
               {table.columns.map((column) => (
-                <TableCell key={column} sx={{ bgcolor: "grey.50", fontWeight: 700 }}>
+                <TableCell key={column}>
                   {column}
                 </TableCell>
               ))}
@@ -229,7 +230,8 @@ function AnswerView({ answer }: { answer: Answer }) {
 
   return (
     <Box>
-      <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+      {/* 综合答案标题对齐原型 .answer-title */}
+      <Typography sx={{ fontSize: 20, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
         {answer.summary}
       </Typography>
 
@@ -318,10 +320,10 @@ function MessageRow({ message }: { message: Message }) {
         <Box
           sx={{
             maxWidth: "72%",
-            bgcolor: "primary.main",
-            color: "#fff",
-            borderRadius: 2.5,
-            borderBottomRightRadius: 6,
+            // 问句气泡对齐原型 .question-bubble：浅蓝底 + 深蓝文字
+            bgcolor: "#e6f4ff",
+            color: "#17376f",
+            borderRadius: "14px 14px 3px 14px",
             px: 2,
             py: 1.25,
           }}

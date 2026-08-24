@@ -1,9 +1,5 @@
-/**
- * 认证 API。
- *
- * 后端认证接口（API-AUTH-*）尚未实现，当前为 Mock 登录。
- * 接入真实后端时仅需改写本文件中的函数实现，组件与页面无需改动。
- */
+/** 认证 API；飞书扫码使用后端生成授权地址和 HttpOnly Session。 */
+import { apiGet, apiPost } from "./client";
 import type { User } from "../types/auth";
 
 // MOCK: 固定返回的演示用户（允许任意非空账号密码登录）。
@@ -27,12 +23,26 @@ export async function passwordLogin(username: string, password: string): Promise
 }
 
 export async function feishuLoginStart(): Promise<{ auth_url: string }> {
-  // MOCK: 真实实现调用 POST /api/v1/auth/feishu/start 返回飞书授权地址。
-  await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
-  return { auth_url: "/mock/feishu/oauth" };
+  const data = await apiPost<{ authorize_url: string; state: string }>("/api/v1/auth/feishu/start");
+  return { auth_url: data.authorize_url };
+}
+
+export async function getCurrentUser(): Promise<User> {
+  const data = await apiGet<{
+    user_id: string;
+    display_name: string;
+    is_admin: boolean;
+    feishu_bound: boolean;
+  }>("/api/v1/auth/me");
+  return {
+    id: data.user_id,
+    username: data.display_name,
+    display_name: data.display_name,
+    role: data.is_admin ? "admin" : "user",
+    feishu_bound: data.feishu_bound,
+  };
 }
 
 export async function logoutRequest(): Promise<void> {
-  // MOCK: 真实实现调用 POST /api/v1/auth/logout。
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await apiPost<{ ok: boolean }>("/api/v1/auth/logout");
 }

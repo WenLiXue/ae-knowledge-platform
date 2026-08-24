@@ -23,6 +23,9 @@ class SubmitItemIn:
     resource_token: str
     resource_type: str
     title: str | None = None
+    revision: str | None = None
+    modified_at: datetime | None = None
+    owner_name: str | None = None
 
 
 @dataclass
@@ -100,6 +103,8 @@ def submit_feishu_sources(
             source_id=source.id,
             resource_type=item.resource_type.upper(),
             resource_token=canonical_key,
+            last_seen_revision=item.revision,
+            last_seen_modified_at=item.modified_at,
         )
         session.add(detail)
 
@@ -108,6 +113,8 @@ def submit_feishu_sources(
             version_no=1,
             status="PROCESSING",
             processing_stage=FETCH_STAGE,
+            external_revision=item.revision,
+            source_modified_at=item.modified_at,
         )
         session.add(version)
         session.flush()

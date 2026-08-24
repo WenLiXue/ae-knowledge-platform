@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Divider,
   FormControlLabel,
   Paper,
   Stack,
@@ -16,6 +15,7 @@ import {
 } from "@mui/material";
 import { getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { FeishuQrLogin } from "../components/FeishuQrLogin";
 
 interface LocationState {
   from?: { pathname: string };
@@ -23,9 +23,9 @@ interface LocationState {
 
 type LoginTab = "password" | "feishu";
 
-/** 登录页：账号密码 / 飞书扫码（当前为 Mock 登录，见 api/auth.ts）。 */
+/** 登录页：账号密码 / 飞书扫码。视觉对齐原型 login.html。 */
 export function LoginPage() {
-  const { user, initializing, login, loginWithFeishu } = useAuth();
+  const { user, initializing, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from?.pathname ?? "/search";
@@ -36,7 +36,6 @@ export function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [feishuState, setFeishuState] = useState<"idle" | "waiting">("idle");
 
   if (!initializing && user) {
     return <Navigate to={from} replace />;
@@ -56,72 +55,87 @@ export function LoginPage() {
     }
   };
 
-  const handleFeishuOpen = async () => {
-    setError(null);
-    // MOCK: 真实实现会打开飞书授权窗口；当前直接进入“等待确认”状态。
-    setFeishuState("waiting");
-  };
-
-  const handleFeishuComplete = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // MOCK: 模拟用户在飞书客户端完成扫码确认。
-      await loginWithFeishu();
-      navigate(from, { replace: true });
-    } catch (err) {
-      setError(getErrorMessage(err, "飞书登录失败，请重试。"));
-      setFeishuState("idle");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <Stack
       direction={{ xs: "column", md: "row" }}
-      spacing={{ xs: 4, md: 6 }}
-      sx={{ width: "100%", maxWidth: 920, alignItems: "center" }}
+      spacing={{ xs: 4, md: 8 }}
+      sx={{ width: "100%", maxWidth: 1040, alignItems: "center" }}
     >
-      {/* 品牌介绍 */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+      {/* 品牌介绍：对齐原型 .login-intro 深蓝面板 */}
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          bgcolor: "#1248a0",
+          color: "#fff",
+          borderRadius: "12px",
+          p: { xs: 3, sm: 5 },
+          display: "flex",
+          alignItems: "center",
+          gap: { xs: 2.5, sm: 3 },
+        }}
+      >
+        <Box
+          sx={{
+            width: { xs: 60, sm: 78 },
+            height: { xs: 60, sm: 78 },
+            flexShrink: 0,
+            borderRadius: "12px",
+            border: "1px solid rgba(255,255,255,.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: { xs: 22, sm: 28 },
+            fontWeight: 700,
+            letterSpacing: "-0.03em",
+          }}
+        >
+          AE
+        </Box>
+        <Box sx={{ minWidth: 0 }}>
           <Box
             sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              bgcolor: "primary.main",
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 18,
+              color: "#d6e4ff",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.12,
+              textTransform: "uppercase",
+              mb: 1,
             }}
           >
-            AE
+            Product Knowledge
           </Box>
-          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 0.08 }}>
-            PRODUCT KNOWLEDGE
+          <Typography
+            component="h1"
+            sx={{ color: "#fff", fontSize: { xs: 24, sm: 30 }, fontWeight: 700, lineHeight: 1.35 }}
+          >
+            AE 内部知识平台
+          </Typography>
+          <Typography sx={{ color: "#e6efff", fontSize: 14, lineHeight: 1.8, mt: 1.5, maxWidth: 420 }}>
+            统一查询产品知识，沉淀文档经验，为问题分析提供可靠依据。
           </Typography>
         </Box>
-        <Typography variant="h4" component="h1" sx={{ mt: 2 }}>
-          AE 内部知识平台
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 420, lineHeight: 1.7 }}>
-          统一查询产品知识，沉淀文档经验，为问题分析提供可靠依据。
-        </Typography>
       </Box>
 
-      {/* 登录卡片 */}
-      <Paper variant="outlined" sx={{ width: "100%", maxWidth: 400, p: 3 }}>
-        <Typography variant="h6" component="h2">
-          欢迎登录
-        </Typography>
-        <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
-          请选择适合你的登录方式
-        </Typography>
+      {/* 登录卡片：对齐原型 .login-card */}
+      <Paper
+        variant="outlined"
+        sx={{
+          width: "100%",
+          maxWidth: 430,
+          borderRadius: "10px",
+          borderColor: "#e1e4e8",
+          boxShadow: "0 18px 48px rgba(31,35,41,.1)",
+        }}
+      >
+        <Box sx={{ px: 3.5, pt: 3.5, pb: 2.5 }}>
+          <Typography component="h2" sx={{ fontSize: 22, fontWeight: 700 }}>
+            欢迎登录
+          </Typography>
+          <Typography color="text.secondary" variant="body2" sx={{ mt: 0.75, fontSize: 13 }}>
+            请选择适合你的登录方式
+          </Typography>
+        </Box>
 
         <Tabs
           value={tab}
@@ -129,96 +143,72 @@ export function LoginPage() {
             setTab(value);
             setError(null);
           }}
-          sx={{ mt: 2, mb: 2, borderBottom: 1, borderColor: "divider" }}
+          sx={{ mx: 3.5, mb: 2.5, borderBottom: 1, borderColor: "divider" }}
         >
-          <Tab label="账号密码" value="password" />
-          <Tab label="飞书扫码" value="feishu" />
+          <Tab label="账号密码" value="password" sx={{ flex: 1 }} />
+          <Tab label="飞书扫码" value="feishu" sx={{ flex: 1 }} />
         </Tabs>
 
-        {tab === "password" ? (
-          <form onSubmit={handlePasswordSubmit}>
-            <Stack spacing={2}>
-              <TextField
-                label="账号"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="请输入账号"
-                autoComplete="username"
-                fullWidth
-                size="small"
-                required
-              />
-              <TextField
-                label="密码"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="请输入密码"
-                autoComplete="current-password"
-                fullWidth
-                size="small"
-                required
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox size="small" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-                }
-                label={<Typography variant="body2">记住账号</Typography>}
-              />
-              <Button type="submit" variant="contained" disabled={loading} size="large" fullWidth>
-                {loading ? "登录中…" : "登录"}
-              </Button>
-            </Stack>
-          </form>
-        ) : (
-          <Stack spacing={2}>
-            <Box
-              sx={{
-                py: 2,
-                textAlign: "center",
-                bgcolor: "primary.light",
-                borderRadius: 2,
-                color: "primary.main",
-                fontWeight: 700,
-              }}
-            >
-              飞书
-            </Box>
-            <Typography variant="body2" color="text.secondary" textAlign="center">
-              点击后打开飞书认证页面，并在飞书客户端扫码确认。
-            </Typography>
-            {feishuState === "idle" ? (
-              <Button variant="contained" onClick={handleFeishuOpen} size="large" fullWidth>
-                打开飞书扫码登录
-              </Button>
-            ) : (
-              <Stack spacing={1.5}>
-                <Alert severity="info">认证窗口已打开，请在飞书客户端完成扫码。</Alert>
-                <Button variant="outlined" onClick={handleFeishuComplete} disabled={loading} fullWidth>
-                  {loading ? "登录中…" : "原型：模拟扫码完成"}
+        <Box sx={{ px: 3.5, pb: 2.5 }}>
+          {tab === "password" ? (
+            <form onSubmit={handlePasswordSubmit}>
+              <Stack spacing={2}>
+                <TextField
+                  label="账号"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="请输入账号"
+                  autoComplete="username"
+                  fullWidth
+                  size="small"
+                  required
+                />
+                <TextField
+                  label="密码"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="请输入密码"
+                  autoComplete="current-password"
+                  fullWidth
+                  size="small"
+                  required
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox size="small" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                  }
+                  label={<Typography variant="body2">记住账号</Typography>}
+                />
+                <Button type="submit" variant="contained" disabled={loading} size="large" fullWidth>
+                  {loading ? "登录中…" : "登录"}
                 </Button>
               </Stack>
-            )}
-            <Divider />
-            <Typography variant="caption" color="text.secondary">
-              系统使用飞书 user_id 识别用户；首次扫码自动创建账号，已存在账号则直接登录。
-            </Typography>
-          </Stack>
-        )}
+            </form>
+          ) : (
+            // 飞书扫码 Tab：二维码由飞书官方 SDK 生成，扫码后由后端回调建立会话。
+            <Stack spacing={2}>
+              <FeishuQrLogin />
+              <Typography variant="caption" color="text.secondary">
+                系统使用飞书 user_id 识别用户；首次扫码自动创建账号，已存在账号则直接登录。
+              </Typography>
+            </Stack>
+          )}
 
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
 
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 3, textAlign: "center" }}
-        >
-          仅供公司内部人员使用
-        </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mt: 3, textAlign: "center" }}
+          >
+            仅供公司内部人员使用
+          </Typography>
+        </Box>
       </Paper>
     </Stack>
   );

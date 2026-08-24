@@ -56,7 +56,9 @@ def clean_tables(setup_test_database) -> None:
             text(
                 "TRUNCATE tasking.task_attempts, tasking.processing_tasks, "
                 "knowledge.feishu_source_details, knowledge.document_versions, "
-                "knowledge.knowledge_sources, auth.users RESTART IDENTITY CASCADE"
+                "knowledge.knowledge_sources, "
+                "auth.oauth_states, auth.login_sessions, auth.external_credentials, "
+                "auth.external_identities, auth.users RESTART IDENTITY CASCADE"
             )
         )
         conn.execute(

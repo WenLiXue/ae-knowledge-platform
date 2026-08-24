@@ -57,6 +57,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
+      credentials: "include",
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -14,6 +15,7 @@ from sqlalchemy import text
 
 from app.db.session import SessionLocal
 from app.main import app
+from app.storage.local import LocalObjectStore
 from app.worker.runner import WorkerRunner
 
 
@@ -39,12 +41,26 @@ def _submit(token: str, client_item_id: str = "row-1") -> dict:
 
 def _runner() -> WorkerRunner:
     # retry_base_delay=0：重试立即可被下一轮领取，保证测试确定性
-    return WorkerRunner(worker_id="test-worker", retry_base_delay_seconds=0.0, lease_seconds=60)
+    return WorkerRunner(
+        worker_id="test-worker",
+        retry_base_delay_seconds=0.0,
+        lease_seconds=60,
+        store=LocalObjectStore(tempfile.mkdtemp(prefix="ae-test-storage-")),
+    )
 
 
-def _drain(runner: WorkerRunner, max_cycles: int = 30) -> None:
+def _drain(runner: WorkerRunner, max_cycles: int = 40) -> None:
+    # 排空到无未终结任务：即使某轮 claim 偶发返回空也继续，保证确定性
     for _ in range(max_cycles):
-        if not runner.claim_and_execute(batch_size=10):
+        runner.claim_and_execute(batch_size=10)
+        with SessionLocal() as session:
+            open_tasks = session.execute(
+                text(
+                    "SELECT count(*) FROM tasking.processing_tasks "
+                    "WHERE status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')"
+                )
+            ).scalar_one()
+        if open_tasks == 0:
             return
     raise AssertionError("Worker 未在预期轮次内排空任务")
 

@@ -18,7 +18,11 @@ export function PageHeader({ title, description, actions }: PageHeaderProps) {
         alignItems="flex-start"
       >
         <Box>
-          <Typography variant="h5" component="h1">
+          <Typography
+            variant="h5"
+            component="h1"
+            sx={{ fontSize: { xs: 22, sm: 26 }, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.3 }}
+          >
             {title}
           </Typography>
           {description && (
