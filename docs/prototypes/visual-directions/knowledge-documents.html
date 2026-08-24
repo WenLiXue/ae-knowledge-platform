@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>知识库文档管理</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="documents-page" data-knowledge-documents>
+    <section class="import-titlebar documents-titlebar">
+      <div>
+        <h1>知识库文档管理</h1>
+        <p>查看文档的分类、检索条件、同步和索引状态，并处理失败任务</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="pending-classification.html">待确认分类</a>
+        <a class="ae-button link-button" href="system-tasks.html">处理任务</a>
+        <a class="ae-button link-button" href="knowledge-config.html">配置检索条件</a>
+        <a class="ae-button primary link-button" href="document-import.html">＋ 添加知识</a>
+      </div>
+    </section>
+
+    <section class="ae-card document-status-tabs" aria-label="文档状态概览">
+      <button class="active" type="button" data-document-status="all"><strong>986</strong><span>全部文档</span></button>
+      <button type="button" data-document-status="available"><strong>941</strong><span>可检索</span></button>
+      <button type="button" data-document-status="processing"><strong>11</strong><span>处理中</span></button>
+      <button type="button" data-document-status="pending"><strong>7</strong><span>待补充条件</span></button>
+      <button type="button" data-document-status="failed"><strong>3</strong><span>处理失败</span></button>
+    </section>
+
+    <section class="ae-card knowledge-documents-card">
+      <div class="knowledge-document-filters">
+        <label class="stacked-filter wide">
+          <span>文档名称</span>
+          <input type="search" name="document_name" data-kd-keyword placeholder="输入文档名称">
+        </label>
+        <label class="stacked-filter">
+          <span>来源</span>
+          <select name="source" data-kd-source>
+            <option value="all">全部来源</option>
+            <option value="feishu">飞书文档</option>
+            <option value="local">本地文件</option>
+          </select>
+        </label>
+        <label class="stacked-filter">
+          <span>文档分类</span>
+          <select name="category" data-kd-category>
+            <option value="all">全部分类</option>
+            <option value="产品规格">产品规格</option>
+            <option value="产品功能">产品功能</option>
+            <option value="开发设计">开发设计</option>
+            <option value="测试文档">测试文档</option>
+            <option value="部署文档">部署文档</option>
+            <option value="白皮书">白皮书</option>
+            <option value="SEG 案件">SEG 案件</option>
+          </select>
+        </label>
+        <label class="stacked-filter">
+          <span>产品</span>
+          <select name="product" data-kd-product>
+            <option value="all">全部产品</option>
+            <option value="AE">AE</option>
+            <option value="TDA">TDA</option>
+          </select>
+        </label>
+        <div class="filter-actions">
+          <button class="ae-button primary" type="button" data-kd-search>查询</button>
+          <button class="ae-button" type="button" data-kd-clear>清除</button>
+        </div>
+      </div>
+
+      <div class="knowledge-documents-table-wrap">
+        <table class="knowledge-documents-table">
+          <thead>
+            <tr>
+              <th>文档名称</th>
+              <th>来源</th>
+              <th>分类</th>
+              <th>产品 / 版本</th>
+              <th>状态</th>
+              <th>更新时间</th>
+              <th>提交人</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody data-kd-rows></tbody>
+        </table>
+        <div class="empty-state" data-kd-empty hidden>没有符合当前条件的文档</div>
+      </div>
+      <div class="knowledge-table-footer">
+        <span data-kd-result-count>当前显示 6 条，共 986 个文档</span>
+        <span class="pagination"><b>1</b>　2　3　4　5　…　50　›</span>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" data-document-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer" data-document-drawer role="dialog" aria-modal="true" aria-labelledby="drawer-document-title" hidden>
+    <header class="drawer-head">
+      <div>
+        <div class="eyebrow">文档详情</div>
+        <h2 id="drawer-document-title" data-drawer-title>文档名称</h2>
+      </div>
+      <button class="drawer-close" type="button" data-drawer-close aria-label="关闭文档详情">×</button>
+    </header>
+
+    <div class="drawer-body">
+      <div class="drawer-status" data-drawer-status></div>
+      <dl class="document-facts">
+        <div><dt>来源</dt><dd data-drawer-source></dd></div>
+        <div><dt>提交人</dt><dd data-drawer-submitter></dd></div>
+        <div><dt>最近更新</dt><dd data-drawer-updated></dd></div>
+        <div><dt>源文档</dt><dd><a href="#" data-drawer-source-link>查看原文</a></dd></div>
+      </dl>
+
+      <div class="drawer-section-head">
+        <div><h3>分类和检索条件</h3><p>自动分类结果允许提交者进行纠正。</p></div>
+        <button class="text-action" type="button" data-drawer-edit>编辑</button>
+      </div>
+      <form class="drawer-form" data-drawer-form>
+        <label class="ae-field full">
+          <span>文档分类</span>
+          <select name="drawer_category" data-drawer-category disabled>
+            <option>产品规格</option>
+            <option>产品功能</option>
+            <option>开发设计</option>
+            <option>测试文档</option>
+            <option>部署文档</option>
+            <option>白皮书</option>
+            <option>SEG 案件</option>
+          </select>
+        </label>
+        <div class="form-grid">
+          <label class="ae-field">
+            <span>产品</span>
+            <select name="drawer_product" data-drawer-product disabled>
+              <option value="">待补充</option>
+              <option value="AE">AE</option>
+              <option value="TDA">TDA</option>
+            </select>
+          </label>
+          <label class="ae-field">
+            <span>适用版本</span>
+            <select name="drawer_version" data-drawer-version disabled>
+              <option value="">待补充</option>
+              <option value="全部版本">全部版本</option>
+              <option value="V7 / 7.0.3">V7 / 7.0.3</option>
+              <option value="V7 / 7.0.2">V7 / 7.0.2</option>
+              <option value="V6 / 6.5.2">V6 / 6.5.2</option>
+            </select>
+          </label>
+        </div>
+      </form>
+
+      <section class="processing-detail">
+        <div class="drawer-section-head compact"><div><h3>处理信息</h3><p data-drawer-processing></p></div></div>
+        <div class="processing-error" data-drawer-error hidden></div>
+      </section>
+      <p class="ownership-note" data-ownership-note hidden></p>
+    </div>
+
+    <footer class="drawer-actions">
+      <button class="ae-button danger" type="button" data-drawer-withdraw>撤回文档</button>
+      <button class="ae-button" type="button" data-drawer-retry hidden>重新处理</button>
+      <button class="ae-button primary" type="button" data-drawer-save hidden>保存修改</button>
+    </footer>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

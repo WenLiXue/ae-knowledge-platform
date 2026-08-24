@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="处理自动分类器无法判断的知识文档。">
+  <title>待确认分类</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="pending-page" data-pending-classification>
+    <section class="import-titlebar pending-titlebar">
+      <div>
+        <h1>待确认分类</h1>
+        <p>仅处理自动分类器无法可靠判断的文档；确认完成前不会进入可查询知识库</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="knowledge-documents.html">返回文档管理</a>
+        <a class="ae-button primary link-button" href="document-import.html">添加知识</a>
+      </div>
+    </section>
+
+    <section class="ae-card pending-summary" aria-label="待确认概览">
+      <div><strong data-pending-total>5</strong><span>等待确认</span></div>
+      <div><strong data-pending-category-count>2</strong><span>分类不明确</span></div>
+      <div><strong data-pending-version-count>2</strong><span>产品版本不明确</span></div>
+      <div><strong data-pending-relevance-count>1</strong><span>相关性不明确</span></div>
+    </section>
+
+    <section class="pending-guidance" aria-label="处理说明">
+      <strong>为什么需要人工确认？</strong>
+      <p>系统仅在分类器无法可靠判断时将文档放到这里。请依据文档内容确认分类和检索条件，避免错误知识进入问答结果。</p>
+    </section>
+
+    <section class="ae-card pending-list-card">
+      <div class="pending-filters">
+        <label class="stacked-filter wide">
+          <span>文档名称</span>
+          <input type="search" name="pending_keyword" data-pending-keyword placeholder="搜索文档名称或提交人">
+        </label>
+        <label class="stacked-filter">
+          <span>待确认原因</span>
+          <select name="pending_reason" data-pending-reason>
+            <option value="all">全部原因</option>
+            <option value="category">分类不明确</option>
+            <option value="version">产品版本不明确</option>
+            <option value="relevance">相关性不明确</option>
+          </select>
+        </label>
+        <label class="stacked-filter">
+          <span>来源</span>
+          <select name="pending_source" data-pending-source>
+            <option value="all">全部来源</option>
+            <option value="feishu">飞书文档</option>
+            <option value="local">本地文件</option>
+          </select>
+        </label>
+        <div class="filter-actions">
+          <button class="ae-button primary" type="button" data-pending-search>查询</button>
+          <button class="ae-button" type="button" data-pending-clear>清除</button>
+        </div>
+      </div>
+
+      <div class="pending-table-wrap">
+        <table class="pending-table">
+          <thead><tr><th>文档名称</th><th>来源</th><th>分类器建议</th><th>待确认原因</th><th>提交人</th><th>等待时间</th><th>操作</th></tr></thead>
+          <tbody data-pending-rows></tbody>
+        </table>
+        <div class="empty-state" data-pending-empty hidden>当前没有需要确认的文档</div>
+      </div>
+      <div class="knowledge-table-footer">
+        <span data-pending-result-count>当前显示 5 条，共 5 条待确认文档</span>
+        <span class="pagination"><b>1</b></span>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" data-pending-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer pending-drawer" data-pending-drawer role="dialog" aria-modal="true" aria-labelledby="pending-drawer-title" hidden>
+    <header class="drawer-head">
+      <div><div class="eyebrow">分类确认</div><h2 id="pending-drawer-title" data-pending-drawer-title>文档名称</h2></div>
+      <button class="drawer-close" type="button" data-pending-drawer-close aria-label="关闭分类确认">关闭</button>
+    </header>
+
+    <div class="drawer-body">
+      <div class="pending-warning"><strong>当前不可查询</strong><p>完成确认后，系统还需继续解析和建立索引；处理完成后才会参与知识问答。</p></div>
+      <dl class="document-facts pending-facts">
+        <div><dt>来源</dt><dd data-pending-detail-source></dd></div>
+        <div><dt>提交人</dt><dd data-pending-detail-submitter></dd></div>
+        <div><dt>提交时间</dt><dd data-pending-detail-time></dd></div>
+        <div><dt>待确认原因</dt><dd data-pending-detail-reason></dd></div>
+      </dl>
+
+      <section class="pending-detail-section">
+        <div class="drawer-section-head compact"><div><h3>分类器判断摘要</h3><p>仅展示判断结果和有限依据，不展示模型内部推理。</p></div></div>
+        <div class="pending-summary-copy" data-pending-summary-copy></div>
+        <blockquote class="pending-evidence" data-pending-evidence></blockquote>
+      </section>
+
+      <form class="pending-confirm-form" data-pending-form>
+        <div class="drawer-section-head compact"><div><h3>确认分类和检索条件</h3><p>分类为必填项；产品和版本不明确时可以暂不填写。</p></div></div>
+        <label class="ae-field full">
+          <span>文档分类</span>
+          <select name="pending_category" data-pending-category required>
+            <option value="">请选择分类</option>
+            <option>产品规格</option><option>产品功能</option><option>开发设计</option><option>测试文档</option><option>部署文档</option><option>白皮书</option><option>SEG 案件</option>
+          </select>
+        </label>
+        <div class="form-grid">
+          <label class="ae-field"><span>产品</span><select name="pending_product" data-pending-product><option value="">暂不确定</option><option>AE</option><option>TDA</option></select></label>
+          <label class="ae-field"><span>适用版本</span><select name="pending_version" data-pending-version><option value="">暂不确定</option><option>全部版本</option><option>V7 / 7.0.3</option><option>V7 / 7.0.2</option><option>V6 / 6.5.2</option></select></label>
+        </div>
+      </form>
+    </div>
+
+    <footer class="drawer-actions pending-actions">
+      <button class="ae-button danger" type="button" data-pending-unrelated>标记为无关</button>
+      <button class="ae-button" type="button" data-pending-reclassify>重新分类</button>
+      <button class="ae-button primary" type="button" data-pending-confirm>确认并继续处理</button>
+    </footer>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

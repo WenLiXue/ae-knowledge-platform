@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查看账号信息和飞书连接状态。">
+  <title>个人设置</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="profile-page" data-profile-settings>
+    <section class="import-titlebar profile-titlebar">
+      <div>
+        <h1>个人设置</h1>
+        <p>查看账号信息、登录方式和飞书连接状态</p>
+      </div>
+      <div class="documents-title-actions">
+        <label class="profile-state-switch"><span>原型状态</span><select data-profile-state aria-label="选择飞书连接演示状态"><option value="connected">已连接</option><option value="expired">授权已失效</option><option value="unbound">未绑定</option></select></label>
+        <a class="ae-button link-button" href="focus-workspace.html">返回知识问答</a>
+        <a class="ae-button primary link-button" href="document-import.html">添加知识</a>
+      </div>
+    </section>
+
+    <section class="profile-grid">
+      <article class="ae-card profile-card account-card">
+        <header class="profile-card-head">
+          <div><div class="eyebrow">账户信息</div><h2>我的账号</h2></div>
+          <span class="profile-status-pill active" data-profile-account-status>正常</span>
+        </header>
+        <dl class="profile-facts">
+          <div><dt>账号名</dt><dd>xuewenli</dd></div>
+          <div><dt>显示名</dt><dd>薛文李</dd></div>
+          <div><dt>账号创建</dt><dd>2026-08-12</dd></div>
+          <div><dt>登录方式</dt><dd><span class="profile-method-tag feishu">飞书登录</span><span class="profile-method-tag password" data-profile-password-tag hidden>账号密码</span><span class="profile-empty" data-profile-password-empty>尚未设置密码</span></dd></div>
+        </dl>
+        <div class="profile-card-footer">
+          <p data-profile-account-note>当前账号可以使用飞书登录。建议设置账号密码，以便飞书授权失效时继续登录。</p>
+          <button class="ae-button" type="button" data-profile-set-password>设置登录密码</button>
+        </div>
+      </article>
+
+      <article class="ae-card profile-card feishu-card">
+        <header class="profile-card-head">
+          <div><div class="eyebrow">外部连接</div><h2>飞书连接</h2></div>
+          <span class="profile-connection-pill connected" data-profile-connection-status><i></i><span>已连接</span></span>
+        </header>
+        <div class="profile-connection-summary" data-profile-connected-view>
+          <div class="profile-connection-name"><span class="feishu-mark">飞</span><div><strong>薛文李</strong><small>已连接的飞书账号</small></div></div>
+          <dl class="profile-facts compact">
+            <div><dt>绑定时间</dt><dd>2026-08-12 10:57</dd></div>
+            <div><dt>身份标识</dt><dd class="profile-monospace">ou_fdf6•••••c6cb</dd></div>
+          </dl>
+        </div>
+        <div class="profile-connection-empty" data-profile-unconnected-view hidden>
+          <strong>尚未连接飞书</strong>
+          <p>连接后可以从自己的飞书文档中选择内容提交到知识库。已经入库的知识不会因为解除连接而删除。</p>
+        </div>
+        <div class="profile-card-footer profile-connection-footer">
+          <p data-profile-connection-note>飞书仅用于身份识别、发现你可见的文档和同步你已提交的文档。</p>
+          <div class="profile-actions">
+            <button class="ae-button" type="button" data-profile-reauthorize>重新授权</button>
+            <button class="ae-button" type="button" data-profile-bind hidden>绑定飞书</button>
+            <button class="ae-button danger" type="button" data-profile-unbind>解除绑定</button>
+          </div>
+          <p class="profile-action-help warning" data-profile-unbind-help>当前账号只有飞书登录，不能直接解除绑定。请先设置登录密码。</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="ae-card profile-notice">
+      <div class="profile-notice-icon">说明</div>
+      <div><strong>解除飞书连接不会删除已有知识</strong><p>已提交并完成入库的文档、历史会话和回答来源仍会保留。解除后将无法发现新的飞书文档；已经提交的 Wiki 后续同步策略需要由管理员处理。</p></div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" data-profile-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer profile-drawer" data-profile-drawer role="dialog" aria-modal="true" aria-labelledby="profile-drawer-title" hidden>
+    <header class="drawer-head">
+      <div><div class="eyebrow" data-profile-drawer-kicker>账号设置</div><h2 id="profile-drawer-title" data-profile-drawer-title>设置登录密码</h2></div>
+      <button class="drawer-close" type="button" data-profile-drawer-close aria-label="关闭设置">关闭</button>
+    </header>
+    <form class="profile-drawer-form" data-profile-password-form>
+      <div class="drawer-body">
+        <div class="profile-drawer-intro" data-profile-drawer-intro>设置密码后，即使飞书授权暂时失效，也可以使用账号密码登录。</div>
+        <label class="ae-field full"><span>新密码</span><input type="password" name="password" data-profile-password-input placeholder="请输入至少 8 位密码" autocomplete="new-password"><small>原型仅演示校验，不会保存真实密码。</small></label>
+        <label class="ae-field full"><span>确认密码</span><input type="password" name="passwordConfirm" data-profile-password-confirm placeholder="请再次输入密码" autocomplete="new-password"></label>
+        <div class="profile-form-error" data-profile-form-error hidden></div>
+      </div>
+      <footer class="drawer-actions"><button class="ae-button" type="button" data-profile-form-cancel>取消</button><button class="ae-button primary" type="submit">保存密码</button></footer>
+    </form>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

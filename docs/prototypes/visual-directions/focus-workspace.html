@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>知识问答工作台</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page qa-page">
+  <main class="focus-shell">
+    <aside class="focus-nav">
+      <div class="brand">知识问答</div>
+      <button class="new-chat" type="button" data-new-session>新建会话</button>
+      <div class="nav-label">最近会话</div>
+      <div class="session active" data-session-title="T90000 硬件规格">T90000 硬件规格</div>
+      <div class="session" data-session-title="国产化型号清单">国产化型号清单</div>
+      <div class="session" data-session-title="网桥与路由模式区别">网桥与路由模式区别</div>
+      <div class="session" data-session-title="V7.0 部署方式">V7.0 部署方式</div>
+      <div class="session" data-session-title="白云机场历史案件">白云机场历史案件</div>
+      <button class="session-more" type="button" data-session-list>查看全部会话</button>
+      <div class="nav-bottom"><a href="knowledge-documents.html">知识库</a><a href="document-import.html">添加知识</a><a href="profile-settings.html">个人设置</a></div>
+    </aside>
+
+    <section class="focus-main">
+      <header class="focus-header">
+        <h1>T90000 硬件规格</h1>
+        <button class="btn ghost small" type="button" data-session-actions aria-expanded="false" aria-controls="session-actions-menu">会话操作</button>
+        <div class="session-actions-menu" id="session-actions-menu" data-session-actions-menu hidden>
+          <button type="button" data-session-action="rename">重命名会话</button>
+          <button type="button" data-session-action="export">导出对话</button>
+          <button type="button" data-session-action="share">分享会话</button>
+          <button type="button" class="danger-action" data-session-action="archive">归档会话</button>
+          <button type="button" class="danger-action" data-session-action="delete">删除会话</button>
+        </div>
+      </header>
+      <div class="focus-conversation">
+        <div class="question-bubble">T90000 的 CPU、内存和磁盘配置是什么？</div>
+        <div class="query-scope-summary" aria-label="本次检索范围">
+          <span>本次检索范围</span>
+          <strong>产品：AE</strong>
+          <strong>文档类型：产品规格</strong>
+          <span>由系统根据问题识别</span>
+        </div>
+        <article class="focus-answer">
+          <div class="eyebrow">综合答案</div>
+          <h2 class="answer-title">T90000 采用 AMD EPYC 7H12，配置 256GB 内存和 16TB 磁盘。</h2>
+          <p class="answer-copy">处理器为 64 核 128 线程，当前规格表中的完整配置如下。<a class="citation" href="#source-1">[1]</a></p>
+          <table class="spec-table">
+            <thead><tr><th>型号</th><th>CPU</th><th>核心 / 线程</th><th>内存</th><th>磁盘</th></tr></thead>
+            <tbody><tr><td>T90000</td><td>AMD EPYC 7H12</td><td>64 核 / 128 线程</td><td>256GB</td><td>16TB</td></tr></tbody>
+          </table>
+          <p class="muted small">适用范围：当前非 EOS 型号规格。具体采购配置请以正式规格确认结果为准。</p>
+          <div class="feedback"><span>这个回答有帮助吗？</span><button type="button" class="btn small" data-feedback>有帮助</button><button type="button" class="btn small" data-feedback>没有帮助</button></div>
+        </article>
+      </div>
+      <div class="focus-composer">
+        <div class="composer" data-scope-composer>
+          <div class="active-scope-chips" data-active-scope aria-live="polite"></div>
+          <textarea id="focus-question" name="question" aria-label="继续提问" placeholder="继续追问，例如：它的接口特点呢？"></textarea>
+          <div class="composer-footer">
+            <div class="composer-actions scope-actions">
+              <button class="btn ghost small" type="button">上传文件</button>
+              <div class="scope-picker">
+                <button class="btn ghost small scope-trigger" type="button" data-scope-trigger aria-expanded="false" aria-controls="scope-panel">
+                  检索范围：全部知识
+                </button>
+                <section class="scope-panel" id="scope-panel" data-scope-panel aria-label="设置检索范围" hidden>
+                  <div class="scope-panel-head">
+                    <div>
+                      <strong>检索范围</strong>
+                      <p>不选择时查询全部知识</p>
+                    </div>
+                    <button class="text-button" type="button" data-scope-clear>清空全部</button>
+                  </div>
+
+                  <label class="scope-field">
+                    <span>产品</span>
+                    <select id="focus-product" name="product" data-scope-product>
+                      <option value="">全部产品</option>
+                      <option value="AE">AE</option>
+                      <option value="TDA">TDA</option>
+                    </select>
+                  </label>
+
+                  <label class="scope-field">
+                    <span>版本</span>
+                    <select id="focus-version" name="version" data-scope-version disabled>
+                      <option value="">请先选择产品</option>
+                    </select>
+                  </label>
+
+                  <button class="scope-more" type="button" data-scope-more aria-expanded="false">
+                    更多条件
+                    <span>文档类型</span>
+                  </button>
+                  <div class="scope-advanced" data-scope-advanced hidden>
+                    <label class="scope-field">
+                      <span>文档类型</span>
+                      <select id="focus-document-type" name="document_type" data-scope-document-type>
+                        <option value="">全部文档类型</option>
+                        <option value="产品规格">产品规格</option>
+                        <option value="产品功能">产品功能</option>
+                        <option value="白皮书">白皮书</option>
+                        <option value="SEG 案件">SEG 案件</option>
+                        <option value="部署文档">部署文档</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p class="scope-hint" data-scope-hint>所选条件将在当前会话的后续提问中保持生效。</p>
+                </section>
+              </div>
+            </div>
+            <span class="query-running-status" data-query-running-status hidden>正在生成回答…</span>
+            <button class="btn primary" type="button" data-send-question>发送</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="focus-evidence" id="source-1">
+      <div class="eyebrow">回答依据</div>
+      <h2>来源 1 项</h2>
+      <div class="source-row">
+        <div class="source-title"><span>AE 硬件规格</span><span class="status-dot" role="img" aria-label="来源可用"></span></div>
+        <div class="source-meta">产品规格 · 当前型号 · T90000 行<br>更新于 2026-08-12</div>
+        <p class="source-excerpt">AMD EPYC 7H12，64 核 128 线程；内存 256GB；磁盘 16TB。</p>
+        <button type="button" class="btn small">查看原文</button>
+      </div>
+      <p class="tiny muted">答案中的产品事实仅使用以上来源。</p>
+    </aside>
+  </main>
+  <div class="session-dialog-backdrop" data-session-dialog hidden>
+    <section class="session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-dialog-title">
+      <div class="session-dialog-head">
+        <div><span class="eyebrow">会话</span><h2 id="session-dialog-title" data-session-dialog-title>会话操作</h2></div>
+        <button class="drawer-close" type="button" data-session-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="session-dialog-body" data-session-dialog-body></div>
+      <div class="session-dialog-actions" data-session-dialog-actions></div>
+    </section>
+  </div>
+  <script src="prototype.js"></script>
+</body>
+</html>

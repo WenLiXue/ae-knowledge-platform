@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="维护知识平台使用的大模型、Embedding 和 Rerank 服务配置。">
+  <title>LLM 与模型配置</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="config-page llm-page" data-llm-config>
+    <section class="import-titlebar config-titlebar">
+      <div>
+        <h1>LLM 与模型配置</h1>
+        <p>维护回答生成、向量化和重排序服务；已发布配置将用于新的任务和问答。</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="knowledge-config.html">检索条件配置</a>
+        <a class="ae-button link-button" href="system-tasks.html">处理任务</a>
+        <a class="ae-button link-button" href="knowledge-documents.html">返回文档管理</a>
+      </div>
+    </section>
+
+    <section class="ae-card llm-status-card">
+      <div>
+        <div class="eyebrow">当前生效配置</div>
+        <h2>模型服务运行正常</h2>
+        <p>配置版本 <strong>CFG-20260824-07</strong> · 最近发布于 2026-08-24 10:42 · 新任务将使用此版本</p>
+      </div>
+      <span class="status-tag success">已发布</span>
+    </section>
+
+    <section class="llm-config-grid">
+      <article class="ae-card llm-model-card">
+        <header class="llm-card-head"><div><span class="eyebrow">答案生成</span><h2>主 LLM</h2></div><span class="status-tag success">启用</span></header>
+        <div class="form-grid">
+          <label class="ae-field"><span>模型名称</span><select data-llm-primary-model><option>company-qwen-72b</option><option>company-deepseek-v3</option></select></label>
+          <label class="ae-field"><span>服务 Endpoint</span><input value="https://llm-gateway.intra/v1" data-llm-primary-endpoint></label>
+          <label class="ae-field"><span>请求超时（秒）</span><input type="number" value="60" min="5" max="300"></label>
+          <label class="ae-field"><span>最大重试次数</span><input type="number" value="2" min="0" max="3"></label>
+        </div>
+        <footer class="llm-card-foot"><span class="muted small">用于 QueryPlan、答案生成和引用整理</span><button class="ae-button compact" type="button" data-test-model="主 LLM">测试连接</button></footer>
+      </article>
+
+      <article class="ae-card llm-model-card">
+        <header class="llm-card-head"><div><span class="eyebrow">故障切换</span><h2>备用 LLM</h2></div><label class="switch-field"><input type="checkbox" checked data-llm-fallback-enabled><span>启用</span></label></header>
+        <div class="form-grid">
+          <label class="ae-field"><span>模型名称</span><select data-llm-fallback-model><option>company-deepseek-v3</option><option>company-qwen-72b</option></select></label>
+          <label class="ae-field"><span>服务 Endpoint</span><input value="https://llm-backup.intra/v1" data-llm-fallback-endpoint></label>
+          <label class="ae-field"><span>触发条件</span><select><option>超时 / 429 / 5xx</option><option>仅服务不可用</option></select></label>
+          <label class="ae-field"><span>切换后重试次数</span><input type="number" value="1" min="0" max="2"></label>
+        </div>
+        <footer class="llm-card-foot"><span class="muted small">切换时记录实际模型和配置版本</span><button class="ae-button compact" type="button" data-test-model="备用 LLM">测试连接</button></footer>
+      </article>
+
+      <article class="ae-card llm-model-card">
+        <header class="llm-card-head"><div><span class="eyebrow">向量化</span><h2>Embedding 服务</h2></div><span class="status-tag success">启用</span></header>
+        <div class="form-grid">
+          <label class="ae-field"><span>模型名称</span><select><option>text-embedding-3-large</option><option>bge-m3-intra</option></select></label>
+          <label class="ae-field"><span>服务 Endpoint</span><input value="https://embedding-gateway.intra/v1"></label>
+          <label class="ae-field"><span>向量维度</span><input type="number" value="3072" min="1"></label>
+          <label class="ae-field"><span>批量大小</span><input type="number" value="32" min="1" max="128"></label>
+        </div>
+        <footer class="llm-card-foot"><span class="muted small">维度变更需要新建索引 generation</span><button class="ae-button compact" type="button" data-test-model="Embedding 服务">测试连接</button></footer>
+      </article>
+
+      <article class="ae-card llm-model-card">
+        <header class="llm-card-head"><div><span class="eyebrow">结果排序</span><h2>Rerank 服务</h2></div><span class="status-tag success">启用</span></header>
+        <div class="form-grid">
+          <label class="ae-field"><span>模型名称</span><select><option>bge-reranker-v2-m3</option><option>company-rerank-v1</option></select></label>
+          <label class="ae-field"><span>服务 Endpoint</span><input value="https://rerank-gateway.intra/v1"></label>
+          <label class="ae-field"><span>请求超时（秒）</span><input type="number" value="12" min="2" max="60"></label>
+          <label class="ae-field"><span>候选上限</span><input type="number" value="50" min="5" max="200"></label>
+        </div>
+        <footer class="llm-card-foot"><span class="muted small">服务不可用时允许降级为融合结果</span><button class="ae-button compact" type="button" data-test-model="Rerank 服务">测试连接</button></footer>
+      </article>
+    </section>
+
+    <section class="ae-card llm-policy-card">
+      <header class="config-section-head"><div><h2>发布规则</h2><p>运行中的任务继续使用创建时绑定的配置版本。</p></div><span class="status-tag neutral">配置版本化</span></header>
+      <div class="llm-policy-list">
+        <label><input type="checkbox" checked disabled><span>保存配置时自动生成新的 revision</span></label>
+        <label><input type="checkbox" checked disabled><span>模型切换和降级状态写入回答记录</span></label>
+        <label><input type="checkbox" checked disabled><span>密钥只保存为服务端 Secret 引用，不展示明文</span></label>
+      </div>
+      <div class="llm-inline-note">提示：Endpoint 仅允许配置为已登记的模型服务地址，页面不会保存或展示 App Secret、Token 等凭据。</div>
+    </section>
+
+    <footer class="review-actions llm-actions">
+      <button class="ae-button" type="button" data-llm-reset>放弃修改</button>
+      <button class="ae-button primary" type="button" data-llm-save>保存并发布配置</button>
+    </footer>
+  </main>
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

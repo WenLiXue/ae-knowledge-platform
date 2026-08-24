@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>知识问答 · 证据核验</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page qa-page">
+  <main class="analysis-shell">
+    <section class="analysis-grid">
+      <article class="analysis-answer">
+        <div class="eyebrow">知识问答 · 证据核验</div>
+        <div class="question-bubble">T90000 的 CPU、内存和磁盘配置是什么？</div>
+        <div class="eyebrow">已核对来源</div>
+        <h1 class="answer-title">T90000 采用 AMD EPYC 7H12，配置 256GB 内存和 16TB 磁盘。</h1>
+        <p class="answer-copy">处理器为 64 核 128 线程。右侧已定位到正式规格表的 T90000 行。<a class="citation" href="#evidence-row">[1]</a></p>
+        <table class="spec-table">
+          <thead><tr><th>字段</th><th>规格值</th><th>依据</th></tr></thead>
+          <tbody>
+            <tr><td>CPU</td><td>AMD EPYC 7H12，64 核 128 线程</td><td><a class="citation" href="#evidence-row">[1]</a></td></tr>
+            <tr><td>内存</td><td>256GB</td><td><a class="citation" href="#evidence-row">[1]</a></td></tr>
+            <tr><td>磁盘</td><td>16TB</td><td><a class="citation" href="#evidence-row">[1]</a></td></tr>
+          </tbody>
+        </table>
+        <div style="border-left:3px solid var(--warning-line); background:var(--warning-bg); padding:12px 14px; line-height:1.6; font-size:13px;">适用范围：当前非 EOS 型号规格。具体采购配置请以正式规格确认结果为准。</div>
+        <div class="feedback"><span>这个回答有帮助吗？</span><button type="button" class="btn small" data-feedback>有帮助</button><button type="button" class="btn small" data-feedback>没有帮助</button></div>
+
+        <div class="composer">
+          <textarea id="evidence-question" name="question" aria-label="继续提问">继续追问，例如：它的接口特点呢？</textarea>
+          <div class="composer-footer">
+            <div class="chips"><button type="button" class="chip selected" data-chip>产品：AE</button><button type="button" class="chip selected" data-chip>产品规格</button></div>
+            <button type="button" class="btn primary">发送</button>
+          </div>
+        </div>
+      </article>
+
+      <aside class="analysis-evidence">
+        <header class="evidence-head">
+          <div class="eyebrow">原文证据</div>
+          <h2>AE 硬件规格</h2>
+          <div class="source-meta">产品规格 · 更新于 2026-08-12　<button type="button" class="btn ghost small">查看原文</button></div>
+        </header>
+        <div class="evidence-tabs"><button type="button" class="evidence-tab active">引用 1</button><button type="button" class="evidence-tab">文档信息</button><button type="button" class="evidence-tab">其他相关来源</button></div>
+        <div class="document-view">
+          <h3>当前型号</h3>
+          <p class="muted small">AE 硬件产品规格表</p>
+          <table class="document-table">
+            <thead><tr><th>型号</th><th>CPU</th><th>内存</th><th>磁盘</th></tr></thead>
+            <tbody>
+              <tr><td>T80000</td><td>2 × Xeon Gold 4316</td><td>128GB</td><td>8TB</td></tr>
+              <tr class="highlight" id="evidence-row"><td><strong>T90000</strong></td><td><strong>AMD EPYC 7H12<br>64 核 128 线程</strong></td><td><strong>256GB</strong></td><td><strong>16TB</strong></td></tr>
+              <tr><td>G40000</td><td>2 × 海光 C86 7375</td><td>128GB</td><td>8TB</td></tr>
+            </tbody>
+          </table>
+          <div class="anchor-note">引用 [1] 已定位到 T90000 行</div>
+          <div class="source-row" style="margin-top:28px;">
+            <div class="source-title"><span>为什么采用这份来源？</span></div>
+            <p class="source-excerpt">该文档属于正式产品规格，且表格行直接包含问题所需的 CPU、内存和磁盘字段。</p>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script src="prototype.js"></script>
+</body>
+</html>

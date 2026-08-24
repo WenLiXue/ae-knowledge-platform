@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>知识问答 · 简洁视图</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page qa-page">
+  <main class="search-shell">
+    <section class="search-content">
+      <div class="search-context">
+        <div><div class="eyebrow">知识问答 · 当前会话</div><h1>T90000 硬件规格</h1></div>
+        <div><button type="button" class="btn small">历史会话</button> <button type="button" class="btn primary small">新建会话</button></div>
+      </div>
+      <div class="question-bubble search-question">T90000 的 CPU、内存和磁盘配置是什么？</div>
+      <article class="search-answer">
+        <div class="eyebrow">综合答案</div>
+        <h2 class="answer-title">T90000 采用 AMD EPYC 7H12，配置 256GB 内存和 16TB 磁盘。</h2>
+        <p class="answer-copy">处理器为 64 核 128 线程，当前规格表中的完整配置如下。<a class="citation" href="#inline-source">[1]</a></p>
+        <table class="spec-table">
+          <thead><tr><th>CPU</th><th>核心 / 线程</th><th>内存</th><th>磁盘</th></tr></thead>
+          <tbody><tr><td>AMD EPYC 7H12</td><td>64 核 / 128 线程</td><td>256GB</td><td>16TB</td></tr></tbody>
+        </table>
+        <p class="muted small">适用范围：当前非 EOS 型号规格。</p>
+          <div class="feedback"><span>这个回答有帮助吗？</span><button type="button" class="btn small" data-feedback>有帮助</button><button type="button" class="btn small" data-feedback>没有帮助</button></div>
+
+        <section class="inline-sources" id="inline-source">
+          <button type="button" class="inline-source-toggle" data-source-toggle aria-expanded="false"><span><strong>来源依据</strong>　<span class="muted">1 份文档</span></span><span>展开</span></button>
+          <div class="inline-source-body">
+            <div class="source-row">
+              <div class="source-title"><span>AE 硬件规格</span><span class="small muted">产品规格</span></div>
+              <div class="source-meta">当前型号 · T90000 行 · 更新于 2026-08-12</div>
+              <p class="source-excerpt">AMD EPYC 7H12，64 核 128 线程；内存 256GB；磁盘 16TB。</p>
+              <button type="button" class="btn small">查看原文</button>
+            </div>
+          </div>
+        </section>
+      </article>
+    </section>
+
+    <div class="search-composer-wrap">
+      <div class="composer">
+        <textarea id="compact-question" name="question" aria-label="继续提问">继续追问，例如：它的接口特点呢？</textarea>
+        <div class="composer-footer">
+          <div class="chips"><button type="button" class="chip selected" data-chip>AE</button><button type="button" class="chip" data-chip>选择版本</button><button type="button" class="chip selected" data-chip>产品规格</button><button type="button" class="btn ghost small">清除条件</button></div>
+          <button type="button" class="btn primary">发送</button>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="prototype.js"></script>
+</body>
+</html>

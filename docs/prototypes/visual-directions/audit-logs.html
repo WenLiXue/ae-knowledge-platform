@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查询和导出系统关键操作的审计日志。">
+  <title>审计日志</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="audit-page" data-audit-logs>
+    <section class="import-titlebar audit-titlebar">
+      <div>
+        <h1>审计日志</h1>
+        <p>追溯关键业务操作及执行结果；日志仅追加，不允许修改或删除</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="system-tasks.html">处理任务</a>
+        <button class="ae-button primary" type="button" data-audit-export>导出当前结果</button>
+      </div>
+    </section>
+
+    <section class="ae-card audit-summary-tabs" aria-label="审计日志概览">
+      <button class="active" type="button" data-audit-scope="all" aria-pressed="true"><strong>126</strong><span>今日日志</span></button>
+      <button type="button" data-audit-scope="document" aria-pressed="false"><strong>62</strong><span>文档操作</span></button>
+      <button type="button" data-audit-scope="config" aria-pressed="false"><strong>18</strong><span>配置变更</span></button>
+      <button type="button" data-audit-scope="user" aria-pressed="false"><strong>12</strong><span>用户管理</span></button>
+      <button type="button" data-audit-scope="failed" aria-pressed="false"><strong>3</strong><span>失败操作</span></button>
+    </section>
+
+    <section class="ae-card audit-list-card">
+      <div class="audit-filters">
+        <label class="stacked-filter wide"><span>日志内容</span><input name="auditKeyword" type="search" autocomplete="off" data-audit-keyword placeholder="搜索日志编号、操作者或操作对象"></label>
+        <label class="stacked-filter"><span>业务模块</span><select name="auditModule" data-audit-module><option value="all">全部模块</option><option value="query">知识查询</option><option value="document">文档管理</option><option value="config">系统配置</option><option value="user">用户管理</option><option value="task">处理任务</option><option value="login">用户登录</option></select></label>
+        <label class="stacked-filter"><span>执行结果</span><select name="auditResult" data-audit-result><option value="all">全部结果</option><option value="success">成功</option><option value="failed">失败</option></select></label>
+        <label class="stacked-filter audit-date"><span>开始日期</span><input name="auditStartDate" type="date" value="2026-08-18" data-audit-start></label>
+        <label class="stacked-filter audit-date"><span>结束日期</span><input name="auditEndDate" type="date" value="2026-08-18" data-audit-end></label>
+        <div class="filter-actions">
+          <button class="ae-button primary" type="button" data-audit-search>查询</button>
+          <button class="ae-button" type="button" data-audit-clear>清除</button>
+        </div>
+      </div>
+
+      <div class="audit-table-wrap">
+        <table class="audit-table">
+          <thead><tr><th>时间 / 日志编号</th><th>操作者</th><th>业务模块</th><th>操作</th><th>操作对象</th><th>结果</th><th>来源 IP</th><th>操作</th></tr></thead>
+          <tbody data-audit-rows></tbody>
+        </table>
+        <div class="empty-state" data-audit-empty hidden>没有符合当前条件的审计日志</div>
+      </div>
+      <div class="knowledge-table-footer">
+        <span data-audit-result-count>当前显示 6 条，共 126 条今日日志</span>
+        <span class="pagination"><b>1</b>　2　3　…　21　›</span>
+      </div>
+    </section>
+    <p class="audit-data-note">记录业务操作元数据和结果，不记录密码、访问令牌及文档正文。</p>
+  </main>
+
+  <div class="drawer-backdrop" data-audit-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer audit-drawer" data-audit-drawer role="dialog" aria-modal="true" aria-labelledby="audit-drawer-title" hidden>
+    <header class="drawer-head">
+      <div><div class="eyebrow">审计详情</div><h2 id="audit-drawer-title" data-audit-drawer-title>日志编号</h2></div>
+      <button class="drawer-close" type="button" data-audit-drawer-close aria-label="关闭审计详情">×</button>
+    </header>
+    <div class="drawer-body">
+      <div class="audit-drawer-summary">
+        <span data-audit-drawer-result></span>
+        <strong data-audit-drawer-action></strong>
+        <p data-audit-drawer-object></p>
+      </div>
+
+      <dl class="document-facts audit-facts">
+        <div><dt>操作者</dt><dd data-audit-drawer-operator></dd></div>
+        <div><dt>账号</dt><dd data-audit-drawer-account></dd></div>
+        <div><dt>操作时间</dt><dd data-audit-drawer-time></dd></div>
+        <div><dt>来源 IP</dt><dd data-audit-drawer-ip></dd></div>
+        <div><dt>业务模块</dt><dd data-audit-drawer-module></dd></div>
+        <div><dt>请求编号</dt><dd data-audit-drawer-request></dd></div>
+      </dl>
+
+      <section class="audit-detail-section">
+        <div class="drawer-section-head compact"><div><h3>操作说明</h3><p>描述本次操作产生的业务变化。</p></div></div>
+        <div class="audit-description" data-audit-description></div>
+      </section>
+
+      <section class="audit-detail-section" data-audit-change-section>
+        <div class="drawer-section-head compact"><div><h3>变更内容</h3><p>仅展示允许记录的非敏感字段。</p></div></div>
+        <div class="audit-change-list" data-audit-changes></div>
+      </section>
+
+      <section class="audit-detail-section" data-audit-error-section hidden>
+        <div class="drawer-section-head compact"><div><h3>失败信息</h3><p>用于问题定位，不包含敏感请求内容。</p></div></div>
+        <div class="audit-error" data-audit-error></div>
+      </section>
+    </div>
+    <footer class="drawer-actions">
+      <button class="ae-button" type="button" data-audit-close>关闭</button>
+      <button class="ae-button primary" type="button" data-audit-copy>复制日志编号</button>
+    </footer>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

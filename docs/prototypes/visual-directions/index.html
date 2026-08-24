@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AE 内部知识平台 · 原型目录</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page index-page">
+  <main class="index-wrap">
+    <div class="eyebrow">详细设计 · HTML 交互原型</div>
+    <h1>AE 内部知识平台原型目录</h1>
+    <p class="lead">所有页面统一使用浅灰画布、白色卡片和蓝色主操作。目录中的问答页面分别呈现标准工作台、简洁视图和证据核验视图。</p>
+    <section class="direction-grid" aria-label="原型页面列表">
+      <a class="direction-link" href="focus-workspace.html">
+        <div class="no">知识问答</div>
+        <h2>标准问答工作台</h2>
+        <p>会话、答案、来源形成三栏工作区。适合高频连续追问和随时核对依据。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="search-first.html">
+        <div class="no">知识问答</div>
+        <h2>简洁问答视图</h2>
+        <p>答案占据页面中心，来源按需展开。更简洁，适合第一次使用和轻量查询。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="evidence-analysis.html">
+        <div class="no">知识问答</div>
+        <h2>证据核验视图</h2>
+        <p>答案与原文证据并排，引用定位到表格行。适合 SEG、开发和测试核验。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="knowledge-documents.html">
+        <div class="no">知识管理</div>
+        <h2>知识库文档管理</h2>
+        <p>查看文档分类、产品版本、同步和索引状态，并处理失败任务和文档撤回。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="document-import.html">
+        <div class="no">知识管理</div>
+        <h2>文档上传与自动分类</h2>
+        <p>从飞书选择文档，上传后自动分类，并补充产品和版本等检索条件。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="pending-classification.html">
+        <div class="no">知识管理</div>
+        <h2>待确认分类</h2>
+        <p>处理分类器无法可靠判断的文档，查看有限依据并确认分类后继续入库。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="knowledge-config.html">
+        <div class="no">系统配置</div>
+        <h2>产品、版本与分类配置</h2>
+        <p>维护产品、大版本、小版本和文档分类，供文档入库与知识查询统一使用。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="llm-config.html">
+        <div class="no">系统配置</div>
+        <h2>LLM 与模型配置</h2>
+        <p>维护主备 LLM、Embedding、Rerank、超时与重试。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="login.html">
+        <div class="no">账号体系</div>
+        <h2>平台登录</h2>
+        <p>支持账号密码与飞书扫码登录，首次飞书登录可自动创建系统账号。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="profile-settings.html">
+        <div class="no">账号体系</div>
+        <h2>个人设置与飞书连接</h2>
+        <p>查看账号登录方式、飞书绑定状态，并演示设置密码后解除连接的规则。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="user-management.html">
+        <div class="no">系统管理</div>
+        <h2>用户管理</h2>
+        <p>维护系统账号、账号状态和飞书 user_id 绑定关系。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="system-tasks.html">
+        <div class="no">系统管理</div>
+        <h2>系统运行与任务管理</h2>
+        <p>查看同步、解析、分类和索引任务，定位失败原因并发起人工重试。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="system-overview.html">
+        <div class="no">系统管理</div>
+        <h2>系统运行概览</h2>
+        <p>查看查询量、反馈、知识库处理状态和外部依赖健康情况。</p>
+        <span class="open">打开页面</span>
+      </a>
+      <a class="direction-link" href="audit-logs.html">
+        <div class="no">系统管理</div>
+        <h2>审计日志</h2>
+        <p>追溯关键操作、执行结果、来源 IP 和配置变更，并导出当前筛选结果。</p>
+        <span class="open">打开页面</span>
+      </a>
+    </section>
+    <p class="comparison-note">当前统一风格基线：不重复绘制系统公共 Header；业务页面使用一致的卡片、按钮、表单、表格和状态反馈。</p>
+  </main>
+</body>
+</html>

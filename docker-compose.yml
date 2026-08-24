@@ -1,0 +1,24 @@
+# 本地开发基础设施
+# 生产部署不使用本文件；公司内网单体部署由运维统一管理。
+# 密码为本地开发默认值，可通过环境变量 POSTGRES_PASSWORD 覆盖；真实环境密钥不写入仓库。
+services:
+  postgres:
+    image: postgres:latest
+    container_name: ae-knowledge-postgres
+    environment:
+      POSTGRES_USER: ae_knowledge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ae_knowledge_dev}
+      POSTGRES_DB: ae_knowledge
+    ports:
+      - "5432:5432"
+    volumes:
+      # PG 18+ 镜像要求挂载到 /var/lib/postgresql（由镜像按主版本管理子目录）
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ae_knowledge -d ae_knowledge"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:

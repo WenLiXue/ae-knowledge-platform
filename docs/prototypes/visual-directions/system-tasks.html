@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查看知识处理任务、失败原因和重试记录。">
+  <title>系统运行与任务管理</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="tasks-page" data-system-tasks>
+    <section class="import-titlebar tasks-titlebar">
+      <div>
+        <h1>系统运行与任务管理</h1>
+        <p>查看 Wiki 同步、文档解析、自动分类和索引任务，并处理失败任务</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="system-overview.html">运行概览</a>
+        <a class="ae-button link-button" href="audit-logs.html">审计日志</a>
+        <a class="ae-button link-button" href="knowledge-documents.html">返回文档管理</a>
+        <button class="ae-button primary" type="button" data-refresh-tasks>刷新状态</button>
+      </div>
+    </section>
+
+    <section class="ae-card task-status-tabs" aria-label="任务状态概览">
+      <button class="active" type="button" data-task-status="all" aria-pressed="true"><strong>18</strong><span>今日任务</span></button>
+      <button type="button" data-task-status="running" aria-pressed="false"><strong>2</strong><span>处理中</span></button>
+      <button type="button" data-task-status="retrying" aria-pressed="false"><strong>1</strong><span>自动重试</span></button>
+      <button type="button" data-task-status="failed" aria-pressed="false"><strong>2</strong><span>处理失败</span></button>
+      <button type="button" data-task-status="completed" aria-pressed="false"><strong>13</strong><span>已完成</span></button>
+    </section>
+
+    <section class="ae-card task-list-card">
+      <div class="task-filters">
+        <label class="stacked-filter wide"><span>任务或文档</span><input name="taskKeyword" type="search" autocomplete="off" data-task-keyword placeholder="搜索任务编号、文档名称"></label>
+        <label class="stacked-filter"><span>任务类型</span><select name="taskType" data-task-type><option value="all">全部类型</option><option value="wiki">Wiki 同步</option><option value="parse">文档解析</option><option value="classify">自动分类</option><option value="index">建立索引</option></select></label>
+        <label class="stacked-filter"><span>触发方式</span><select name="triggerType" data-task-trigger><option value="all">全部方式</option><option value="scheduled">定时任务</option><option value="upload">用户提交</option><option value="manual">人工重试</option></select></label>
+        <div class="filter-actions">
+          <button class="ae-button primary" type="button" data-task-search>查询</button>
+          <button class="ae-button" type="button" data-task-clear>清除</button>
+        </div>
+      </div>
+
+      <div class="task-table-wrap">
+        <table class="task-table">
+          <thead><tr><th>任务 / 文档</th><th>任务类型</th><th>触发方式</th><th>状态</th><th>处理进度</th><th>更新时间</th><th>操作</th></tr></thead>
+          <tbody data-task-rows></tbody>
+        </table>
+        <div class="empty-state" data-task-empty hidden>没有符合当前条件的任务</div>
+      </div>
+      <div class="knowledge-table-footer">
+        <span data-task-result-count>当前显示 6 条，共 18 个今日任务</span>
+        <span class="pagination"><b>1</b>　2　3　›</span>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" data-task-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer task-drawer" data-task-drawer role="dialog" aria-modal="true" aria-labelledby="task-drawer-title" hidden>
+    <header class="drawer-head">
+      <div><div class="eyebrow">任务详情</div><h2 id="task-drawer-title" data-task-drawer-title>任务编号</h2></div>
+      <button class="drawer-close" type="button" data-task-drawer-close aria-label="关闭任务详情">×</button>
+    </header>
+    <div class="drawer-body">
+      <div class="task-drawer-summary">
+        <span data-task-drawer-status></span>
+        <strong data-task-drawer-document></strong>
+        <p data-task-drawer-type></p>
+      </div>
+
+      <dl class="document-facts task-facts">
+        <div><dt>触发方式</dt><dd data-task-drawer-trigger></dd></div>
+        <div><dt>提交人</dt><dd data-task-drawer-owner></dd></div>
+        <div><dt>开始时间</dt><dd data-task-drawer-started></dd></div>
+        <div><dt>最近更新</dt><dd data-task-drawer-updated></dd></div>
+      </dl>
+
+      <section class="task-detail-section">
+        <div class="drawer-section-head compact"><div><h3>处理步骤</h3><p>按任务实际执行顺序展示。</p></div></div>
+        <ol class="task-step-list" data-task-steps></ol>
+      </section>
+
+      <section class="task-detail-section" data-task-error-section hidden>
+        <div class="drawer-section-head compact"><div><h3>失败信息</h3><p>自动重试最多执行 3 次。</p></div></div>
+        <div class="task-error-box">
+          <strong data-task-error-title></strong>
+          <p data-task-error-message></p>
+          <dl><div><dt>当前重试</dt><dd data-task-retry-count></dd></div><div><dt>下次动作</dt><dd data-task-next-action></dd></div></dl>
+        </div>
+      </section>
+
+      <section class="task-detail-section">
+        <div class="drawer-section-head compact"><div><h3>执行记录</h3><p>保留自动重试与人工重试的结果。</p></div></div>
+        <div class="task-history" data-task-history></div>
+      </section>
+    </div>
+    <footer class="drawer-actions">
+      <button class="ae-button" type="button" data-task-close>关闭</button>
+      <button class="ae-button primary" type="button" data-task-retry hidden>人工重试</button>
+    </footer>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

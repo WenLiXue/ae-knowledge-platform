@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AE 内部知识平台登录页面，支持账号密码和飞书扫码登录。">
+  <title>登录 · AE 内部知识平台</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="login-page" data-login-page>
+  <main class="login-shell">
+    <section class="login-intro" aria-labelledby="login-product-title">
+      <div class="login-product-mark" aria-hidden="true">AE</div>
+      <div>
+        <div class="login-kicker">PRODUCT KNOWLEDGE</div>
+        <h1 id="login-product-title">AE 内部知识平台</h1>
+        <p>统一查询产品知识，沉淀文档经验，为问题分析提供可靠依据。</p>
+      </div>
+    </section>
+
+    <section class="login-card" aria-labelledby="login-title">
+      <header class="login-card-head">
+        <h2 id="login-title">欢迎登录</h2>
+        <p>请选择适合你的登录方式</p>
+      </header>
+
+      <div class="login-tabs" role="tablist" aria-label="登录方式">
+        <button id="password-login-tab" class="active" type="button" role="tab" aria-selected="true" aria-controls="password-login-panel" data-login-tab="password">账号密码</button>
+        <button id="feishu-login-tab" type="button" role="tab" aria-selected="false" aria-controls="feishu-login-panel" data-login-tab="feishu">飞书扫码</button>
+      </div>
+
+      <section id="password-login-panel" class="login-panel" role="tabpanel" aria-labelledby="password-login-tab" data-login-panel="password">
+        <form class="login-form" data-password-login>
+          <label class="login-field">
+            <span>账号</span>
+            <input name="username" autocomplete="username" placeholder="请输入账号" value="xuewenli" required>
+          </label>
+          <label class="login-field">
+            <span>密码</span>
+            <input name="password" type="password" autocomplete="current-password" placeholder="请输入密码" value="prototype123" required>
+          </label>
+          <div class="login-options">
+            <label><input type="checkbox" name="remember"> 记住账号</label>
+            <button class="text-action" type="button" data-forgot-password>忘记密码</button>
+          </div>
+          <button class="ae-button primary login-submit" type="submit">登录</button>
+        </form>
+      </section>
+
+      <section id="feishu-login-panel" class="login-panel" role="tabpanel" aria-labelledby="feishu-login-tab" data-login-panel="feishu" hidden>
+        <div class="feishu-login-content" data-feishu-state="ready">
+          <div class="feishu-login-badge">飞书</div>
+          <h3>使用飞书扫码登录</h3>
+          <p>点击后打开飞书认证页面，并在飞书客户端扫码确认。</p>
+          <button class="ae-button primary login-submit" type="button" data-open-feishu-auth>打开飞书扫码登录</button>
+          <div class="feishu-auth-progress" data-feishu-progress hidden>
+            <strong>等待飞书确认</strong>
+            <span>认证窗口已打开，请在飞书客户端完成扫码。</span>
+            <button class="ae-button" type="button" data-simulate-feishu>原型：模拟扫码完成</button>
+          </div>
+        </div>
+        <p class="login-rule">系统使用飞书 <code>user_id</code> 识别用户；首次扫码自动创建账号，已存在账号则直接登录。</p>
+      </section>
+
+      <div class="login-message" data-login-message role="status" aria-live="polite" hidden></div>
+      <footer class="login-card-foot">仅供公司内部人员使用</footer>
+    </section>
+  </main>
+  <script src="prototype.js"></script>
+</body>
+</html>

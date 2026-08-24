@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="维护知识库使用的产品、版本和文档分类配置。">
+  <title>检索条件配置</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="config-page" data-knowledge-config>
+    <section class="import-titlebar config-titlebar">
+      <div>
+        <h1>检索条件配置</h1>
+        <p>维护文档入库和知识查询使用的产品、版本与文档分类</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="audit-logs.html">审计日志</a>
+        <a class="ae-button link-button" href="llm-config.html">LLM 配置</a>
+        <a class="ae-button link-button" href="system-tasks.html">处理任务</a>
+        <a class="ae-button link-button" href="user-management.html">用户管理</a>
+        <a class="ae-button link-button" href="knowledge-documents.html">返回文档管理</a>
+      </div>
+    </section>
+
+    <nav class="ae-card config-tabs" role="tablist" aria-label="配置类型">
+      <button id="products-tab" class="active" type="button" role="tab" data-config-tab="products" aria-selected="true" aria-controls="products-panel">产品与版本</button>
+      <button id="categories-tab" type="button" role="tab" data-config-tab="categories" aria-selected="false" aria-controls="categories-panel">文档分类</button>
+      <button id="runtime-tab" type="button" role="tab" data-config-tab="runtime" aria-selected="false" aria-controls="runtime-panel">运行规则</button>
+    </nav>
+
+    <section id="products-panel" class="config-panel" role="tabpanel" aria-labelledby="products-tab" data-config-panel="products">
+      <div class="ae-card config-workspace">
+        <aside class="product-config-sidebar">
+          <div class="config-section-head">
+            <div><h2>产品</h2><p>共 <span data-product-count>3</span> 个产品</p></div>
+            <button class="ae-button primary compact" type="button" data-add-product>＋ 新建</button>
+          </div>
+          <label class="config-search">
+            <span class="visually-hidden">搜索产品</span>
+            <input type="search" data-product-search placeholder="搜索产品名称或编码">
+          </label>
+          <div class="product-config-list" data-product-list></div>
+          <p class="config-side-note">停用产品后，历史文档仍保留原值，但用户不能再选择该产品。</p>
+        </aside>
+
+        <section class="version-config-main">
+          <header class="version-config-head">
+            <div>
+              <div class="config-breadcrumb">产品 / <span data-selected-product-code>AE</span></div>
+              <h2 data-selected-product-name>AE 产品</h2>
+              <p>先维护大版本，再在大版本下维护可选择的小版本。</p>
+            </div>
+            <div class="version-head-actions">
+              <button class="ae-button" type="button" data-edit-product>编辑产品</button>
+              <button class="ae-button primary" type="button" data-add-major>＋ 新建大版本</button>
+            </div>
+          </header>
+
+          <div class="version-summary">
+            <div><strong data-major-count>2</strong><span>大版本</span></div>
+            <div><strong data-minor-count>5</strong><span>小版本</span></div>
+            <div><strong data-version-document-count>462</strong><span>关联文档</span></div>
+          </div>
+
+          <div class="major-version-list" data-major-version-list></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="categories-panel" class="config-panel" role="tabpanel" aria-labelledby="categories-tab" data-config-panel="categories" hidden>
+      <div class="ae-card category-config-card">
+        <header class="category-config-head">
+          <div><h2>文档分类</h2><p>分类器从此处读取有效分类；停用后不再用于新文档自动分类。</p></div>
+          <button class="ae-button primary" type="button" data-add-category>＋ 新建分类</button>
+        </header>
+        <div class="category-table-wrap">
+          <table class="category-config-table">
+            <thead>
+              <tr><th>分类名称</th><th>用途说明</th><th>关联文档</th><th>状态</th><th>最近更新</th><th>操作</th></tr>
+            </thead>
+            <tbody data-category-rows></tbody>
+          </table>
+        </div>
+        <div class="category-config-footer">共 <span data-category-count>7</span> 个分类；已关联文档的分类不可直接删除。</div>
+      </div>
+    </section>
+
+    <section id="runtime-panel" class="config-panel" role="tabpanel" aria-labelledby="runtime-tab" data-config-panel="runtime" hidden>
+      <div class="config-effective-bar">
+        <div><strong>当前配置版本 CFG-20260824-08</strong><span>已生效于 2026-08-24 10:30 · 修改后保存立即对新请求生效</span></div>
+        <span class="status-tag success">已生效</span>
+      </div>
+      <div class="runtime-config-grid">
+        <section class="ae-card runtime-config-card">
+          <header class="config-section-head"><div><h2>来源优先级</h2><p>同一事实存在多个来源时，优先使用排序靠前的来源。</p></div><span class="status-tag neutral">可配置</span></header>
+          <ol class="priority-list">
+            <li><span class="drag-handle">⋮⋮</span><strong>正式产品规格</strong><small>型号、硬件和产品参数</small></li>
+            <li><span class="drag-handle">⋮⋮</span><strong>产品测试报告</strong><small>性能和验证结论</small></li>
+            <li><span class="drag-handle">⋮⋮</span><strong>研发设计文档</strong><small>架构、接口和实现说明</small></li>
+            <li><span class="drag-handle">⋮⋮</span><strong>SEG 问题案件</strong><small>现场问题和处理经验</small></li>
+            <li><span class="drag-handle">⋮⋮</span><strong>白皮书与产品说明</strong><small>公开能力和综合介绍</small></li>
+          </ol>
+          <div class="runtime-rule-note">同一优先级内发生冲突时，默认采用更新时间较新的来源，并在答案中提示用户确认。</div>
+          <button class="ae-button primary compact" type="button" data-runtime-save>保存来源优先级</button>
+        </section>
+
+        <section class="ae-card runtime-config-card">
+          <header class="config-section-head"><div><h2>Wiki 同步规则</h2><p>按最近修改时间或 revision 判断是否需要更新。</p></div><span class="status-tag success">已启用</span></header>
+          <div class="form-grid">
+            <label class="ae-field"><span>执行频率</span><select><option>每天</option><option>每 12 小时</option><option>每周一</option></select></label>
+            <label class="ae-field"><span>执行时间</span><input type="time" value="02:00"></label>
+            <label class="ae-field"><span>单个来源最大重试</span><input type="number" value="3" min="0" max="5"></label>
+            <label class="ae-field"><span>失败后处理</span><select><option>记录失败并保留旧版本</option><option>暂停后续同步</option></select></label>
+          </div>
+          <div class="runtime-rule-note">更新检查只读取最近修改时间或 revision；未更新的 Wiki 不重新获取正文和建立索引。</div>
+          <button class="ae-button primary compact" type="button" data-runtime-save>保存同步规则</button>
+        </section>
+        <section class="ae-card runtime-config-card">
+          <header class="config-section-head"><div><h2>数据保存期限</h2><p>配置不同业务数据的默认保存周期。</p></div><span class="status-tag neutral">可配置</span></header>
+          <div class="form-grid">
+            <label class="ae-field"><span>对话与问答记录</span><select><option>180 天</option><option>365 天</option><option>永久保存</option></select></label>
+            <label class="ae-field"><span>回收站会话</span><select><option>7 天后彻底删除</option><option>30 天后彻底删除</option></select></label>
+            <label class="ae-field"><span>知识文档与索引</span><select><option>永久保存</option><option>按文档状态清理</option></select></label>
+            <label class="ae-field"><span>账号与配置</span><select><option>永久保存</option><option>按组织策略清理</option></select></label>
+          </div>
+          <div class="runtime-rule-note">保存周期调整只影响后续清理任务；已进入回收站的数据仍按当前回收站规则处理。</div>
+          <button class="ae-button primary compact" type="button" data-runtime-save>保存保存期限</button>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" data-config-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer config-drawer" data-config-drawer role="dialog" aria-modal="true" aria-labelledby="config-drawer-title" hidden>
+    <header class="drawer-head">
+      <div>
+        <div class="eyebrow" data-config-drawer-kicker>配置项</div>
+        <h2 id="config-drawer-title" data-config-drawer-title>编辑配置</h2>
+      </div>
+      <button class="drawer-close" type="button" data-config-drawer-close aria-label="关闭配置编辑">×</button>
+    </header>
+    <form class="config-drawer-form" data-config-drawer-form>
+      <div class="drawer-body">
+        <div data-config-fields></div>
+        <div class="config-rule-note" data-config-rule-note></div>
+      </div>
+      <footer class="drawer-actions">
+        <button class="ae-button" type="button" data-config-cancel>取消</button>
+        <button class="ae-button primary" type="submit">保存</button>
+      </footer>
+    </form>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

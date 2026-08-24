@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="管理 AE 内部知识平台用户、登录方式和飞书账号绑定。">
+  <title>用户管理</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="users-page" data-user-management>
+    <section class="import-titlebar users-titlebar">
+      <div>
+        <h1>用户管理</h1>
+        <p>维护系统账号、登录状态以及飞书账号绑定关系</p>
+      </div>
+      <div class="documents-title-actions">
+        <a class="ae-button link-button" href="knowledge-config.html">返回系统配置</a>
+        <button class="ae-button primary" type="button" data-add-user>＋ 新建用户</button>
+      </div>
+    </section>
+
+    <section class="ae-card user-status-tabs" aria-label="用户状态概览">
+      <button class="active" type="button" data-user-status="all" aria-pressed="true"><strong>30</strong><span>全部用户</span></button>
+      <button type="button" data-user-status="active" aria-pressed="false"><strong>28</strong><span>正常</span></button>
+      <button type="button" data-user-status="disabled" aria-pressed="false"><strong>2</strong><span>已停用</span></button>
+      <button type="button" data-user-status="bound" aria-pressed="false"><strong>24</strong><span>已绑定飞书</span></button>
+    </section>
+
+    <section class="ae-card users-card">
+      <div class="user-filters">
+        <label class="stacked-filter wide"><span>用户</span><input name="userKeyword" type="search" autocomplete="off" data-user-keyword placeholder="搜索姓名、账号或飞书 user_id"></label>
+        <label class="stacked-filter"><span>登录方式</span><select name="loginType" data-user-login-type><option value="all">全部方式</option><option value="password">账号密码</option><option value="feishu">飞书登录</option></select></label>
+        <label class="stacked-filter"><span>账号类型</span><select name="filterAccountType" data-user-account-type><option value="all">全部类型</option><option value="admin">管理员</option><option value="user">普通用户</option></select></label>
+        <div class="filter-actions"><button class="ae-button primary" type="button" data-user-search>查询</button><button class="ae-button" type="button" data-user-clear>清除</button></div>
+      </div>
+
+      <div class="users-table-wrap">
+        <table class="users-table">
+          <thead><tr><th>用户</th><th>账号</th><th>账号类型</th><th>登录方式</th><th>飞书绑定</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead>
+          <tbody data-user-rows></tbody>
+        </table>
+        <div class="empty-state" data-user-empty hidden>没有符合当前条件的用户</div>
+      </div>
+      <div class="knowledge-table-footer"><span data-user-result-count>当前显示 6 条，共 30 个用户</span><span class="pagination"><b>1</b>　2　3　4　5　›</span></div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" data-user-drawer-backdrop hidden></div>
+  <aside class="knowledge-document-drawer user-drawer" data-user-drawer role="dialog" aria-modal="true" aria-labelledby="user-drawer-title" hidden>
+    <header class="drawer-head">
+      <div><div class="eyebrow">用户账号</div><h2 id="user-drawer-title" data-user-drawer-title>编辑用户</h2></div>
+      <button class="drawer-close" type="button" data-user-drawer-close aria-label="关闭用户编辑">×</button>
+    </header>
+    <form class="user-drawer-form" data-user-form>
+      <div class="drawer-body">
+        <div class="user-form-grid">
+          <label class="config-field"><span>姓名 <b>*</b></span><input name="name" autocomplete="name" required></label>
+          <label class="config-field"><span>登录账号 <b>*</b></span><input name="username" autocomplete="username" required></label>
+          <label class="config-field"><span>账号类型 <b>*</b></span><select name="accountType" required><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
+          <label class="config-field"><span>账号状态 <b>*</b></span><select name="status" required><option value="active">正常</option><option value="disabled">停用</option></select></label>
+          <label class="config-field" data-password-field><span>临时密码 <b>*</b></span><input name="password" type="password" autocomplete="new-password"><small>用户首次登录后可修改密码。</small></label>
+        </div>
+        <section class="binding-section" data-binding-section hidden>
+          <div class="drawer-section-head"><div><h3>飞书账号绑定</h3><p>绑定关系由飞书扫码登录成功后自动建立。</p></div></div>
+          <dl class="document-facts binding-facts">
+            <div><dt>绑定状态</dt><dd data-binding-status></dd></div>
+            <div><dt>飞书用户</dt><dd data-binding-name></dd></div>
+            <div><dt>user_id</dt><dd><code data-binding-user-id></code></dd></div>
+          </dl>
+          <button class="ae-button danger" type="button" data-unbind-feishu>解除飞书绑定</button>
+          <p class="binding-action-help" data-unbind-help hidden></p>
+        </section>
+        <div class="config-rule-note">停用账号后不能登录，但用户历史对话和已提交文档仍然保留。</div>
+      </div>
+      <footer class="drawer-actions"><button class="ae-button" type="button" data-user-cancel>取消</button><button class="ae-button primary" type="submit">保存</button></footer>
+    </form>
+  </aside>
+
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

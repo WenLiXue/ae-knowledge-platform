@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查看知识问答、知识库处理和外部依赖的运行概览。">
+  <title>系统运行概览</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="ae-page">
+  <main class="overview-page" data-system-overview>
+    <section class="import-titlebar overview-titlebar">
+      <div><h1>系统运行概览</h1><p>查看知识问答、知识库处理和外部依赖的运行状态</p></div>
+      <div class="documents-title-actions"><a class="ae-button link-button" href="system-tasks.html">处理任务</a><a class="ae-button link-button" href="knowledge-config.html">运行规则</a><button class="ae-button primary" type="button" data-overview-refresh>刷新数据</button></div>
+    </section>
+
+    <div class="overview-range"><span>统计周期</span><button class="active" type="button">今天</button><button type="button">近 7 天</button><button type="button">近 30 天</button><span class="overview-updated">更新于 2026-08-24 10:48</span></div>
+
+    <section class="overview-metrics">
+      <article class="ae-card overview-metric"><span>今日查询</span><strong>126</strong><small class="metric-up">↑ 18% <em>较昨日</em></small></article>
+      <article class="ae-card overview-metric"><span>活跃用户</span><strong>23</strong><small class="metric-up">↑ 4 人 <em>较昨日</em></small></article>
+      <article class="ae-card overview-metric"><span>有帮助率</span><strong>86.4%</strong><small><em>基于 44 条反馈</em></small></article>
+      <article class="ae-card overview-metric"><span>无结果问题</span><strong>9</strong><small class="metric-warn">占查询 7.1%</small></article>
+    </section>
+
+    <section class="overview-main-grid">
+      <article class="ae-card overview-chart-card">
+        <header class="overview-card-head"><div><h2>查询与回答结果</h2><p>按小时统计今日请求和最终结果</p></div><span class="status-tag neutral">126 次查询</span></header>
+        <div class="bar-chart" aria-label="今日查询趋势">
+          <div class="bar-group"><i style="height: 24%"></i><span>06</span></div><div class="bar-group"><i style="height: 38%"></i><span>08</span></div><div class="bar-group"><i style="height: 62%"></i><span>10</span></div><div class="bar-group"><i style="height: 74%"></i><span>12</span></div><div class="bar-group"><i style="height: 48%"></i><span>14</span></div><div class="bar-group"><i style="height: 66%"></i><span>16</span></div><div class="bar-group"><i style="height: 31%"></i><span>18</span></div>
+        </div>
+        <div class="chart-legend"><span><i class="legend-dot blue"></i>有依据回答 103</span><span><i class="legend-dot yellow"></i>部分依据 14</span><span><i class="legend-dot gray"></i>资料不足 9</span></div>
+      </article>
+
+      <article class="ae-card overview-health-card">
+        <header class="overview-card-head"><div><h2>依赖健康</h2><p>最近一次探活和调用状态</p></div><span class="status-tag success">全部正常</span></header>
+        <ul class="health-list"><li><span><i class="health-dot"></i> PostgreSQL</span><small>正常 · 12ms</small></li><li><span><i class="health-dot"></i> 检索引擎</span><small>正常 · 38ms</small></li><li><span><i class="health-dot"></i> 主 LLM</span><small>正常 · 1.8s</small></li><li><span><i class="health-dot"></i> Embedding</span><small>正常 · 420ms</small></li><li><span><i class="health-dot"></i> Rerank</span><small>正常 · 210ms</small></li><li><span><i class="health-dot"></i> 飞书服务</span><small>正常 · 96ms</small></li></ul>
+      </article>
+    </section>
+
+    <section class="overview-lower-grid">
+      <article class="ae-card overview-list-card"><header class="overview-card-head"><div><h2>需要关注的问题</h2><p>帮助管理员发现知识缺口和处理异常</p></div><a class="text-button" href="knowledge-documents.html">查看文档</a></header><ul class="attention-list"><li><span class="attention-icon danger">!</span><div><strong>9 个问题没有找到足够依据</strong><small>最近：TDA 7.0.3 Analyzer 性能上限 · 10:42</small></div><span class="attention-link">查看问题</span></li><li><span class="attention-icon warn">!</span><div><strong>2 个文档分类等待管理员确认</strong><small>最早等待 2 小时 · 文档治理</small></div><a class="attention-link" href="pending-classification.html">去处理</a></li><li><span class="attention-icon info">i</span><div><strong>3 个 Wiki 文档今日发生更新</strong><small>已有 2 个完成索引 · 1 个正在处理</small></div><a class="attention-link" href="system-tasks.html">查看任务</a></li></ul></article>
+      <article class="ae-card overview-list-card"><header class="overview-card-head"><div><h2>知识库处理状态</h2><p>当前文档生命周期分布</p></div><a class="text-button" href="knowledge-documents.html">管理知识库</a></header><div class="distribution-row"><span>可查询</span><div class="distribution-track"><i style="width: 82%"></i></div><strong>812</strong></div><div class="distribution-row"><span>处理中</span><div class="distribution-track"><i class="processing" style="width: 9%"></i></div><strong>87</strong></div><div class="distribution-row"><span>待确认</span><div class="distribution-track"><i class="pending" style="width: 4%"></i></div><strong>42</strong></div><div class="distribution-row"><span>失败</span><div class="distribution-track"><i class="failed" style="width: 2%"></i></div><strong>19</strong></div></article>
+    </section>
+  </main>
+  <div class="prototype-toast" data-toast role="status" aria-live="polite" hidden></div>
+  <script src="prototype.js"></script>
+</body>
+</html>
