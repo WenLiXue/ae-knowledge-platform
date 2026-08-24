@@ -161,7 +161,7 @@ def test_real_oauth_build_authorize_url() -> None:
 def test_real_oauth_error_mapping() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("app_access_token/internal"):
-            return httpx.Response(200, json={"code": 0, "data": {"tenant_access_token": "t", "expire": 7200}})
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "t", "expire": 7200})
         import json as _json
 
         body = _json.loads(request.content or b"{}")
@@ -191,7 +191,7 @@ def test_real_oauth_error_mapping() -> None:
 def test_real_oauth_http_status_and_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("app_access_token/internal"):
-            return httpx.Response(200, json={"code": 0, "data": {"tenant_access_token": "t", "expire": 7200}})
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "t", "expire": 7200})
         raise httpx.ReadTimeout("timeout")
 
     oauth = _real_oauth(handler)

@@ -16,6 +16,8 @@ _DEFAULT_TEST_URL = (
 )
 # 必须在导入任何 app 模块之前设置，让 app.db.session 引擎指向测试库
 os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_URL))
+# 测试环境强制使用 Fake 飞书实现（真实环境变量优先于 .env，隔离开发者本机的 real 配置）
+os.environ["FEISHU_PROVIDER"] = "fake"
 
 import pytest
 from alembic import command

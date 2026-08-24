@@ -19,6 +19,8 @@ export interface FeishuDocument {
   owner_name: string;
   submitted: boolean;
   source_id: string | null;
+  /** 飞书原文地址，可点击跳转 */
+  url: string | null;
 }
 
 /** 批量提交请求项。 */

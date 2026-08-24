@@ -9,15 +9,18 @@ import {
   Chip,
   FormControl,
   InputLabel,
+  Link,
   List,
   ListItem,
   ListItemText,
   MenuItem,
+  Pagination,
   Select,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { getFeishuConnection, listFeishuDocuments, submitFeishuDocuments } from "../api/feishu";
 import { getErrorMessage } from "../api/client";
@@ -43,6 +46,11 @@ export function DocumentImportPage() {
   const [typeFilter, setTypeFilter] = useState<"" | FeishuResourceType>("");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  // 云盘接口一次返回全部文件（无服务端分页 token），改用客户端分页控件逐页展示
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [statusFilter, setStatusFilter] = useState<"" | "submitted" | "pending">("");
+  const [sortBy, setSortBy] = useState<"modified" | "title">("modified");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,6 +62,7 @@ export function DocumentImportPage() {
       ]);
       setDocuments(docs.items);
       setConnected(connection.connected);
+      setPage(1);
     } catch (err) {
       setError(err);
     } finally {
@@ -67,17 +76,61 @@ export function DocumentImportPage() {
 
   const visibleDocuments = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    return documents.filter((document) => {
+    const filtered = documents.filter((document) => {
       if (keyword && !document.title.toLowerCase().includes(keyword)) return false;
       if (typeFilter && document.resource_type !== typeFilter) return false;
+      if (statusFilter === "submitted" && !document.submitted) return false;
+      if (statusFilter === "pending" && document.submitted) return false;
       return true;
     });
-  }, [documents, query, typeFilter]);
+    return [...filtered].sort((a, b) =>
+      sortBy === "title"
+        ? a.title.localeCompare(b.title, "zh-CN")
+        : new Date(b.modified_at).getTime() - new Date(a.modified_at).getTime(),
+    );
+  }, [documents, query, typeFilter, statusFilter, sortBy]);
+
+  // 客户端分页：标准 Pagination 控件，每页 pageSize 条
+  const totalPages = Math.max(1, Math.ceil(visibleDocuments.length / pageSize));
+  const shownDocuments = useMemo(
+    () => visibleDocuments.slice((page - 1) * pageSize, page * pageSize),
+    [visibleDocuments, page, pageSize],
+  );
+
+  // 筛选/排序/每页条数变化时回到第 1 页
+  useEffect(() => {
+    setPage(1);
+  }, [query, typeFilter, statusFilter, sortBy, pageSize]);
 
   const toggleSelection = (token: string) => {
     setSelected((current) =>
       current.includes(token) ? current.filter((item) => item !== token) : [...current, token],
     );
+  };
+
+  // 当前页可勾选的文档（已提交的不参与全选）
+  const selectableDocuments = useMemo(
+    () => shownDocuments.filter((document) => !document.submitted),
+    [shownDocuments],
+  );
+  const allVisibleSelected =
+    selectableDocuments.length > 0 &&
+    selectableDocuments.every((document) => selected.includes(document.resource_token));
+  const someVisibleSelected = selectableDocuments.some((document) =>
+    selected.includes(document.resource_token),
+  );
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      const remove = new Set(selectableDocuments.map((document) => document.resource_token));
+      setSelected((current) => current.filter((token) => !remove.has(token)));
+    } else {
+      setSelected((current) => {
+        const set = new Set(current);
+        selectableDocuments.forEach((document) => set.add(document.resource_token));
+        return [...set];
+      });
+    }
   };
 
   const handleSubmit = async () => {
@@ -159,16 +212,16 @@ export function DocumentImportPage() {
               </Button>
             </Stack>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ flexWrap: "wrap" }}>
               <TextField
                 size="small"
                 label="搜索文档标题"
                 placeholder="输入关键词筛选"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                fullWidth
+                sx={{ flexGrow: 1 }}
               />
-              <FormControl size="small" sx={{ minWidth: { sm: 180 } }}>
+              <FormControl size="small" sx={{ minWidth: { sm: 130 } }}>
                 <InputLabel>文档类型</InputLabel>
                 <Select
                   label="文档类型"
@@ -181,6 +234,44 @@ export function DocumentImportPage() {
                       {RESOURCE_TYPE_LABEL[type] ?? type}
                     </MenuItem>
                   ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: { sm: 120 } }}>
+                <InputLabel>导入状态</InputLabel>
+                <Select
+                  label="导入状态"
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as "" | "submitted" | "pending")
+                  }
+                >
+                  <MenuItem value="">全部</MenuItem>
+                  <MenuItem value="pending">待导入</MenuItem>
+                  <MenuItem value="submitted">已提交</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: { sm: 120 } }}>
+                <InputLabel>排序</InputLabel>
+                <Select
+                  label="排序"
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value as "modified" | "title")}
+                >
+                  <MenuItem value="modified">最近修改</MenuItem>
+                  <MenuItem value="title">标题</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: { sm: 110 } }}>
+                <InputLabel>每页条数</InputLabel>
+                <Select
+                  label="每页条数"
+                  value={pageSize}
+                  onChange={(event) => setPageSize(Number(event.target.value))}
+                >
+                  <MenuItem value={5}>5 条</MenuItem>
+                  <MenuItem value={10}>10 条</MenuItem>
+                  <MenuItem value={20}>20 条</MenuItem>
+                  <MenuItem value={50}>50 条</MenuItem>
                 </Select>
               </FormControl>
               <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => void load()} disabled={loading}>
@@ -205,35 +296,77 @@ export function DocumentImportPage() {
               />
             </Box>
           ) : (
-            <List disablePadding>
-              {visibleDocuments.map((document) => (
-                <ListItem key={document.resource_token} disableGutters divider>
-                  <Checkbox
-                    checked={selected.includes(document.resource_token)}
-                    disabled={document.submitted}
-                    onChange={() => toggleSelection(document.resource_token)}
+            <>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, pb: 0.5 }}>
+                <Checkbox
+                  checked={allVisibleSelected}
+                  indeterminate={someVisibleSelected && !allVisibleSelected}
+                  onChange={toggleSelectAll}
+                  disabled={selectableDocuments.length === 0}
+                  inputProps={{ "aria-label": "全选当前列表" }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  全选当前页（可导入 {selectableDocuments.length} 条，已选 {selected.length} 条）
+                </Typography>
+              </Box>
+              <List disablePadding>
+                {shownDocuments.map((document) => (
+                  <ListItem key={document.resource_token} disableGutters divider>
+                    <Checkbox
+                      checked={selected.includes(document.resource_token)}
+                      disabled={document.submitted}
+                      onChange={() => toggleSelection(document.resource_token)}
+                    />
+                    <ListItemText
+                      primary={
+                        document.url ? (
+                          <Link
+                            href={document.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            underline="hover"
+                            color="primary"
+                            sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}
+                          >
+                            {document.title}
+                            <OpenInNewIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                          </Link>
+                        ) : (
+                          document.title
+                        )
+                      }
+                      secondary={`${document.owner_name} · 最近修改 ${new Date(
+                        document.modified_at,
+                      ).toLocaleDateString("zh-CN")}`}
+                    />
+                    <Chip
+                      size="small"
+                      label={RESOURCE_TYPE_LABEL[document.resource_type] ?? document.resource_type}
+                      variant="outlined"
+                      sx={{ mr: 1 }}
+                    />
+                    <Chip
+                      size="small"
+                      label={document.submitted ? "已提交" : "待导入"}
+                      color={document.submitted ? "success" : "default"}
+                      variant={document.submitted ? "filled" : "outlined"}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+              {totalPages > 1 && (
+                <Box sx={{ display: "flex", justifyContent: "center", pt: 2 }}>
+                  <Pagination
+                    count={totalPages}
+                    page={page}
+                    onChange={(_event, value) => setPage(value)}
+                    color="primary"
+                    showFirstButton
+                    showLastButton
                   />
-                  <ListItemText
-                    primary={document.title}
-                    secondary={`${document.owner_name} · 最近修改 ${new Date(
-                      document.modified_at,
-                    ).toLocaleDateString("zh-CN")}`}
-                  />
-                  <Chip
-                    size="small"
-                    label={RESOURCE_TYPE_LABEL[document.resource_type] ?? document.resource_type}
-                    variant="outlined"
-                    sx={{ mr: 1 }}
-                  />
-                  <Chip
-                    size="small"
-                    label={document.submitted ? "已提交" : "待导入"}
-                    color={document.submitted ? "success" : "default"}
-                    variant={document.submitted ? "filled" : "outlined"}
-                  />
-                </ListItem>
-              ))}
-            </List>
+                </Box>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

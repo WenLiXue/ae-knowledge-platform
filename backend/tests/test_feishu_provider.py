@@ -265,7 +265,7 @@ def test_real_provider_maps_feishu_error_codes() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("tenant_access_token/internal"):
-            return httpx.Response(200, json={"code": 0, "data": {"tenant_access_token": "t", "expire": 7200}})
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "t", "expire": 7200})
         token = path.rsplit("/", 1)[-1]
         codes = {
             "ratelimit-doc": 910002,
@@ -301,7 +301,7 @@ def test_real_provider_maps_http_status_and_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("tenant_access_token/internal"):
-            return httpx.Response(200, json={"code": 0, "data": {"tenant_access_token": "t", "expire": 7200}})
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "t", "expire": 7200})
         token = path.rsplit("/", 1)[-1]
         if token == "ratelimit-http":
             return httpx.Response(429, text="rate limited")

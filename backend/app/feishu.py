@@ -32,6 +32,7 @@ class FeishuDocument(BaseModel):
     owner_name: str
     submitted: bool = False
     source_id: str | None = None
+    url: str | None = None
 
 
 class SubmitItem(BaseModel):
@@ -90,6 +91,7 @@ def list_documents(
     query: str | None = Query(default=None, max_length=100),
     resource_type: Annotated[list[ResourceType] | None, Query()] = None,
     limit: int = Query(default=50, ge=1, le=50),
+    page_token: str | None = Query(default=None),
     user_access_token: str | None = Depends(get_optional_feishu_token),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -100,6 +102,7 @@ def list_documents(
             user_access_token=user_access_token,
             query=query,
             resource_types=resource_types,
+            page_token=page_token,
             limit=limit,
         )
     except FeishuError as exc:
@@ -125,6 +128,7 @@ def list_documents(
                 owner_name=doc.owner_name or "",
                 submitted=submitted,
                 source_id=str(submitted_map[token].id) if submitted else None,
+                url=doc.url,
             )
         )
     return {"data": {"items": items, "next_cursor": result.next_cursor}}

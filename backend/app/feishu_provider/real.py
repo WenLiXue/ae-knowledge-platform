@@ -40,6 +40,7 @@ _FEISHU_ERROR_CODE_MAP: dict[int, str] = {
     99991665: AUTH,            # access_token 过期
     1061002: NOT_FOUND,        # 文档不存在
     215110: PERMISSION,        # 无权限访问该资源
+    99991672: PERMISSION,      # 无权限（缺 scope 或未授权该接口）
 }
 
 
@@ -67,12 +68,13 @@ class RealFeishuProvider(FeishuDocumentProvider):
     def _tenant_access_token(self) -> str:
         if self._tenant_token and time.time() < self._tenant_token_expires_at:
             return self._tenant_token
-        data = self._request(
+        # 该接口的 tenant_access_token 在响应顶层，不在 data 内
+        body = self._request(
             "POST", "/open-apis/auth/v3/tenant_access_token/internal", token=None,
             json={"app_id": self._app_id, "app_secret": self._app_secret},
         )
-        token = data.get("tenant_access_token", "")
-        expire = data.get("expire", 7200)
+        token = body.get("tenant_access_token", "")
+        expire = body.get("expire", 7200)
         self._tenant_token = token
         self._tenant_token_expires_at = time.time() + expire - 60  # 提前 60s 续期
         return token
@@ -116,7 +118,8 @@ class RealFeishuProvider(FeishuDocumentProvider):
             category = _FEISHU_ERROR_CODE_MAP.get(code, TRANSIENT)
             retryable = category in (RATE_LIMIT, TIMEOUT, TRANSIENT)
             raise FeishuError(category, f"FEISHU_{code}", str(body.get("msg", "未知错误")), retryable=retryable)
-        return body.get("data", {})
+        # 返回完整响应体：有的接口（token 类）字段在顶层，其余在 data 内
+        return body
 
     # ---- 文档发现 ----
 
@@ -131,17 +134,26 @@ class RealFeishuProvider(FeishuDocumentProvider):
     ) -> FeishuListResult:
         if user_access_token is None:
             raise FeishuError(AUTH, "USER_TOKEN_MISSING", "缺少用户访问凭证", retryable=False)
-        # 使用搜索接口发现文档；端点与分页结构需真实租户联调校正
-        params: dict[str, Any] = {"page_size": limit}
+        if query:
+            # 有关键字：搜索云文档（需搜索 scope）
+            body = self._request(
+                "POST", "/open-apis/suite/docs-api/search/object", token=user_access_token,
+                json={"search_key": query, "count": limit},
+            )
+            data = body.get("data", {})
+            items = [_entity_to_document(e) for e in (data.get("entities", []) or [])]
+            return FeishuListResult(items=items, next_cursor=data.get("page_token"))
+        # 无关键字：列出云盘最近文件（drive:drive:readonly），便于发现页直接展示
+        params: dict[str, Any] = {"page_size": limit, "order_by": "EditedTime", "direction": "DESC"}
         if page_token:
             params["page_token"] = page_token
-        data = self._request(
-            "POST", "/open-apis/suite/docs-api/search/object", token=user_access_token,
-            json={"search_key": query or "", "count": limit},
+        body = self._request(
+            "GET", "/open-apis/drive/v1/files", token=user_access_token, params=params,
         )
-        entities = data.get("entities", []) or []
-        items = [_entity_to_document(e) for e in entities]
-        return FeishuListResult(items=items, next_cursor=data.get("page_token"))
+        data = body.get("data", {})
+        files = data.get("files", []) or []
+        items = [_drive_file_to_document(f) for f in files]
+        return FeishuListResult(items=items, next_cursor=data.get("next_page_token"))
 
     def resolve_url(self, user_access_token: str | None, url: str) -> FeishuDocument:
         token, resource_type = _parse_url(url)
@@ -153,10 +165,11 @@ class RealFeishuProvider(FeishuDocumentProvider):
         if user_access_token is None:
             raise FeishuError(AUTH, "USER_TOKEN_MISSING", "缺少用户访问凭证", retryable=False)
         if resource_type == "wiki":
-            node = self._request(
+            body = self._request(
                 "GET", "/open-apis/wiki/v2/spaces/get_node", token=user_access_token,
                 params={"token": resource_token},
-            ).get("node", {})
+            )
+            node = body.get("data", {}).get("node", {})
             obj_token = node.get("obj_token", resource_token)
             title = node.get("title", resource_token)
             modified = _parse_timestamp(node.get("modify_time"))
@@ -170,9 +183,10 @@ class RealFeishuProvider(FeishuDocumentProvider):
                 node_token=resource_token,
                 extra={"obj_token": obj_token, "node_token": resource_token},
             )
-        doc = self._request(
+        body = self._request(
             "GET", f"/open-apis/docx/v1/documents/{resource_token}", token=user_access_token,
-        ).get("document", {})
+        )
+        doc = body.get("data", {}).get("document", {})
         return FeishuDocument(
             resource_token=resource_token,
             canonical_token=resource_token,
@@ -190,11 +204,11 @@ class RealFeishuProvider(FeishuDocumentProvider):
             raise FeishuError(AUTH, "USER_TOKEN_MISSING", "缺少用户访问凭证", retryable=False)
         meta = self.get_metadata(user_access_token, resource_token, resource_type)
         obj_token = meta.resource_token
-        data = self._request(
+        body = self._request(
             "GET", f"/open-apis/docx/v1/documents/{obj_token}/raw_content",
             token=user_access_token,
         )
-        text = data.get("content", "")
+        text = body.get("data", {}).get("content", "")
         return FeishuContent(
             title=meta.title,
             text=text,
@@ -203,6 +217,22 @@ class RealFeishuProvider(FeishuDocumentProvider):
             modified_at=meta.modified_at,
             raw_payload={"document_id": obj_token, "raw_content": text},
         )
+
+
+def _drive_file_to_document(f: dict[str, Any]) -> FeishuDocument:
+    token = f.get("token", "")
+    ftype = f.get("type", "file")
+    return FeishuDocument(
+        resource_token=token,
+        canonical_token=token,
+        title=f.get("name", ""),
+        resource_type=_obj_type_to_resource_type(ftype),
+        # drive 文件对象用 modified_time（秒级时间戳）
+        modified_at=_parse_timestamp(f.get("modified_time") or f.get("modify_time")),
+        owner_name=f.get("owner_id"),
+        url=f.get("url"),
+        extra={"parent_token": f.get("parent_token")},
+    )
 
 
 def _entity_to_document(entity: dict[str, Any]) -> FeishuDocument:

@@ -53,13 +53,14 @@ class RealFeishuOAuthClient(FeishuOAuthClient):
     def _app_access_token(self) -> str:
         if self._app_token and time.time() < self._app_token_expires_at:
             return self._app_token
-        data = self._request(
+        # 该接口的 tenant_access_token 在响应顶层，不在 data 内（官方示例如此读取）
+        body = self._request(
             "POST", "/open-apis/auth/v3/app_access_token/internal",
             headers={},
             json={"app_id": self._app_id, "app_secret": self._app_secret},
         )
-        token = data.get("tenant_access_token", "")
-        expire = data.get("expire", 7200)
+        token = body.get("tenant_access_token", "")
+        expire = body.get("expire", 7200)
         self._app_token = token
         self._app_token_expires_at = time.time() + expire - 60
         return token
@@ -73,18 +74,19 @@ class RealFeishuOAuthClient(FeishuOAuthClient):
         return f"{self._passport_host}authorize?{query}"
 
     def exchange_code(self, code: str) -> FeishuTokenBundle:
-        data = self._request(
+        body = self._request(
             "POST", "/open-apis/authen/v1/oidc/access_token",
             headers={"Authorization": f"Bearer {self._app_access_token()}"},
             json={"grant_type": "authorization_code", "code": code},
         )
-        return _bundle_from_data(data)
+        return _bundle_from_data(body.get("data", {}))
 
     def get_user_info(self, access_token: str, token_type: str) -> FeishuUserProfile:
-        data = self._request(
+        body = self._request(
             "GET", "/open-apis/authen/v1/user_info",
             headers={"Authorization": f"{token_type} {access_token}"},
         )
+        data = body.get("data", {})
         return FeishuUserProfile(
             open_id=data.get("open_id", ""),
             tenant_key=data.get("tenant_key", ""),
@@ -95,12 +97,12 @@ class RealFeishuOAuthClient(FeishuOAuthClient):
         )
 
     def refresh_access_token(self, refresh_token: str) -> FeishuTokenBundle:
-        data = self._request(
+        body = self._request(
             "POST", "/open-apis/authen/v1/refresh_access_token",
             headers={"Authorization": f"Bearer {self._app_access_token()}"},
             json={"grant_type": "refresh_token", "refresh_token": refresh_token},
         )
-        return _bundle_from_data(data)
+        return _bundle_from_data(body.get("data", {}))
 
     # ---- 统一请求与错误映射 ----
 
@@ -137,7 +139,8 @@ class RealFeishuOAuthClient(FeishuOAuthClient):
             category = _OAUTH_ERROR_CODE_MAP.get(code, TRANSIENT)
             retryable = category in (RATE_LIMIT, TIMEOUT, TRANSIENT)
             raise FeishuError(category, f"FEISHU_{code}", str(body.get("msg", "未知错误")), retryable=retryable)
-        return body.get("data", {})
+        # 返回完整响应体：有的接口（app_access_token）字段在顶层，其余在 data 内
+        return body
 
 
 def _bundle_from_data(data: dict[str, Any]) -> FeishuTokenBundle:

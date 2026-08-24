@@ -26,6 +26,7 @@ export interface ListFeishuDocumentsParams {
   query?: string;
   resource_type?: FeishuResourceType[];
   limit?: number;
+  page_token?: string;
 }
 
 export function getFeishuConnection(): Promise<FeishuConnection> {
@@ -41,6 +42,9 @@ export function listFeishuDocuments(
   }
   params.resource_type?.forEach((type) => search.append("resource_type", type));
   search.set("limit", String(params.limit ?? 50));
+  if (params.page_token) {
+    search.set("page_token", params.page_token);
+  }
   const queryString = search.toString();
   return apiGet<ApiList<FeishuDocument>>(
     `/api/v1/feishu/documents${queryString ? `?${queryString}` : ""}`,
