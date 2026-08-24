@@ -1,16 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { CssBaseline, ThemeProvider } from "@mui/material";
 
-import App from "./App";
-
-const theme = createTheme({
-  palette: {
-    primary: { main: "#2563eb" },
-    background: { default: "#f7f9fc" },
-  },
-  shape: { borderRadius: 10 },
-});
+import App from "./app/App";
+import theme from "./app/theme";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -20,4 +13,3 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </ThemeProvider>
   </React.StrictMode>,
 );
-
