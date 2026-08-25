@@ -437,8 +437,9 @@ export function ConversationPage() {
     return null;
   }
 
+  // 查询工作区不再由外层 Container 提供宽度，页面自身补充等价约束。
   return (
-    <>
+    <Box sx={{ width: "100%", maxWidth: 880, mx: "auto", p: { xs: 2, sm: 3 } }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
         <IconButton component={RouterLink} to="/search" aria-label="返回知识查询">
           <ArrowBackIcon />
@@ -459,7 +460,7 @@ export function ConversationPage() {
         </Box>
       </Stack>
 
-      {error && <ErrorAlert error={error} onRetry={() => void load()} title="操作失败" />}
+      {error ? <ErrorAlert error={error} onRetry={() => void load()} title="操作失败" /> : null}
 
       <Card sx={{ display: "flex", flexDirection: "column", minHeight: { xs: "60vh", md: "70vh" } }}>
         <CardContent
@@ -544,6 +545,6 @@ export function ConversationPage() {
           </Stack>
         </Box>
       </Card>
-    </>
+    </Box>
   );
 }

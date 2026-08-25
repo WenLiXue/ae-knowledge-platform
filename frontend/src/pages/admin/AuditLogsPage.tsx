@@ -397,7 +397,19 @@ export function AuditLogsPage() {
       {/* 筛选 */}
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ p: 2 }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" flexWrap="wrap">
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "minmax(0, 1fr)",
+                sm: "repeat(2, minmax(0, 1fr))",
+                md: "repeat(6, minmax(0, 1fr))",
+                xl: "minmax(220px, 2fr) repeat(3, minmax(130px, 1fr)) repeat(2, minmax(200px, 1.4fr)) auto",
+              },
+              gap: 2,
+              alignItems: "center",
+            }}
+          >
             <TextField
               size="small"
               label="日志内容"
@@ -408,7 +420,7 @@ export function AuditLogsPage() {
                 if (e.key === "Enter") applyFilters();
               }}
               InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> }}
-              sx={{ minWidth: 220, flexGrow: 1 }}
+              sx={{ gridColumn: { xs: "auto", sm: "span 2", md: "span 3", xl: "auto" } }}
             />
             <TextField
               size="small"
@@ -416,7 +428,7 @@ export function AuditLogsPage() {
               label="业务模块"
               value={module}
               onChange={(e) => setModule(e.target.value)}
-              sx={{ minWidth: 140 }}
+              sx={{ gridColumn: { xs: "auto", md: "span 1", xl: "auto" } }}
             >
               <MenuItem value="">全部模块</MenuItem>
               {MODULES.map((m) => (
@@ -434,7 +446,7 @@ export function AuditLogsPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") applyFilters();
               }}
-              sx={{ minWidth: 170 }}
+              sx={{ gridColumn: { xs: "auto", md: "span 1", xl: "auto" } }}
             />
             <TextField
               size="small"
@@ -442,7 +454,7 @@ export function AuditLogsPage() {
               label="执行结果"
               value={outcome}
               onChange={(e) => setOutcome(e.target.value as AuditOutcome | "")}
-              sx={{ minWidth: 120 }}
+              sx={{ gridColumn: { xs: "auto", md: "span 1", xl: "auto" } }}
             >
               <MenuItem value="">全部结果</MenuItem>
               <MenuItem value="SUCCESS">成功</MenuItem>
@@ -456,7 +468,7 @@ export function AuditLogsPage() {
               value={startAt}
               onChange={(e) => setStartAt(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 210 }}
+              sx={{ gridColumn: { xs: "auto", md: "span 2", xl: "auto" } }}
             />
             <TextField
               size="small"
@@ -465,9 +477,17 @@ export function AuditLogsPage() {
               value={endAt}
               onChange={(e) => setEndAt(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 210 }}
+              sx={{ gridColumn: { xs: "auto", md: "span 2", xl: "auto" } }}
             />
-            <Stack direction="row" spacing={1}>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                gridColumn: { xs: "auto", sm: "span 2", md: "span 2", xl: "auto" },
+                justifyContent: { xs: "stretch", sm: "flex-end" },
+                "& > .MuiButton-root": { flex: { xs: 1, sm: "0 0 auto" } },
+              }}
+            >
               <Button variant="contained" onClick={() => applyFilters()} disabled={loading}>
                 查询
               </Button>
@@ -475,7 +495,7 @@ export function AuditLogsPage() {
                 清除
               </Button>
             </Stack>
-          </Stack>
+          </Box>
         </CardContent>
       </Card>
 

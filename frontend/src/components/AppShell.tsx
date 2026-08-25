@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link as RouterLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Box,
@@ -31,8 +31,12 @@ import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import { useAuth } from "../auth/AuthContext";
+import { useConversationWorkspace } from "../conversations/ConversationWorkspaceContext";
+import { QueryWorkspaceSidebar } from "./navigation/QueryWorkspaceSidebar";
 
 const DRAWER_WIDTH = 248;
+/** 查询工作区侧栏宽度（对齐原型 272px）。 */
+const QUERY_DRAWER_WIDTH = 272;
 
 interface NavItem {
   to: string;
@@ -200,6 +204,42 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 /** 统一应用外壳：桌面常驻 / 移动临时侧边导航 + 内容区。 */
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { refreshConversations } = useConversationWorkspace();
+
+  // 所有已登录页面共享同一套侧栏；页面切换只改变内容和当前子项状态。
+  const isWorkspaceRoute = true;
+  // 只有查询与会话需要脱离 Container 使用全高自由画布；文档页仍使用表格型容器。
+  const isQueryCanvas = pathname === "/search" || pathname.startsWith("/conversations/");
+  const drawerWidth = isWorkspaceRoute ? QUERY_DRAWER_WIDTH : DRAWER_WIDTH;
+
+  // 最近会话只在查询与会话场景加载，其他页面虽共享侧栏但不请求会话数据。
+  useEffect(() => {
+    if (isQueryCanvas) {
+      void refreshConversations();
+    }
+  }, [isQueryCanvas, refreshConversations]);
+
+  // Ctrl+K 新建查询（输入框内不拦截，避免与键入冲突）。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const inEditable =
+        target !== null &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && !inEditable) {
+        event.preventDefault();
+        navigate("/search");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navigate]);
+
+  const closeMobile = () => setMobileOpen(false);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -231,41 +271,61 @@ export function AppShell() {
         </Toolbar>
       </AppBar>
 
-      <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }} aria-label="主导航">
+      <Box
+        component="nav"
+        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+        aria-label="主导航"
+      >
         <Drawer
           variant="permanent"
           open
           sx={{
             display: { xs: "none", md: "block" },
             "& .MuiDrawer-paper": {
-              width: DRAWER_WIDTH,
+              width: drawerWidth,
               boxSizing: "border-box",
               borderRight: 1,
               borderColor: "divider",
             },
           }}
         >
-          <SidebarContent />
+          {isWorkspaceRoute ? <QueryWorkspaceSidebar /> : <SidebarContent />}
         </Drawer>
         <Drawer
           variant="temporary"
           open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
+          onClose={closeMobile}
           ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: "block", md: "none" },
-            "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },
+            "& .MuiDrawer-paper": { width: drawerWidth, boxSizing: "border-box" },
           }}
         >
-          <SidebarContent onNavigate={() => setMobileOpen(false)} />
+          {isWorkspaceRoute ? (
+            <QueryWorkspaceSidebar onNavigate={closeMobile} />
+          ) : (
+            <SidebarContent onNavigate={closeMobile} />
+          )}
         </Drawer>
       </Box>
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar sx={{ display: { md: "none" } }} />
-        <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3 }, py: { xs: 3, md: 4 } }}>
-          <Outlet />
-        </Container>
+        {isQueryCanvas ? (
+          <Box
+            sx={{
+              minHeight: { xs: "calc(100dvh - 56px)", md: "100dvh" },
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <Outlet />
+          </Box>
+        ) : (
+          <Container maxWidth="xl" sx={{ px: { xs: 2, sm: 3 }, py: { xs: 3, md: 4 } }}>
+            <Outlet />
+          </Container>
+        )}
       </Box>
     </Box>
   );

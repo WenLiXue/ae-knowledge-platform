@@ -1,103 +1,67 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Box, Button, Stack, Typography, useMediaQuery, type Theme } from "@mui/material";
 import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
-import AddIcon from "@mui/icons-material/Add";
-import HistoryIcon from "@mui/icons-material/History";
-import {
-  CATALOG_OPTIONS,
   appendAssistantMessage,
   buildFollowUpAnswer,
   createConversation,
   createMessage,
-  listConversations,
 } from "../api/conversations";
 import { ErrorAlert } from "../components/ErrorAlert";
-import { EmptyState } from "../components/EmptyState";
-import { LoadingState } from "../components/LoadingState";
-import { PageHeader } from "../components/PageHeader";
-import type { Conversation, QueryFilters } from "../types/conversations";
+import { QueryComposer } from "../components/query/QueryComposer";
+import { useConversationWorkspace } from "../conversations/ConversationWorkspaceContext";
+import type { QueryFilters } from "../types/conversations";
 
-function formatTime(value: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+const EXAMPLE_QUESTIONS = [
+  {
+    title: "查询产品规格",
+    subtitle: "T90000 的 CPU、内存和磁盘配置",
+    question: "T90000 的 CPU、内存和磁盘配置是什么？",
+  },
+  {
+    title: "了解部署要求",
+    subtitle: "V7.0 的标准部署方式和环境要求",
+    question: "V7.0 的标准部署方式和环境要求是什么？",
+  },
+  {
+    title: "比较功能模式",
+    subtitle: "网桥模式和路由模式的区别",
+    question: "网桥模式和路由模式有什么区别？",
+  },
+  {
+    title: "查找历史案例",
+    subtitle: "白云机场相关的实施与问题案例",
+    question: "有哪些白云机场相关的历史案例？",
+  },
+];
 
-function productName(id: string): string {
-  return CATALOG_OPTIONS.products.find((item) => item.id === id)?.name ?? id;
-}
+const EMPTY_FILTERS: QueryFilters = {
+  product_id: null,
+  product_version_id: null,
+  document_type_id: null,
+};
 
-function versionName(id: string): string {
-  for (const versions of Object.values(CATALOG_OPTIONS.versions)) {
-    const found = versions.find((item) => item.id === id);
-    if (found) return found.name;
-  }
-  return id;
-}
-
-function documentTypeName(id: string): string {
-  return CATALOG_OPTIONS.documentTypes.find((item) => item.id === id)?.name ?? id;
-}
-
-/** 知识查询页：自然语言提问 + 查询条件 + 最近会话。 */
+/** 知识查询首页：Codex 式工作区 —— 居中 Composer + 可选范围 + 示例问题。 */
 export function SearchPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { refreshConversations } = useConversationWorkspace();
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
   const [question, setQuestion] = useState("");
-  const [productId, setProductId] = useState("");
-  const [versionId, setVersionId] = useState("");
-  const [documentTypeId, setDocumentTypeId] = useState("");
-
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState<QueryFilters>(EMPTY_FILTERS);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const loadConversations = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listConversations();
-      setConversations(result.items);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const isDesktop = useMediaQuery((theme: Theme) => theme.breakpoints.up("md"));
 
+  // 侧栏“新建查询”在已处于 /search 时会 push 一个新的 location.key，
+  // 借此清空表单，避免强制刷新整个浏览器。
   useEffect(() => {
-    void loadConversations();
-  }, [loadConversations]);
-
-  const availableVersions = useMemo(
-    () => (productId ? (CATALOG_OPTIONS.versions[productId] ?? []) : []),
-    [productId],
-  );
-
-  const buildFilters = (): QueryFilters => ({
-    product_id: productId || null,
-    product_version_id: versionId || null,
-    document_type_id: documentTypeId || null,
-  });
+    setQuestion("");
+    setFilters(EMPTY_FILTERS);
+    setError(null);
+  }, [location.key]);
 
   const handleSubmit = async () => {
     const content = question.trim();
@@ -105,12 +69,12 @@ export function SearchPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const filters = buildFilters();
-      // MOCK: createConversation / createMessage 当前为 Mock 实现。
       const conversation = await createConversation({ filters });
       await createMessage(conversation.id, content, filters);
       // MOCK: 首问即生成一条演示回答，保证进入会话后即可看到问答内容与低依据提示。
       appendAssistantMessage(conversation.id, buildFollowUpAnswer(content));
+      // 新会话进入侧栏列表。
+      void refreshConversations();
       navigate(`/conversations/${conversation.id}`);
     } catch (err) {
       setError(err);
@@ -119,178 +83,151 @@ export function SearchPage() {
     }
   };
 
-  const handleNewSession = () => {
-    setQuestion("");
-    setProductId("");
-    setVersionId("");
-    setDocumentTypeId("");
+  const handleExampleClick = (value: string) => {
+    setQuestion(value);
+    inputRef.current?.focus();
   };
 
   return (
-    <>
-      <PageHeader
-        title="知识查询"
-        description="用自然语言描述问题，系统将检索已入库知识并给出带来源的答案。"
-      />
+    <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      {/* 顶部轻量工具栏：移动端由 AppBar 承担，避免双顶栏 */}
+      <Stack
+        direction="row"
+        alignItems="center"
+        sx={{ display: { xs: "none", md: "flex" }, minHeight: 58, px: 3, flexShrink: 0 }}
+      >
+        <Typography variant="subtitle1" fontWeight={600}>
+          知识查询
+        </Typography>
+      </Stack>
 
-      {error && <ErrorAlert error={error} onRetry={() => void loadConversations()} title="加载失败" />}
-
-      <Card sx={{ mb: 4 }}>
-        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-          <Stack spacing={2}>
-            <TextField
-              label="你的问题"
-              placeholder="例如：T90000 的 CPU、内存和磁盘配置是什么？"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              multiline
-              minRows={3}
-              maxRows={6}
-              fullWidth
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                  void handleSubmit();
-                }
+      {/* 欢迎区：桌面垂直居中，移动端从顶部自然排列 */}
+      <Box
+        sx={{
+          flexGrow: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          px: { xs: 2, sm: 3 },
+        }}
+      >
+        <Box
+          sx={{
+            width: "100%",
+            maxWidth: 760,
+            mx: "auto",
+            my: { xs: 0, md: "auto" },
+            py: { xs: 5, md: 6 },
+          }}
+        >
+          <Box sx={{ textAlign: { xs: "left", md: "center" }, mb: 3 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              基于已入库的产品资料回答
+            </Typography>
+            <Typography
+              component="h1"
+              sx={{
+                fontSize: { xs: 26, sm: 32, md: 38 },
+                fontWeight: 620,
+                lineHeight: 1.25,
+                letterSpacing: "-0.035em",
               }}
-            />
+            >
+              今天想查询什么？
+            </Typography>
+          </Box>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>产品</InputLabel>
-                <Select
-                  label="产品"
-                  value={productId}
-                  onChange={(event) => {
-                    setProductId(event.target.value as string);
-                    setVersionId("");
+          {error ? <ErrorAlert error={error} onRetry={() => void handleSubmit()} title="查询失败" /> : null}
+
+          <QueryComposer
+            question={question}
+            filters={filters}
+            submitting={submitting}
+            onQuestionChange={setQuestion}
+            onFiltersChange={setFilters}
+            onSubmit={() => void handleSubmit()}
+            autoFocus={isDesktop}
+            inputRef={inputRef}
+          />
+
+          <Box
+            component="ul"
+            aria-label="查询建议"
+            sx={{
+              listStyle: "none",
+              p: 0,
+              m: 0,
+              mt: 2.5,
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+              gap: 1,
+            }}
+          >
+            {EXAMPLE_QUESTIONS.map((example) => (
+              <Box component="li" key={example.title} sx={{ minWidth: 0 }}>
+                <Button
+                  fullWidth
+                  onClick={() => handleExampleClick(example.question)}
+                  sx={{
+                    display: "block",
+                    textAlign: "left",
+                    minHeight: 56,
+                    py: 1,
+                    px: 1.5,
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    bgcolor: "transparent",
+                    color: "text.primary",
+                    fontWeight: 400,
+                    "&:hover": { bgcolor: "background.paper" },
                   }}
                 >
-                  <MenuItem value="">全部产品</MenuItem>
-                  {CATALOG_OPTIONS.products.map((product) => (
-                    <MenuItem key={product.id} value={product.id}>
-                      {product.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" fullWidth>
-                <InputLabel>版本</InputLabel>
-                <Select
-                  label="版本"
-                  value={versionId}
-                  onChange={(event) => setVersionId(event.target.value as string)}
-                  disabled={!productId}
-                >
-                  <MenuItem value="">{productId ? "全部版本" : "请先选择产品"}</MenuItem>
-                  {availableVersions.map((version) => (
-                    <MenuItem key={version.id} value={version.id}>
-                      {version.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" fullWidth>
-                <InputLabel>文档类型</InputLabel>
-                <Select
-                  label="文档类型"
-                  value={documentTypeId}
-                  onChange={(event) => setDocumentTypeId(event.target.value as string)}
-                >
-                  <MenuItem value="">全部文档类型</MenuItem>
-                  {CATALOG_OPTIONS.documentTypes.map((type) => (
-                    <MenuItem key={type.id} value={type.id}>
-                      {type.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
-
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1.5}
-              justifyContent="space-between"
-              alignItems={{ xs: "stretch", sm: "center" }}
-            >
-              <Typography variant="body2" color="text.secondary">
-                查询条件用于缩小检索范围，不选则查询全部知识；多轮追问直接在对话中继续提问。
-              </Typography>
-              <Stack direction="row" spacing={1}>
-                <Button variant="outlined" startIcon={<AddIcon />} onClick={handleNewSession}>
-                  新建会话
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<SearchIcon />}
-                  onClick={() => void handleSubmit()}
-                  disabled={!question.trim() || submitting}
-                >
-                  {submitting ? "查询中…" : "查询"}
-                </Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Box>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-          <HistoryIcon color="disabled" fontSize="small" />
-          <Typography variant="h6">最近会话</Typography>
-        </Stack>
-
-        {loading ? (
-          <LoadingState label="正在加载最近会话…" />
-        ) : conversations.length === 0 ? (
-          <Card>
-            <EmptyState
-              title="还没有会话"
-              description="在上方输入问题并点击查询，或直接开始一个新的会话。"
-            />
-          </Card>
-        ) : (
-          <Stack spacing={1}>
-            {conversations.map((conversation) => (
-              <Card
-                key={conversation.id}
-                sx={{ "&:hover": { borderColor: "primary.main", cursor: "pointer" } }}
-                onClick={() => navigate(`/conversations/${conversation.id}`)}
-              >
-                <CardContent
-                  sx={{ p: { xs: 2, sm: 2.5 }, "&:last-child": { pb: { xs: 2, sm: 2.5 } } }}
-                >
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1}
-                    justifyContent="space-between"
-                    alignItems={{ xs: "flex-start", sm: "center" }}
+                  <Typography
+                    variant="caption"
+                    fontWeight={650}
+                    component="span"
+                    sx={{ display: "block" }}
                   >
-                    <Box minWidth={0}>
-                      <Typography fontWeight={600} noWrap>
-                        {conversation.title}
-                      </Typography>
-                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
-                        {conversation.filters.product_id && (
-                          <Chip label={`产品：${productName(conversation.filters.product_id)}`} />
-                        )}
-                        {conversation.filters.product_version_id && (
-                          <Chip label={`版本：${versionName(conversation.filters.product_version_id)}`} />
-                        )}
-                        {conversation.filters.document_type_id && (
-                          <Chip label={`类型：${documentTypeName(conversation.filters.document_type_id)}`} />
-                        )}
-                      </Stack>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                      {formatTime(conversation.last_message_at)}
-                    </Typography>
-                  </Stack>
-                </CardContent>
-              </Card>
+                    {example.title}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    component="span"
+                    sx={{
+                      display: "block",
+                      mt: 0.5,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {example.subtitle}
+                  </Typography>
+                </Button>
+              </Box>
             ))}
-          </Stack>
-        )}
+          </Box>
+
+          <Typography
+            variant="caption"
+            color="text.disabled"
+            sx={{ mt: 1.5, display: "block", textAlign: { xs: "left", md: "center" } }}
+          >
+            Enter 换行，Ctrl + Enter 查询
+          </Typography>
+        </Box>
       </Box>
-    </>
+
+      {/* 底部事实核验提示 */}
+      <Typography
+        variant="caption"
+        color="text.disabled"
+        sx={{ flexShrink: 0, textAlign: "center", px: 2, py: 1.5 }}
+      >
+        答案基于企业知识库生成，请通过引用来源核验关键事实。
+      </Typography>
+    </Box>
   );
 }
