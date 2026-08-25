@@ -27,6 +27,7 @@ import TuneOutlinedIcon from "@mui/icons-material/TuneOutlined";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import { useAuth } from "../auth/AuthContext";
@@ -65,6 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/pending-classification", label: "待分类确认", icon: <FactCheckOutlinedIcon /> },
       { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon />, adminOnly: true },
       { to: "/admin/llm-config", label: "LLM 配置", icon: <SmartToyOutlinedIcon />, adminOnly: true },
+      { to: "/admin/system-logs", label: "系统日志", icon: <ListAltOutlinedIcon />, adminOnly: true },
       { to: "/admin/users", label: "用户管理", icon: <PeopleOutlinedIcon />, adminOnly: true },
       { to: "/admin/audit-logs", label: "审计日志", icon: <ReceiptLongOutlinedIcon />, adminOnly: true },
     ],

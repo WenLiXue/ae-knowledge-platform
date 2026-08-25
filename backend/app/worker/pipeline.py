@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -24,6 +25,8 @@ from ..db.models.knowledge import DocumentVersion, FeishuSourceDetail, Knowledge
 from ..db.models.task import ProcessingTask
 from ..feishu_auth.base import FeishuOAuthClient
 from ..feishu_provider.base import FeishuError, FeishuDocumentProvider
+
+logger = logging.getLogger(__name__)
 
 # 阶段任务类型 → 版本 processing_stage 值
 STAGE_NAMES = {
@@ -76,6 +79,7 @@ def execute_stage(
         )
 
     version.processing_stage = STAGE_NAMES[task.task_type]
+    logger.info("stage_start", extra={"stage": task.task_type})
 
     handlers = {
         "FETCH": _fetch,
@@ -87,10 +91,12 @@ def execute_stage(
         "FINALIZE": _mock_finalize,
     }
     try:
-        return handlers[task.task_type](
+        next_type = handlers[task.task_type](
             session, source, version, task,
             provider=provider, oauth_client=oauth_client, store=store,
         )
+        logger.info("stage_done", extra={"stage": task.task_type, "next_stage": next_type})
+        return next_type
     except FeishuError as exc:
         raise PipelineError(exc.category, exc.code, exc.message, retryable=exc.retryable) from exc
 

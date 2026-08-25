@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -28,6 +29,14 @@ class FeishuAuthError(Exception):
         self.code = code
         self.message = message
         self.status = status
+
+
+@dataclass
+class OAuthLoginResult:
+    """OAuth 回调处理结果：user + 本次请求是否发生绑定（新建/重新绑定）。"""
+
+    user: User
+    newly_bound: bool
 
 
 def start_oauth(
@@ -83,6 +92,7 @@ def process_oauth_callback(
     ).scalars().first()
 
     if identity is not None:
+        newly_bound = identity.binding_status == "UNBOUND"
         if identity.binding_status == "UNBOUND":
             identity.binding_status = "BOUND"
             identity.unbound_at = None
@@ -90,6 +100,7 @@ def process_oauth_callback(
         if user is None:
             raise FeishuAuthError("FEISHU_USER_MISSING", "绑定的系统用户不存在", status=409)
     else:
+        newly_bound = True
         user = User(
             display_name=profile.name or external_user_id,
             status="ACTIVE",
@@ -113,8 +124,9 @@ def process_oauth_callback(
         session.flush()
 
     _store_credentials(session, identity, bundle, key_b64, now)
-    session.commit()
-    return user
+    # 只 flush 不 commit：登录会话与审计记录由 API 层在同一事务内追加后统一提交
+    session.flush()
+    return OAuthLoginResult(user=user, newly_bound=newly_bound)
 
 
 def _store_credentials(

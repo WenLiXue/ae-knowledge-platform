@@ -1,3 +1,4 @@
+import logging
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -7,13 +8,18 @@ from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
 import app.db.models  # noqa: F401  加载全部模型到 metadata
+import app.audit.models  # noqa: F401  加载审计模型到 metadata
 
 # Alembic Config 对象
 config = context.config
 
-# 配置 Python 日志
-if config.config_file_name is not None:
+# 配置 Python 日志：root 已被应用配置（运行日志系统）时不覆盖，只按 alembic.ini 意图设置关键级别，
+# 避免 alembic 迁移把应用日志配置整体清掉（测试环境会在迁移后继续依赖这些 handler）。
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
+else:
+    logging.getLogger("alembic").setLevel(logging.INFO)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 # 数据库连接统一取自应用配置（backend/.env 或环境变量），避免双份连接串
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

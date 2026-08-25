@@ -1,4 +1,8 @@
-"""目录/知识库配置与 LLM 配置的服务层。"""
+"""目录/知识库配置与 LLM 配置的服务层。
+
+事务边界约定（DD-17 §6.1）：已纳入审计的可变操作只 flush() 不 commit()，
+由 API 层在追加成功审计记录后统一 commit()，保证“业务 + 审计”原子提交。
+"""
 
 from __future__ import annotations
 
@@ -100,7 +104,7 @@ def create_product(db: Session, data) -> Product:
     product = Product(code=data.code.strip(), name=data.name.strip(), status=data.status, sort_order=data.sort_order)
     db.add(product)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise _unique_error()
@@ -113,7 +117,7 @@ def update_product(db: Session, product_id, data) -> Product:
     if product is None:
         raise ConfigError("NOT_FOUND", "产品不存在", status=404)
     _update_with_version(db, product, {"name": data.name, "status": data.status, "sort_order": data.sort_order}, data.row_version)
-    db.commit()
+    db.flush()
     db.refresh(product)
     return product
 
@@ -125,7 +129,7 @@ def set_product_status(db: Session, product_id, status: str) -> Product:
     if product is None:
         raise ConfigError("NOT_FOUND", "产品不存在", status=404)
     product.status = status
-    db.commit()
+    db.flush()
     db.refresh(product)
     return product
 
@@ -148,7 +152,7 @@ def create_product_version(db: Session, product_id, data) -> ProductVersion:
     )
     db.add(version)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise _unique_error()
@@ -168,7 +172,7 @@ def update_product_version(db: Session, version_id, data) -> ProductVersion:
         "status": data.status,
         "sort_order": data.sort_order,
     }, data.row_version)
-    db.commit()
+    db.flush()
     db.refresh(version)
     return version
 
@@ -180,7 +184,7 @@ def set_product_version_status(db: Session, version_id, status: str) -> ProductV
     if version is None:
         raise ConfigError("NOT_FOUND", "版本不存在", status=404)
     version.status = status
-    db.commit()
+    db.flush()
     db.refresh(version)
     return version
 
@@ -191,7 +195,7 @@ def create_document_type(db: Session, data) -> DocumentType:
     obj = DocumentType(code=data.code.strip(), name=data.name.strip(), description=data.description, status=data.status, sort_order=data.sort_order)
     db.add(obj)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise _unique_error()
@@ -204,7 +208,7 @@ def update_document_type(db: Session, obj_id, data) -> DocumentType:
     if obj is None:
         raise ConfigError("NOT_FOUND", "文档类型不存在", status=404)
     _update_with_version(db, obj, {"name": data.name, "description": data.description, "status": data.status, "sort_order": data.sort_order}, data.row_version)
-    db.commit()
+    db.flush()
     db.refresh(obj)
     return obj
 
@@ -216,7 +220,7 @@ def set_document_type_status(db: Session, obj_id, status: str) -> DocumentType:
     if obj is None:
         raise ConfigError("NOT_FOUND", "文档类型不存在", status=404)
     obj.status = status
-    db.commit()
+    db.flush()
     db.refresh(obj)
     return obj
 
@@ -225,7 +229,7 @@ def create_product_form(db: Session, data) -> ProductForm:
     obj = ProductForm(code=data.code.strip(), name=data.name.strip(), status=data.status, sort_order=data.sort_order)
     db.add(obj)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise _unique_error()
@@ -238,7 +242,7 @@ def update_product_form(db: Session, obj_id, data) -> ProductForm:
     if obj is None:
         raise ConfigError("NOT_FOUND", "产品形态不存在", status=404)
     _update_with_version(db, obj, {"name": data.name, "status": data.status, "sort_order": data.sort_order}, data.row_version)
-    db.commit()
+    db.flush()
     db.refresh(obj)
     return obj
 
@@ -250,7 +254,7 @@ def set_product_form_status(db: Session, obj_id, status: str) -> ProductForm:
     if obj is None:
         raise ConfigError("NOT_FOUND", "产品形态不存在", status=404)
     obj.status = status
-    db.commit()
+    db.flush()
     db.refresh(obj)
     return obj
 
@@ -271,7 +275,7 @@ def update_source_priorities(db: Session, items: list) -> list[SourcePriority]:
         if row is None:
             raise ConfigError("SOURCE_NOT_FOUND", f"未知来源 {source_code}", status=404)
         row.priority = priority
-    db.commit()
+    db.flush()
     return list_source_priorities(db)
 
 
@@ -328,7 +332,7 @@ def update_llm_config(db: Session, data, user_id) -> dict:
                 db.add(secret)
             else:
                 secret.ciphertext = ciphertext
-    db.commit()
+    db.flush()
     return get_llm_config(db)
 
 

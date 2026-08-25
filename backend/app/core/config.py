@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     # development / production：production 下不暴露开发辅助能力
     environment: str = "development"
 
+    # 运行日志
+    # log_json=None：按 environment 推导（production 用 JSON，development 人类可读）
+    log_level: str = "INFO"
+    log_json: bool | None = None
+    # 是否把 ERROR+ 日志 best-effort 持久化到 platform.log_events
+    log_persist_errors: bool = True
+
     # 任务 Worker 配置
     worker_id: str = "worker-local"
     worker_batch_size: int = 5
@@ -56,6 +63,18 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 24
     # 凭据信封加密密钥（base64 编码 32 字节；生产必须用密钥管理/部署环境变量覆盖）
     token_enc_key: str = "ZGV2LW9ubHktdG9rZW4tZW5jLWtleS0zMi1ieXRlcyE="
+
+    # ---- 操作审计（DD-17） ----
+    # 审计记录 HMAC 密钥（record_hash）。运行环境提供，禁止入库；开发默认值仅用于本地/测试。
+    audit_hmac_key: str = "dev-only-audit-hmac-key"
+    # 审计导出文件落盘目录（相对项目根或绝对路径）
+    audit_export_dir: str = "exports"
+    # 审计导出文件保留时长（小时），过期后文件删除、不可下载
+    audit_export_ttl_hours: int = 24
+    # 单次导出最大条数
+    audit_export_max_rows: int = 100_000
+    # 可信反向代理转发头（如 "x-forwarded-for"）。为空时不信任任何转发头，来源 IP 取实际连接地址。
+    audit_trusted_proxy_header: str = ""
 
 
 @lru_cache

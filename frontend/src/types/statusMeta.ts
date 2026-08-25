@@ -63,6 +63,31 @@ export const STAGE_META: Record<string, StatusMeta> = {
   FINALIZING: { ...INFO, label: "收尾中" },
 };
 
+/** 审计执行结果。 */
+export const AUDIT_OUTCOME_META: Record<string, StatusMeta> = {
+  SUCCESS: { ...SUCCESS, label: "成功" },
+  FAILURE: { ...ERROR, label: "失败" },
+  DENIED: { ...WARNING, label: "拒绝" },
+};
+
+/** 审计导出任务状态。 */
+export const AUDIT_EXPORT_META: Record<string, StatusMeta> = {
+  PENDING: { ...NEUTRAL, label: "等待中" },
+  RUNNING: { ...INFO, label: "生成中" },
+  READY: { ...SUCCESS, label: "已就绪" },
+  FAILED: { ...ERROR, label: "失败" },
+  EXPIRED: { ...NEUTRAL, label: "已过期" },
+};
+
+/** 审计业务模块。 */
+export const AUDIT_MODULE_LABEL: Record<string, string> = {
+  AUTH: "登录/认证",
+  CONFIG: "系统配置",
+  AUDIT: "审计管理",
+  KNOWLEDGE: "知识库",
+  TASKING: "处理任务",
+};
+
 /** 任务类型展示。 */
 export const TASK_TYPE_META: Record<string, string> = {
   FETCH: "抓取",

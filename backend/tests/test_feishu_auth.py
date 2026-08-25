@@ -102,7 +102,7 @@ def test_token_refresh_when_expired() -> None:
     oauth = FakeFeishuOAuthClient()
     with SessionLocal() as s:
         data = service.start_oauth(s, oauth, "http://cb")
-        user = service.process_oauth_callback(s, oauth, "code", data["state"], KEY)
+        user = service.process_oauth_callback(s, oauth, "code", data["state"], KEY).user
         # 手动把 access token 置为过期
         s.execute(
             text("UPDATE auth.external_credentials SET access_expires_at = now() - interval '1 hour'")
@@ -119,7 +119,7 @@ def test_token_refresh_failure_returns_none() -> None:
     oauth.refresh_should_fail = True
     with SessionLocal() as s:
         data = service.start_oauth(s, oauth, "http://cb")
-        user = service.process_oauth_callback(s, oauth, "code", data["state"], KEY)
+        user = service.process_oauth_callback(s, oauth, "code", data["state"], KEY).user
         s.execute(
             text("UPDATE auth.external_credentials SET access_expires_at = now() - interval '1 hour'")
         )

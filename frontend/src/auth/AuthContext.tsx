@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { getCurrentUser, logoutRequest, passwordLogin } from "../api/auth";
+import { getCurrentUser, logoutRequest } from "../api/auth";
 import { FullPageLoading } from "../components/LoadingState";
 import type { User } from "../types/auth";
 
@@ -16,7 +16,6 @@ interface AuthContextValue {
   user: User | null;
   /** 首次加载是否正在恢复登录状态。 */
   initializing: boolean;
-  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -47,14 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(next);
   }, []);
 
-  const login = useCallback(
-    async (username: string, password: string) => {
-      const next = await passwordLogin(username, password);
-      persist(next);
-    },
-    [persist],
-  );
-
   const logout = useCallback(async () => {
     try {
       await logoutRequest();
@@ -64,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [persist]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, initializing, login, logout }),
-    [user, initializing, login, logout],
+    () => ({ user, initializing, logout }),
+    [user, initializing, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

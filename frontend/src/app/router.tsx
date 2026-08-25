@@ -7,8 +7,10 @@ import { ConversationPage } from "../pages/ConversationPage";
 import { DocumentDetailPage } from "../pages/DocumentDetailPage";
 import { DocumentImportPage } from "../pages/DocumentImportPage";
 import { DocumentsPage } from "../pages/DocumentsPage";
+import { AuditLogsPage } from "../pages/admin/AuditLogsPage";
 import { KnowledgeConfigPage } from "../pages/admin/KnowledgeConfigPage";
 import { LlmConfigPage } from "../pages/admin/LlmConfigPage";
+import { SystemLogsPage } from "../pages/admin/SystemLogsPage";
 import { LoginPage } from "../pages/LoginPage";
 import { SearchPage } from "../pages/SearchPage";
 
@@ -78,6 +80,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: "admin/system-logs",
+        element: (
+          <RequireAdmin>
+            <SystemLogsPage />
+          </RequireAdmin>
+        ),
+      },
+      {
         path: "admin/users",
         element: (
           <RequireAdmin>
@@ -89,7 +99,7 @@ export const router = createBrowserRouter([
         path: "admin/audit-logs",
         element: (
           <RequireAdmin>
-            <PlaceholderPage title="审计日志" description="查询登录、导入、配置变更等操作审计记录。" />
+            <AuditLogsPage />
           </RequireAdmin>
         ),
       },

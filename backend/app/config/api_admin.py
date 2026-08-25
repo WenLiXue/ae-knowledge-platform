@@ -1,13 +1,23 @@
-"""知识库配置与 LLM 配置管理 API（仅管理员）。"""
+"""知识库配置与 LLM 配置管理 API（仅管理员）。
+
+每个已纳入审计范围的变更操作：
+- 服务层只 flush()，成功后在本层追加 SUCCESS 审计并统一 commit（业务+审计原子提交）；
+- 业务校验失败时回滚业务事务，用独立短事务写 FAILURE，再返回原始错误；
+- 权限失败由 require_admin_action 依赖写 DENIED。
+"""
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from ..audit import service as audit_service
+from ..audit.context import build_context
+from ..audit.deps import require_admin_action
 from ..auth.deps import get_current_admin
+from ..db.models.catalog import DocumentType, Product, ProductForm, ProductVersion, SourcePriority
 from ..db.models.user import User
 from ..db.session import get_db
 from . import service
@@ -51,6 +61,57 @@ def _version_dict(v) -> dict:
     )
 
 
+def _audit_success(
+    db: Session,
+    admin: User,
+    request: Request,
+    action: str,
+    *,
+    target_type: str,
+    target_id: str | None = None,
+    target_name: str | None = None,
+    changes: list[dict] | None = None,
+    summary: str | None = None,
+) -> None:
+    audit_service.record_success(
+        db,
+        audit_service.success_event(
+            user=admin,
+            context=build_context(request),
+            action=action,
+            summary=summary or action,
+            target_type=target_type,
+            target_id=target_id,
+            target_name=target_name,
+            changes=changes,
+        ),
+    )
+
+
+def _audit_failure(
+    admin: User,
+    request: Request,
+    action: str,
+    *,
+    error_code: str,
+    target_type: str,
+    target_id: str | None = None,
+    target_name: str | None = None,
+) -> None:
+    audit_service.record_failure_independent(
+        audit_service.failure_event(
+            user=admin,
+            context=build_context(request),
+            action=action,
+            summary=action,
+            error_code=error_code,
+            target_type=target_type,
+            target_id=target_id,
+            target_name=target_name,
+        )
+    )
+
+
 # ---- 产品 ----
 
 @router.get("/catalog/products")
@@ -59,35 +120,98 @@ def admin_list_products(db: Session = Depends(get_db), _admin: User = Depends(ge
 
 
 @router.post("/catalog/products", status_code=201)
-def admin_create_product(data: ProductCreate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_create_product(
+    data: ProductCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product.create")),
+):
     try:
-        return {"data": ProductOut(**_catalog_dict(service.create_product(db, data)))}
+        p = service.create_product(db, data)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product.create", error_code=exc.code, target_type="PRODUCT")
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product.create", target_type="PRODUCT",
+        target_id=str(p.id), target_name=p.name,
+        changes=audit_service.build_changes({
+            "code": (None, p.code), "name": (None, p.name),
+            "status": (None, p.status), "sort_order": (None, p.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": ProductOut(**_catalog_dict(p))}
 
 
 @router.patch("/catalog/products/{product_id}")
-def admin_update_product(product_id: UUID, data: ProductUpdate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_update_product(
+    product_id: UUID,
+    data: ProductUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product.update")),
+):
+    before = db.get(Product, product_id)
     try:
-        return {"data": ProductOut(**_catalog_dict(service.update_product(db, product_id, data)))}
+        p = service.update_product(db, product_id, data)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product.update", error_code=exc.code, target_type="PRODUCT", target_id=str(product_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product.update", target_type="PRODUCT",
+        target_id=str(p.id), target_name=p.name,
+        changes=audit_service.build_changes({
+            "name": (before.name if before else None, p.name),
+            "status": (before.status if before else None, p.status),
+            "sort_order": (before.sort_order if before else None, p.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": ProductOut(**_catalog_dict(p))}
 
 
 @router.post("/catalog/products/{product_id}/disable")
-def admin_disable_product(product_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_disable_product(
+    product_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product.disable")),
+):
+    before = db.get(Product, product_id)
     try:
-        return {"data": ProductOut(**_catalog_dict(service.set_product_status(db, product_id, "DISABLED")))}
+        p = service.set_product_status(db, product_id, "DISABLED")
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product.disable", error_code=exc.code, target_type="PRODUCT", target_id=str(product_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product.disable", target_type="PRODUCT",
+        target_id=str(p.id), target_name=p.name,
+        changes=audit_service.build_changes({"status": (before.status if before else None, p.status)}),
+    )
+    db.commit()
+    return {"data": ProductOut(**_catalog_dict(p))}
 
 
 @router.post("/catalog/products/{product_id}/enable")
-def admin_enable_product(product_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_enable_product(
+    product_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product.enable")),
+):
+    before = db.get(Product, product_id)
     try:
-        return {"data": ProductOut(**_catalog_dict(service.set_product_status(db, product_id, "ENABLED")))}
+        p = service.set_product_status(db, product_id, "ENABLED")
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product.enable", error_code=exc.code, target_type="PRODUCT", target_id=str(product_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product.enable", target_type="PRODUCT",
+        target_id=str(p.id), target_name=p.name,
+        changes=audit_service.build_changes({"status": (before.status if before else None, p.status)}),
+    )
+    db.commit()
+    return {"data": ProductOut(**_catalog_dict(p))}
 
 
 # ---- 产品版本 ----
@@ -98,35 +222,103 @@ def admin_list_versions(product_id: UUID, db: Session = Depends(get_db), _admin:
 
 
 @router.post("/catalog/products/{product_id}/versions", status_code=201)
-def admin_create_version(product_id: UUID, data: ProductVersionCreate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_create_version(
+    product_id: UUID,
+    data: ProductVersionCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.version.create")),
+):
     try:
-        return {"data": _version_dict(service.create_product_version(db, product_id, data))}
+        v = service.create_product_version(db, product_id, data)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.version.create", error_code=exc.code, target_type="PRODUCT_VERSION")
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.version.create", target_type="PRODUCT_VERSION",
+        target_id=str(v.id), target_name=v.version_code,
+        changes=audit_service.build_changes({
+            "version_code": (None, v.version_code), "major_version": (None, v.major_version),
+            "minor_version": (None, v.minor_version), "release_date": (None, v.release_date),
+            "status": (None, v.status), "sort_order": (None, v.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": _version_dict(v)}
 
 
 @router.patch("/catalog/versions/{version_id}")
-def admin_update_version(version_id: UUID, data: ProductVersionUpdate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_update_version(
+    version_id: UUID,
+    data: ProductVersionUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.version.update")),
+):
+    before = db.get(ProductVersion, version_id)
     try:
-        return {"data": _version_dict(service.update_product_version(db, version_id, data))}
+        v = service.update_product_version(db, version_id, data)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.version.update", error_code=exc.code, target_type="PRODUCT_VERSION", target_id=str(version_id), target_name=before.version_code if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.version.update", target_type="PRODUCT_VERSION",
+        target_id=str(v.id), target_name=v.version_code,
+        changes=audit_service.build_changes({
+            "version_code": (before.version_code if before else None, v.version_code),
+            "major_version": (before.major_version if before else None, v.major_version),
+            "minor_version": (before.minor_version if before else None, v.minor_version),
+            "release_date": (before.release_date if before else None, v.release_date),
+            "status": (before.status if before else None, v.status),
+            "sort_order": (before.sort_order if before else None, v.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": _version_dict(v)}
 
 
 @router.post("/catalog/versions/{version_id}/disable")
-def admin_disable_version(version_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_disable_version(
+    version_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.version.disable")),
+):
+    before = db.get(ProductVersion, version_id)
     try:
-        return {"data": _version_dict(service.set_product_version_status(db, version_id, "DISABLED"))}
+        v = service.set_product_version_status(db, version_id, "DISABLED")
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.version.disable", error_code=exc.code, target_type="PRODUCT_VERSION", target_id=str(version_id), target_name=before.version_code if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.version.disable", target_type="PRODUCT_VERSION",
+        target_id=str(v.id), target_name=v.version_code,
+        changes=audit_service.build_changes({"status": (before.status if before else None, v.status)}),
+    )
+    db.commit()
+    return {"data": _version_dict(v)}
 
 
 @router.post("/catalog/versions/{version_id}/enable")
-def admin_enable_version(version_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_enable_version(
+    version_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.version.enable")),
+):
+    before = db.get(ProductVersion, version_id)
     try:
-        return {"data": _version_dict(service.set_product_version_status(db, version_id, "ENABLED"))}
+        v = service.set_product_version_status(db, version_id, "ENABLED")
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.version.enable", error_code=exc.code, target_type="PRODUCT_VERSION", target_id=str(version_id), target_name=before.version_code if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.version.enable", target_type="PRODUCT_VERSION",
+        target_id=str(v.id), target_name=v.version_code,
+        changes=audit_service.build_changes({"status": (before.status if before else None, v.status)}),
+    )
+    db.commit()
+    return {"data": _version_dict(v)}
 
 
 # ---- 文档类型 ----
@@ -137,39 +329,99 @@ def admin_list_document_types(db: Session = Depends(get_db), _admin: User = Depe
 
 
 @router.post("/catalog/document-types", status_code=201)
-def admin_create_document_type(data: DocumentTypeCreate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_create_document_type(
+    data: DocumentTypeCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.document_type.create")),
+):
     try:
         t = service.create_document_type(db, data)
-        return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.document_type.create", error_code=exc.code, target_type="DOCUMENT_TYPE")
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.document_type.create", target_type="DOCUMENT_TYPE",
+        target_id=str(t.id), target_name=t.name,
+        changes=audit_service.build_changes({
+            "code": (None, t.code), "name": (None, t.name),
+            "description": (None, t.description), "status": (None, t.status), "sort_order": (None, t.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
 
 
 @router.patch("/catalog/document-types/{type_id}")
-def admin_update_document_type(type_id: UUID, data: DocumentTypeUpdate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_update_document_type(
+    type_id: UUID,
+    data: DocumentTypeUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.document_type.update")),
+):
+    before = db.get(DocumentType, type_id)
     try:
         t = service.update_document_type(db, type_id, data)
-        return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.document_type.update", error_code=exc.code, target_type="DOCUMENT_TYPE", target_id=str(type_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.document_type.update", target_type="DOCUMENT_TYPE",
+        target_id=str(t.id), target_name=t.name,
+        changes=audit_service.build_changes({
+            "name": (before.name if before else None, t.name),
+            "description": (before.description if before else None, t.description),
+            "status": (before.status if before else None, t.status),
+            "sort_order": (before.sort_order if before else None, t.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
 
 
 @router.post("/catalog/document-types/{type_id}/disable")
-def admin_disable_document_type(type_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_disable_document_type(
+    type_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.document_type.disable")),
+):
+    before = db.get(DocumentType, type_id)
     try:
         t = service.set_document_type_status(db, type_id, "DISABLED")
-        return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.document_type.disable", error_code=exc.code, target_type="DOCUMENT_TYPE", target_id=str(type_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.document_type.disable", target_type="DOCUMENT_TYPE",
+        target_id=str(t.id), target_name=t.name,
+        changes=audit_service.build_changes({"status": (before.status if before else None, t.status)}),
+    )
+    db.commit()
+    return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
 
 
 @router.post("/catalog/document-types/{type_id}/enable")
-def admin_enable_document_type(type_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_enable_document_type(
+    type_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.document_type.enable")),
+):
+    before = db.get(DocumentType, type_id)
     try:
         t = service.set_document_type_status(db, type_id, "ENABLED")
-        return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.document_type.enable", error_code=exc.code, target_type="DOCUMENT_TYPE", target_id=str(type_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.document_type.enable", target_type="DOCUMENT_TYPE",
+        target_id=str(t.id), target_name=t.name,
+        changes=audit_service.build_changes({"status": (before.status if before else None, t.status)}),
+    )
+    db.commit()
+    return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
 
 
 # ---- 产品形态 ----
@@ -180,35 +432,98 @@ def admin_list_product_forms(db: Session = Depends(get_db), _admin: User = Depen
 
 
 @router.post("/catalog/product-forms", status_code=201)
-def admin_create_product_form(data: ProductFormCreate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_create_product_form(
+    data: ProductFormCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product_form.create")),
+):
     try:
-        return {"data": ProductFormOut(**_catalog_dict(service.create_product_form(db, data)))}
+        f = service.create_product_form(db, data)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product_form.create", error_code=exc.code, target_type="PRODUCT_FORM")
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product_form.create", target_type="PRODUCT_FORM",
+        target_id=str(f.id), target_name=f.name,
+        changes=audit_service.build_changes({
+            "code": (None, f.code), "name": (None, f.name),
+            "status": (None, f.status), "sort_order": (None, f.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": ProductFormOut(**_catalog_dict(f))}
 
 
 @router.patch("/catalog/product-forms/{form_id}")
-def admin_update_product_form(form_id: UUID, data: ProductFormUpdate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_update_product_form(
+    form_id: UUID,
+    data: ProductFormUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product_form.update")),
+):
+    before = db.get(ProductForm, form_id)
     try:
-        return {"data": ProductFormOut(**_catalog_dict(service.update_product_form(db, form_id, data)))}
+        f = service.update_product_form(db, form_id, data)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product_form.update", error_code=exc.code, target_type="PRODUCT_FORM", target_id=str(form_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product_form.update", target_type="PRODUCT_FORM",
+        target_id=str(f.id), target_name=f.name,
+        changes=audit_service.build_changes({
+            "name": (before.name if before else None, f.name),
+            "status": (before.status if before else None, f.status),
+            "sort_order": (before.sort_order if before else None, f.sort_order),
+        }),
+    )
+    db.commit()
+    return {"data": ProductFormOut(**_catalog_dict(f))}
 
 
 @router.post("/catalog/product-forms/{form_id}/disable")
-def admin_disable_product_form(form_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_disable_product_form(
+    form_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product_form.disable")),
+):
+    before = db.get(ProductForm, form_id)
     try:
-        return {"data": ProductFormOut(**_catalog_dict(service.set_product_form_status(db, form_id, "DISABLED")))}
+        f = service.set_product_form_status(db, form_id, "DISABLED")
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product_form.disable", error_code=exc.code, target_type="PRODUCT_FORM", target_id=str(form_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product_form.disable", target_type="PRODUCT_FORM",
+        target_id=str(f.id), target_name=f.name,
+        changes=audit_service.build_changes({"status": (before.status if before else None, f.status)}),
+    )
+    db.commit()
+    return {"data": ProductFormOut(**_catalog_dict(f))}
 
 
 @router.post("/catalog/product-forms/{form_id}/enable")
-def admin_enable_product_form(form_id: UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_enable_product_form(
+    form_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product_form.enable")),
+):
+    before = db.get(ProductForm, form_id)
     try:
-        return {"data": ProductFormOut(**_catalog_dict(service.set_product_form_status(db, form_id, "ENABLED")))}
+        f = service.set_product_form_status(db, form_id, "ENABLED")
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product_form.enable", error_code=exc.code, target_type="PRODUCT_FORM", target_id=str(form_id), target_name=before.name if before else None)
         raise _handle(exc)
+    _audit_success(
+        db, admin, request, "config.catalog.product_form.enable", target_type="PRODUCT_FORM",
+        target_id=str(f.id), target_name=f.name,
+        changes=audit_service.build_changes({"status": (before.status if before else None, f.status)}),
+    )
+    db.commit()
+    return {"data": ProductFormOut(**_catalog_dict(f))}
 
 
 # ---- 来源优先级 ----
@@ -222,11 +537,27 @@ def admin_get_source_priorities(db: Session = Depends(get_db), _admin: User = De
 
 
 @router.patch("/source-priorities")
-def admin_update_source_priorities(data: SourcePrioritiesUpdate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+def admin_update_source_priorities(
+    data: SourcePrioritiesUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.source_priority.update")),
+):
+    before_map = {sp.source_code: sp.priority for sp in service.list_source_priorities(db)}
     try:
         rows = service.update_source_priorities(db, data.items)
     except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.source_priority.update", error_code=exc.code, target_type="SOURCE_PRIORITY")
         raise _handle(exc)
+    after_map = {sp.source_code: sp.priority for sp in rows}
+    changes = audit_service.build_changes({
+        code: (before_map.get(code), after_map.get(code)) for code in after_map
+    })
+    _audit_success(
+        db, admin, request, "config.source_priority.update", target_type="SOURCE_PRIORITY",
+        target_name="来源优先级", changes=changes,
+    )
+    db.commit()
     return {"data": {"items": [
         SourcePriorityOut(source_code=sp.source_code, display_name=sp.display_name, priority=sp.priority, status=sp.status)
         for sp in rows
@@ -243,8 +574,36 @@ def admin_get_llm_config(db: Session = Depends(get_db), _admin: User = Depends(g
 
 
 @router.put("/llm-config")
-def admin_update_llm_config(data: LLMConfigUpdate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    result = service.update_llm_config(db, data, admin.id)
+def admin_update_llm_config(
+    data: LLMConfigUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.llm.update")),
+):
+    before = service.get_llm_config(db)
+    try:
+        result = service.update_llm_config(db, data, admin.id)
+    except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.llm.update", error_code=exc.code, target_type="LLM_CONFIG", target_name="LLM 配置")
+        raise _handle(exc)
+    before_cfg, after_cfg = before["config"], result["config"]
+    changes = audit_service.build_changes({
+        "provider": (before_cfg.get("provider"), after_cfg.get("provider")),
+        "base_url": (before_cfg.get("base_url"), after_cfg.get("base_url")),
+        "model": (before_cfg.get("model"), after_cfg.get("model")),
+        "temperature": (before_cfg.get("temperature"), after_cfg.get("temperature")),
+        "top_p": (before_cfg.get("top_p"), after_cfg.get("top_p")),
+        "max_tokens": (before_cfg.get("max_tokens"), after_cfg.get("max_tokens")),
+        "timeout_seconds": (before_cfg.get("timeout_seconds"), after_cfg.get("timeout_seconds")),
+        "classification_model": (before_cfg.get("classification_model"), after_cfg.get("classification_model")),
+        "embedding_model": (before_cfg.get("embedding_model"), after_cfg.get("embedding_model")),
+        "enabled": (before_cfg.get("enabled"), after_cfg.get("enabled")),
+        "has_api_key": (before["has_api_key"], result["has_api_key"]),
+    })
+    _audit_success(
+        db, admin, request, "config.llm.update", target_type="LLM_CONFIG", target_name="LLM 配置", changes=changes,
+    )
+    db.commit()
     cfg = LLMConfig.model_validate(result["config"])
     return {"data": LLMConfigOut(**cfg.model_dump(), has_api_key=result["has_api_key"]).model_dump()}
 

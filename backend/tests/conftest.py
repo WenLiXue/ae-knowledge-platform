@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 _DEFAULT_TEST_URL = (
     "postgresql+psycopg://ae_knowledge:ae_knowledge_dev@localhost:5432/ae_knowledge_test"
@@ -18,6 +19,10 @@ _DEFAULT_TEST_URL = (
 os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_URL))
 # 测试环境强制使用 Fake 飞书实现（真实环境变量优先于 .env，隔离开发者本机的 real 配置）
 os.environ["FEISHU_PROVIDER"] = "fake"
+# 审计导出文件写入系统临时目录，避免污染仓库
+os.environ.setdefault(
+    "AUDIT_EXPORT_DIR", os.path.join(tempfile.gettempdir(), "ae_audit_exports_test")
+)
 
 import pytest
 from alembic import command
@@ -62,6 +67,8 @@ def clean_tables(setup_test_database) -> None:
                 "knowledge.source_priorities, knowledge.product_forms, "
                 "knowledge.document_types, knowledge.product_versions, knowledge.products, "
                 "platform.secret_values, platform.config_revisions, "
+                "platform.audit_exports, platform.audit_logs, "
+                "platform.log_events, "
                 "auth.oauth_states, auth.login_sessions, auth.external_credentials, "
                 "auth.external_identities, auth.users RESTART IDENTITY CASCADE"
             )

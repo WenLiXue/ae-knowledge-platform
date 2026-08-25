@@ -1,19 +1,10 @@
-import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import {
-  Alert,
   Box,
-  Button,
-  Checkbox,
-  FormControlLabel,
   Paper,
   Stack,
-  Tab,
-  Tabs,
-  TextField,
   Typography,
 } from "@mui/material";
-import { getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { FeishuQrLogin } from "../components/FeishuQrLogin";
 
@@ -21,39 +12,14 @@ interface LocationState {
   from?: { pathname: string };
 }
 
-type LoginTab = "password" | "feishu";
-
-/** 登录页：账号密码 / 飞书扫码。视觉对齐原型 login.html。 */
+/** 登录页：唯一支持飞书扫码登录。视觉对齐原型 login.html。 */
 export function LoginPage() {
-  const { user, initializing, login } = useAuth();
-  const navigate = useNavigate();
+  const { user, initializing } = useAuth();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from?.pathname ?? "/search";
-
-  const [tab, setTab] = useState<LoginTab>("password");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   if (!initializing && user) {
     return <Navigate to={from} replace />;
   }
-
-  const handlePasswordSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      await login(username, password);
-      navigate(from, { replace: true });
-    } catch (err) {
-      setError(getErrorMessage(err, "登录失败，请稍后重试。"));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <Stack
@@ -133,73 +99,17 @@ export function LoginPage() {
             欢迎登录
           </Typography>
           <Typography color="text.secondary" variant="body2" sx={{ mt: 0.75, fontSize: 13 }}>
-            请选择适合你的登录方式
+            请使用飞书扫码登录
           </Typography>
         </Box>
 
-        <Tabs
-          value={tab}
-          onChange={(_event, value: LoginTab) => {
-            setTab(value);
-            setError(null);
-          }}
-          sx={{ mx: 3.5, mb: 2.5, borderBottom: 1, borderColor: "divider" }}
-        >
-          <Tab label="账号密码" value="password" sx={{ flex: 1 }} />
-          <Tab label="飞书扫码" value="feishu" sx={{ flex: 1 }} />
-        </Tabs>
-
         <Box sx={{ px: 3.5, pb: 2.5 }}>
-          {tab === "password" ? (
-            <form onSubmit={handlePasswordSubmit}>
-              <Stack spacing={2}>
-                <TextField
-                  label="账号"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="请输入账号"
-                  autoComplete="username"
-                  fullWidth
-                  size="small"
-                  required
-                />
-                <TextField
-                  label="密码"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="请输入密码"
-                  autoComplete="current-password"
-                  fullWidth
-                  size="small"
-                  required
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox size="small" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-                  }
-                  label={<Typography variant="body2">记住账号</Typography>}
-                />
-                <Button type="submit" variant="contained" disabled={loading} size="large" fullWidth>
-                  {loading ? "登录中…" : "登录"}
-                </Button>
-              </Stack>
-            </form>
-          ) : (
-            // 飞书扫码 Tab：二维码由飞书官方 SDK 生成，扫码后由后端回调建立会话。
-            <Stack spacing={2}>
-              <FeishuQrLogin />
-              <Typography variant="caption" color="text.secondary">
-                系统使用飞书 user_id 识别用户；首次扫码自动创建账号，已存在账号则直接登录。
-              </Typography>
-            </Stack>
-          )}
-
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
+          <Stack spacing={2}>
+            <FeishuQrLogin />
+            <Typography variant="caption" color="text.secondary" textAlign="center">
+              系统使用飞书 user_id 识别用户；首次扫码自动创建账号，已存在账号则直接登录。
+            </Typography>
+          </Stack>
 
           <Typography
             variant="caption"

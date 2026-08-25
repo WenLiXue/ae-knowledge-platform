@@ -18,6 +18,7 @@ from urllib.parse import quote
 
 import httpx
 
+from ..core.logging import log_external_call
 from ..feishu_provider.base import AUTH, RATE_LIMIT, TIMEOUT, TRANSIENT, FeishuError
 from .base import FeishuOAuthClient, FeishuTokenBundle, FeishuUserProfile
 
@@ -117,30 +118,50 @@ class RealFeishuOAuthClient(FeishuOAuthClient):
     ) -> dict[str, Any]:
         req_headers = {"Content-Type": "application/json", **headers}
         url = f"{self._base_url}{path}"
+        start = time.perf_counter()
+        status_code: int | None = None
+        result = "ok"
         try:
-            resp = self._http.request(method, url, headers=req_headers, json=json, params=params)
-        except httpx.TimeoutException as exc:
-            raise FeishuError(TIMEOUT, "FEISHU_TIMEOUT", f"飞书接口超时: {path}", retryable=True) from exc
-        except httpx.HTTPError as exc:
-            raise FeishuError(TRANSIENT, "FEISHU_NETWORK", f"飞书网络错误: {exc}", retryable=True) from exc
+            try:
+                resp = self._http.request(method, url, headers=req_headers, json=json, params=params)
+                status_code = resp.status_code
+            except httpx.TimeoutException as exc:
+                result = "timeout"
+                raise FeishuError(TIMEOUT, "FEISHU_TIMEOUT", f"飞书接口超时: {path}", retryable=True) from exc
+            except httpx.HTTPError as exc:
+                result = "network_error"
+                raise FeishuError(TRANSIENT, "FEISHU_NETWORK", f"飞书网络错误: {exc}", retryable=True) from exc
 
-        if resp.status_code == 429:
-            raise FeishuError(RATE_LIMIT, "FEISHU_RATE_LIMITED", "飞书接口限流", retryable=True)
-        if resp.status_code in (401, 403):
-            raise FeishuError(AUTH, "FEISHU_AUTH_EXPIRED", "飞书授权失效", retryable=False)
+            if resp.status_code == 429:
+                result = "rate_limited"
+                raise FeishuError(RATE_LIMIT, "FEISHU_RATE_LIMITED", "飞书接口限流", retryable=True)
+            if resp.status_code in (401, 403):
+                result = "auth_expired"
+                raise FeishuError(AUTH, "FEISHU_AUTH_EXPIRED", "飞书授权失效", retryable=False)
 
-        try:
-            body = resp.json()
-        except ValueError:
-            raise FeishuError(TRANSIENT, "FEISHU_BAD_RESPONSE", "飞书返回非 JSON", retryable=True) from None
+            try:
+                body = resp.json()
+            except ValueError:
+                result = "bad_json"
+                raise FeishuError(TRANSIENT, "FEISHU_BAD_RESPONSE", "飞书返回非 JSON", retryable=True) from None
 
-        code = int(body.get("code", 0))
-        if code != 0:
-            category = _OAUTH_ERROR_CODE_MAP.get(code, TRANSIENT)
-            retryable = category in (RATE_LIMIT, TIMEOUT, TRANSIENT)
-            raise FeishuError(category, f"FEISHU_{code}", str(body.get("msg", "未知错误")), retryable=retryable)
-        # 返回完整响应体：有的接口（app_access_token）字段在顶层，其余在 data 内
-        return body
+            code = int(body.get("code", 0))
+            if code != 0:
+                category = _OAUTH_ERROR_CODE_MAP.get(code, TRANSIENT)
+                retryable = category in (RATE_LIMIT, TIMEOUT, TRANSIENT)
+                result = f"feishu_{code}"
+                raise FeishuError(category, f"FEISHU_{code}", str(body.get("msg", "未知错误")), retryable=retryable)
+            # 返回完整响应体：有的接口（app_access_token）字段在顶层，其余在 data 内
+            return body
+        finally:
+            log_external_call(
+                dependency="feishu",
+                method=method,
+                path=path,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                status=status_code,
+                result=result,
+            )
 
 
 def _bundle_from_data(data: dict[str, Any]) -> FeishuTokenBundle:

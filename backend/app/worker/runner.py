@@ -20,6 +20,8 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
+from ..core.context import TaskContext, reset_task_context, set_service, set_task_context
+from ..core.logging import setup_logging
 from ..db.models.knowledge import DocumentVersion, KnowledgeSource
 from ..db.models.task import ProcessingTask, TaskAttempt
 from ..db.session import SessionLocal
@@ -139,6 +141,7 @@ class WorkerRunner:
                             started_at=now,
                         )
                     )
+                    logger.info("task_claimed", extra={"task_id": str(task.id)})
                 return rows
         finally:
             session.close()
@@ -147,6 +150,16 @@ class WorkerRunner:
         """执行单个已领取任务（独立事务）。"""
         session = self.session_factory()
         attempt_no = task.attempt_count
+        ctx_token = set_task_context(
+            TaskContext(
+                task_id=str(task.id),
+                attempt_no=attempt_no,
+                task_type=task.task_type,
+                source_id=str(task.source_id) if task.source_id else None,
+                version_id=str(task.version_id) if task.version_id else None,
+                worker_id=self.worker_id,
+            )
+        )
         try:
             with session.begin():
                 locked = session.execute(
@@ -182,6 +195,7 @@ class WorkerRunner:
             session.rollback()
             return self._handle_unexpected_error(task, exc)
         finally:
+            reset_task_context(ctx_token)
             session.close()
 
     def _handle_failure(self, session: Session, task: ProcessingTask, exc: pipeline.PipelineError) -> str:
@@ -192,14 +206,29 @@ class WorkerRunner:
             task.status = "RETRY_WAIT"
             task.scheduled_at = self._next_retry_at(task.attempt_count)
             self._record_attempt(session, task.id, task.attempt_count, "FAILED", exc.category, exc.code)
+            logger.warning(
+                "task_retry_scheduled",
+                extra={
+                    "category": exc.category,
+                    "code": exc.code,
+                    "attempt": task.attempt_count,
+                    "max_attempts": task.max_attempts,
+                    "error_summary": exc.message[:200],
+                },
+            )
             return "RETRY_WAIT"
         task.status = "FAILED"
         self._mark_version_source_failed(session, task, exc)
         self._record_attempt(session, task.id, task.attempt_count, "FAILED", exc.category, exc.code)
+        logger.error(
+            "task_failed",
+            extra={"category": exc.category, "code": exc.code, "error_summary": exc.message[:500]},
+        )
         return "FAILED"
 
     def _handle_unexpected_error(self, task: ProcessingTask, exc: Exception) -> str:
         """未预期异常按 INTERNAL 可重试错误处理（回滚后重排）。"""
+        logger.error("task_unexpected_error", exc_info=exc)
         session = self.session_factory()
         try:
             with session.begin():
@@ -320,7 +349,8 @@ class WorkerRunner:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    setup_logging()
+    set_service("worker")
     WorkerRunner().run_forever()
 
 
