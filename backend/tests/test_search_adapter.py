@@ -67,6 +67,70 @@ def test_fake_sample_and_bulk_failures() -> None:
     assert adapter.health() is True
 
 
+# ---- Fake search()（Phase 5 检索）----
+
+def _search_doc(cid: str, gen: str, version_id: str, content: str, *, title: str = "", heading=None) -> dict:
+    doc = _doc(cid, gen, content=content)
+    doc.update(
+        {"version_id": version_id, "title": title, "heading_path": heading or [], "source_id": "src-1"}
+    )
+    return doc
+
+
+def test_fake_search_bm25_ranks_and_filters() -> None:
+    adapter = FakeSearchAdapter()
+    adapter.bulk_index(
+        [
+            _search_doc("c1", "g1", "v1", "E3800 防病毒吞吐量 3.5G 内存 64G"),
+            _search_doc("c2", "g1", "v1", "信舷防毒墙 网桥模式 路由模式"),
+            _search_doc("c3", "g2", "v2", "E3800 吞吐量 与内存的规格"),
+        ],
+        generation="g1",
+    )
+    res = adapter.search(query_text="E3800 内存", retrieval_type="bm25", top_k=10, version_ids=["v1"])
+    # 无匹配词的文档分数为 0 被过滤；预过滤生效，只返回 v1 中命中者
+    assert res.total == 1
+    assert res.hits[0]["chunk_id"] == "c1"  # 完全命中 E3800+内存
+    assert all(hit["version_id"] == "v1" for hit in res.hits)
+    # 无 version 过滤则包含 v2（c3 也含 E3800）
+    res2 = adapter.search(query_text="E3800", retrieval_type="bm25", top_k=10)
+    assert {h["chunk_id"] for h in res2.hits} == {"c1", "c3"}
+
+
+def test_fake_search_vector_cosine() -> None:
+    adapter = FakeSearchAdapter()
+    c1 = _search_doc("c1", "g1", "v1", "苹果 香蕉")
+    c1["embedding"] = _token_vector("苹果 香蕉")
+    c2 = _search_doc("c2", "g1", "v1", "香蕉 葡萄")
+    c2["embedding"] = _token_vector("香蕉 葡萄")
+    adapter.bulk_index([c1, c2], generation="g1")
+    # 构造与 c1 共享 token 的查询向量，余弦应把 c1 排最前
+    query_vec = _token_vector("苹果")
+    res = adapter.search(embedding=query_vec, retrieval_type="vector", top_k=5)
+    assert res.hits[0]["chunk_id"] == "c1"
+
+
+def _token_vector(text: str) -> list[float]:
+    import hashlib
+
+    vec = [0.0] * 8
+    from app.search.bm25 import tokenize
+
+    for token in tokenize(text):
+        idx = hashlib.sha256(token.encode("utf-8")).digest()[0] % 8
+        vec[idx] += 1.0
+    return vec
+
+
+def test_fake_search_unknown_type_raises() -> None:
+    adapter = FakeSearchAdapter()
+    adapter.bulk_index([_search_doc("c1", "g1", "v1", "正文")], generation="g1")
+    import pytest
+
+    with pytest.raises(ValueError):
+        adapter.search(query_text="x", retrieval_type="hybrid", top_k=5)
+
+
 # ---- OpenSearch（MockTransport）----
 
 def _opensearch(handler) -> OpenSearchSearchAdapter:
@@ -195,3 +259,61 @@ def test_opensearch_auth_and_5xx_error_mapping() -> None:
         adapter.count_by_generation("g")
     assert exc.value.category == "PROVIDER" and exc.value.retryable is True
     assert adapter.health() is False
+
+
+# ---- OpenSearch search()（Phase 5 检索）----
+
+def _search_handler(seen: list[dict]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "HEAD":
+            return httpx.Response(200, json={})
+        if request.url.path.endswith("/_search"):
+            seen.append(json.loads(request.content.decode()))
+            return httpx.Response(
+                200,
+                json={
+                    "hits": {
+                        "total": {"value": 1, "relation": "eq"},
+                        "hits": [
+                            {
+                                "_id": "chunk:c1:gen:g",
+                                "_score": 3.2,
+                                "_source": {"content": "正文", "chunk_id": "c1", "generation": "g", "version_id": "v1"},
+                            }
+                        ],
+                    }
+                },
+            )
+        return httpx.Response(404, json={})
+
+    return handler
+
+
+def test_opensearch_search_bm25_request_shape() -> None:
+    seen: list[dict] = []
+    adapter = _opensearch(_search_handler(seen))
+    res = adapter.search(query_text="E3800", retrieval_type="bm25", top_k=50, version_ids=["v1"])
+
+    assert res.total == 1
+    assert res.hits[0]["_id"] == "chunk:c1:gen:g"
+    assert res.hits[0]["_score"] == 3.2
+    body = seen[0]
+    assert body["size"] == 50
+    assert body["query"]["bool"]["filter"] == [{"terms": {"version_id": ["v1"]}}]
+    must = body["query"]["bool"]["must"][0]
+    assert must["multi_match"]["query"] == "E3800"
+    assert must["multi_match"]["fields"] == ["title^2", "heading_path^1.5", "content"]
+
+
+def test_opensearch_search_vector_request_shape() -> None:
+    seen: list[dict] = []
+    adapter = _opensearch(_search_handler(seen))
+    res = adapter.search(embedding=[0.1, 0.2], retrieval_type="vector", top_k=12)
+
+    assert res.total == 1
+    body = seen[0]
+    # 无 version 过滤时 query 直接为 knn（无 bool 包装、无 filter）
+    knn = body["query"]["knn"]
+    assert knn["embedding"]["vector"] == [0.1, 0.2]
+    assert knn["embedding"]["k"] == 12
+    assert "bool" not in body["query"]

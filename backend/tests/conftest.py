@@ -69,6 +69,7 @@ def clean_tables(setup_test_database) -> None:
                 "platform.secret_values, platform.config_revisions, "
                 "platform.audit_exports, platform.audit_logs, "
                 "platform.log_events, "
+                "conversation.retrieval_candidates, conversation.retrieval_runs, "
                 "auth.oauth_states, auth.login_sessions, auth.external_credentials, "
                 "auth.external_identities, auth.users RESTART IDENTITY CASCADE"
             )

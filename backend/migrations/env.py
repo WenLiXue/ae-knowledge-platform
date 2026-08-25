@@ -27,7 +27,7 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
 
 # 仅处理设计约定的逻辑 Schema，避免 autogenerate 干扰其他 schema
-_MANAGED_SCHEMAS = {"auth", "knowledge", "tasking", "platform"}
+_MANAGED_SCHEMAS = {"auth", "conversation", "knowledge", "tasking", "platform"}
 
 
 def include_object(obj, name, type_, reflected, compare_to) -> bool:

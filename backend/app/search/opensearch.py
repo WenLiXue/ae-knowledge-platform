@@ -16,7 +16,7 @@ import logging
 
 import httpx
 
-from .base import BulkIndexResult, SearchAdapterError
+from .base import BulkIndexResult, SearchAdapterError, SearchResult
 from .mapping import INDEX_MAPPING
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,60 @@ class OpenSearchSearchAdapter:
             src["_id"] = hit.get("_id")
             out.append(src)
         return out
+
+    def search(
+        self,
+        *,
+        query_text: str | None = None,
+        embedding: list[float] | None = None,
+        retrieval_type: str,
+        top_k: int,
+        version_ids: list[str] | None = None,
+    ) -> SearchResult:
+        """Phase 5 检索。
+
+        bm25：multi_match（title^2 > heading_path^1.5 > content）；vector：knn 检索；
+        两者都支持按 version_id 集合做 bool.filter 预过滤。查询体形状用 MockTransport
+        覆盖测试；真实 OpenSearch 联调待 Phase 7。
+        """
+        self.ensure_index()
+        filters: list[dict] = []
+        if version_ids:
+            filters.append({"terms": {"version_id": version_ids}})
+
+        if retrieval_type == "bm25":
+            if not query_text:
+                return SearchResult(hits=[], total=0)
+            must: dict = {
+                "multi_match": {
+                    "query": query_text,
+                    "fields": ["title^2", "heading_path^1.5", "content"],
+                }
+            }
+        elif retrieval_type == "vector":
+            if not embedding:
+                return SearchResult(hits=[], total=0)
+            must = {"knn": {"embedding": {"vector": embedding, "k": top_k}}}
+        else:
+            raise ValueError(f"未知检索类型: {retrieval_type}")
+
+        if filters:
+            body = {"query": {"bool": {"filter": filters, "must": [must]}}, "size": top_k}
+        else:
+            body = {"query": must, "size": top_k}
+
+        data = self._request("POST", f"{self.index_name}/_search", json_body=body)
+        hits_meta = data.get("hits", {})
+        total = hits_meta.get("total", 0)
+        if isinstance(total, dict):
+            total = int(total.get("value", 0))
+        out: list[dict] = []
+        for hit in hits_meta.get("hits", []):
+            src = dict(hit.get("_source") or {})
+            src["_id"] = hit.get("_id")
+            src["_score"] = hit.get("_score")
+            out.append(src)
+        return SearchResult(hits=out, total=int(total))
 
     def health(self) -> bool:
         try:

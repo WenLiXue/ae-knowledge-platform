@@ -1,6 +1,7 @@
 from .auth import ExternalCredential, ExternalIdentity, LoginSession, OAuthState
 from .catalog import DocumentType, Product, ProductForm, ProductVersion, SourcePriority
 from .config import ConfigRevision, SecretValue
+from .conversation import RetrievalCandidate, RetrievalRun
 from .knowledge import DocumentVersion, FeishuSourceDetail, KnowledgeSource
 from .log import LogEvent
 from .rag import ClassificationResult, DocumentChunk, DocumentMetadata
@@ -25,6 +26,8 @@ __all__ = [
     "ProductForm",
     "ProductVersion",
     "ProcessingTask",
+    "RetrievalCandidate",
+    "RetrievalRun",
     "SecretValue",
     "SourcePriority",
     "TaskAttempt",

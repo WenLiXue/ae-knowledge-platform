@@ -1,12 +1,16 @@
 """内存检索引擎适配器（DD-19 §11.2，仅开发/测试）。
 
-按 doc_id 覆盖写入；delete_generation 按 generation 过滤删除。供流水线集成测试
-与开发环境使用，生产切换 OpenSearchSearchAdapter。
+按 doc_id 覆盖写入；delete_generation 按 generation 过滤删除。Phase 5 起提供
+``search``（bm25：确定性 BM25；vector：余弦相似度），可按 version_id 预过滤。
+供流水线集成测试与开发环境使用，生产切换 OpenSearchSearchAdapter。
 """
 
 from __future__ import annotations
 
-from .base import BulkIndexResult
+import math
+
+from .base import BulkIndexResult, SearchResult
+from .bm25 import score_documents
 
 
 class FakeSearchAdapter:
@@ -51,5 +55,74 @@ class FakeSearchAdapter:
         ids = sorted(self._by_generation.get(generation, set()))[:limit]
         return [self._docs[i] for i in ids]
 
+    def search(
+        self,
+        *,
+        query_text: str | None = None,
+        embedding: list[float] | None = None,
+        retrieval_type: str,
+        top_k: int,
+        version_ids: list[str] | None = None,
+    ) -> SearchResult:
+        """确定性检索。bm25 用内部 BM25；vector 用余弦相似度；按 version_id 预过滤。"""
+        docs = list(self._docs.values())
+        if version_ids:
+            allowed = set(version_ids)
+            docs = [d for d in docs if d.get("version_id") in allowed]
+        by_id = {d.get("_id") or d.get("doc_id"): d for d in docs}
+
+        if retrieval_type == "bm25":
+            if not query_text:
+                return SearchResult(hits=[], total=0)
+            corpus = [(did, _bm25_text(doc)) for did, doc in by_id.items()]
+            ranked = score_documents(corpus, query_text)[:top_k]
+            hits = []
+            for did, score in ranked:
+                doc = dict(by_id[did])
+                doc["_score"] = score
+                hits.append(doc)
+            return SearchResult(hits=hits, total=len(ranked))
+
+        if retrieval_type == "vector":
+            if not embedding:
+                return SearchResult(hits=[], total=0)
+            scored: list[tuple[str, float]] = []
+            for did, doc in by_id.items():
+                sim = _cosine_similarity(embedding, doc.get("embedding"))
+                if sim is not None:
+                    scored.append((did, sim))
+            scored.sort(key=lambda item: item[1], reverse=True)
+            hits = []
+            for did, score in scored[:top_k]:
+                doc = dict(by_id[did])
+                doc["_score"] = score
+                hits.append(doc)
+            return SearchResult(hits=hits, total=len(scored))
+
+        raise ValueError(f"未知检索类型: {retrieval_type}")
+
     def health(self) -> bool:
         return True
+
+
+def _bm25_text(doc: dict) -> str:
+    parts = [doc.get("content") or ""]
+    if doc.get("title"):
+        parts.append(str(doc["title"]))
+    heading = doc.get("heading_path") or []
+    if heading:
+        parts.append(" ".join(str(h) for h in heading))
+    return " ".join(parts)
+
+
+def _cosine_similarity(a: list[float] | None, b: object) -> float | None:
+    if not a or not isinstance(b, list) or not b:
+        return None
+    if len(a) != len(b):
+        return None
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0 or nb == 0:
+        return None
+    return dot / (na * nb)
