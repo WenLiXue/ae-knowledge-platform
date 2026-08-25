@@ -227,17 +227,23 @@ def test_worker_fetch_doc_updated_bumps_version() -> None:
 def test_worker_restart_continues_pipeline() -> None:
     submitted = _submit("wiki-hardware-spec")
     source_id = submitted["source_id"]
+    # 对象存储在进程重启后保持持久（raw/parsed 对象可读），两个 runner 共享同一 store
+    store = LocalObjectStore(tempfile.mkdtemp(prefix="ae-test-storage-"))
 
     # 第一段：只处理 FETCH，PARSE 排队
-    runner1 = _runner()
+    runner1 = WorkerRunner(
+        worker_id="test-worker", retry_base_delay_seconds=0.0, lease_seconds=60, store=store
+    )
     runner1.claim_and_execute(batch_size=10)
     assert (
         _scalar("SELECT status FROM knowledge.knowledge_sources WHERE id=:sid", sid=source_id)
         == "PROCESSING"
     )
 
-    # 模拟进程重启：新 runner（新 provider/存储）继续处理剩余阶段
-    runner2 = _runner()
+    # 模拟进程重启：新 runner（新 provider，对象存储仍持久）继续处理剩余阶段
+    runner2 = WorkerRunner(
+        worker_id="test-worker", retry_base_delay_seconds=0.0, lease_seconds=60, store=store
+    )
     _drain(runner2)
     assert (
         _scalar("SELECT status FROM knowledge.knowledge_sources WHERE id=:sid", sid=source_id)

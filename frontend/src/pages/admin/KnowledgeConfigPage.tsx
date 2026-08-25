@@ -26,6 +26,10 @@ import {
   adminCreateProduct,
   adminCreateProductForm,
   adminCreateVersion,
+  adminDeleteDocumentType,
+  adminDeleteProduct,
+  adminDeleteProductForm,
+  adminDeleteVersion,
   adminListDocumentTypes,
   adminListProductForms,
   adminListProducts,
@@ -73,7 +77,7 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; row: CatalogItem }>(null);
+  const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; row: CatalogItem } | { mode: "delete"; row: CatalogItem }>(null);
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
@@ -134,6 +138,23 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
     }
   };
 
+  const submitDelete = async () => {
+    if (!dialog || dialog.mode !== "delete" || saving) return;
+    setSaving(true);
+    setNotice(null);
+    try {
+      const fn = kind === "product" ? adminDeleteProduct : kind === "doc-type" ? adminDeleteDocumentType : adminDeleteProductForm;
+      await fn(dialog.row.id);
+      setDialog(null);
+      setNotice({ severity: "success", text: `已删除${KIND_LABEL[kind]}“${dialog.row.name}”。` });
+      await load();
+    } catch (err) {
+      setNotice({ severity: "error", text: getErrorMessage(err, "删除失败；如果该配置已被使用，请改用停用。") });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggle = async (row: CatalogItem) => {
     const target = row.status === "ENABLED" ? "DISABLED" : "ENABLED";
     const fn = kind === "product" ? adminSetProductStatus : kind === "doc-type" ? adminSetDocumentTypeStatus : adminSetProductFormStatus;
@@ -182,6 +203,9 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
                   <Button size="small" color={row.status === "ENABLED" ? "error" : "primary"} onClick={() => void toggle(row)}>
                     {row.status === "ENABLED" ? "停用" : "启用"}
                   </Button>
+                  <Button size="small" color="error" onClick={() => setDialog({ mode: "delete", row })}>
+                    删除
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -190,8 +214,13 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
       )}
 
       <Dialog open={dialog !== null} onClose={() => setDialog(null)} fullWidth maxWidth="sm">
-        <DialogTitle>{dialog?.mode === "create" ? `新增${KIND_LABEL[kind]}` : `编辑${KIND_LABEL[kind]}`}</DialogTitle>
+        <DialogTitle>{dialog?.mode === "create" ? `新增${KIND_LABEL[kind]}` : dialog?.mode === "delete" ? `删除${KIND_LABEL[kind]}` : `编辑${KIND_LABEL[kind]}`}</DialogTitle>
         <DialogContent>
+          {dialog?.mode === "delete" ? (
+            <Typography sx={{ pt: 1 }}>
+              确定删除“{dialog.row.name}”吗？如果该配置已被版本、文档或任务引用，系统会拒绝删除并保留数据。
+            </Typography>
+          ) : (
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField size="small" label="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <TextField size="small" label="code" value={form.code} disabled={dialog?.mode === "edit"} onChange={(e) => setForm({ ...form, code: e.target.value })} helperText="code 唯一，创建后不可修改" />
@@ -200,10 +229,15 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
               <TextField size="small" label="描述" multiline minRows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             )}
           </Stack>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialog(null)}>取消</Button>
-          <Button variant="contained" disabled={saving || !form.name} onClick={() => void submit()}>{saving ? "保存中…" : "保存"}</Button>
+          {dialog?.mode === "delete" ? (
+            <Button variant="contained" color="error" disabled={saving} onClick={() => void submitDelete()}>{saving ? "删除中…" : "确认删除"}</Button>
+          ) : (
+            <Button variant="contained" disabled={saving || !form.name} onClick={() => void submit()}>{saving ? "保存中…" : "保存"}</Button>
+          )}
         </DialogActions>
       </Dialog>
     </Stack>
@@ -250,6 +284,17 @@ function VersionsSection({ product }: { product: CatalogItem }) {
     }
   };
 
+  const deleteVersion = async (row: ProductVersion) => {
+    if (!window.confirm(`确定删除版本“${row.version_code}”吗？如果已被知识来源或任务引用，系统会拒绝删除。`)) return;
+    try {
+      await adminDeleteVersion(row.id);
+      setNotice({ severity: "success", text: `版本“${row.version_code}”已删除。` });
+      await load();
+    } catch (err) {
+      setNotice({ severity: "error", text: getErrorMessage(err, "删除失败；如果该版本已被使用，请改用停用。") });
+    }
+  };
+
   return (
     <Stack spacing={1.5}>
       <Stack direction="row" spacing={1} alignItems="center">
@@ -285,6 +330,9 @@ function VersionsSection({ product }: { product: CatalogItem }) {
                   <Button size="small" onClick={() => { setForm({ version_code: row.version_code, major_version: String(row.major_version ?? ""), minor_version: String(row.minor_version ?? ""), sort_order: row.sort_order }); setDialog({ mode: "edit", row }); }}>编辑</Button>
                   <Button size="small" color={row.status === "ENABLED" ? "error" : "primary"} onClick={async () => { await adminSetVersionStatus(row.id, row.status === "ENABLED" ? "DISABLED" : "ENABLED"); await load(); }}>
                     {row.status === "ENABLED" ? "停用" : "启用"}
+                  </Button>
+                  <Button size="small" color="error" onClick={() => void deleteVersion(row)}>
+                    删除
                   </Button>
                 </TableCell>
               </TableRow>
@@ -385,6 +433,19 @@ export function KnowledgeConfigPage() {
   const [products, setProducts] = useState<CatalogItem[]>([]);
   const [productLoading, setProductLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<CatalogItem | null>(null);
+  const [productNotice, setProductNotice] = useState<Notice | null>(null);
+
+  const deleteProduct = async (product: CatalogItem) => {
+    if (!window.confirm(`确定删除产品“${product.name}”吗？产品下存在版本或其他引用时将无法删除。`)) return;
+    try {
+      await adminDeleteProduct(product.id);
+      setProducts((current) => current.filter((item) => item.id !== product.id));
+      setSelectedProduct((current) => (current?.id === product.id ? null : current));
+      setProductNotice({ severity: "success", text: `产品“${product.name}”已删除。` });
+    } catch (err) {
+      setProductNotice({ severity: "error", text: getErrorMessage(err, "删除失败；如果产品已被使用，请改用停用。") });
+    }
+  };
 
   useEffect(() => {
     adminListProducts().then((res) => {
@@ -408,6 +469,7 @@ export function KnowledgeConfigPage() {
             {tab === 0 && (
               <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                 <Box sx={{ minWidth: { md: 260 } }}>
+                  {productNotice && <Alert severity={productNotice.severity} sx={{ mb: 1 }}>{productNotice.text}</Alert>}
                   {productLoading ? (
                     <LoadingState label="加载产品…" />
                   ) : products.length === 0 ? (
@@ -415,9 +477,14 @@ export function KnowledgeConfigPage() {
                   ) : (
                     <Stack spacing={1}>
                       {products.map((p) => (
-                        <Button key={p.id} variant={selectedProduct?.id === p.id ? "contained" : "outlined"} size="small" onClick={() => setSelectedProduct(p)} sx={{ justifyContent: "flex-start" }}>
-                          {p.name} <Chip size="small" sx={{ ml: 1 }} label={p.status === "ENABLED" ? "启用" : "停用"} variant="outlined" />
-                        </Button>
+                        <Stack key={p.id} direction="row" spacing={0.5} alignItems="center">
+                          <Button variant={selectedProduct?.id === p.id ? "contained" : "outlined"} size="small" onClick={() => setSelectedProduct(p)} sx={{ flex: 1, justifyContent: "flex-start" }}>
+                            {p.name} <Chip size="small" sx={{ ml: 1 }} label={p.status === "ENABLED" ? "已启用" : "已停用"} variant="outlined" />
+                          </Button>
+                          <Button size="small" color="error" onClick={() => void deleteProduct(p)}>
+                            删除
+                          </Button>
+                        </Stack>
                       ))}
                     </Stack>
                   )}

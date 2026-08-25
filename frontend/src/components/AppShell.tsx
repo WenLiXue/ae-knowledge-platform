@@ -242,7 +242,7 @@ export function AppShell() {
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
+    <Box sx={{ display: "flex", height: "100dvh", minHeight: 0, overflow: "hidden" }}>
       <AppBar
         position="fixed"
         elevation={0}
@@ -283,6 +283,7 @@ export function AppShell() {
             display: { xs: "none", md: "block" },
             "& .MuiDrawer-paper": {
               width: drawerWidth,
+              height: "100dvh",
               boxSizing: "border-box",
               borderRight: 1,
               borderColor: "divider",
@@ -309,12 +310,15 @@ export function AppShell() {
         </Drawer>
       </Box>
 
-      <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, minHeight: 0, height: "100%", overflow: isQueryCanvas ? "hidden" : "auto" }}>
         <Toolbar sx={{ display: { md: "none" } }} />
         {isQueryCanvas ? (
           <Box
             sx={{
-              minHeight: { xs: "calc(100dvh - 56px)", md: "100dvh" },
+              height: { xs: "calc(100dvh - 56px)", md: "100%" },
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
               display: "flex",
               flexDirection: "column",
             }}

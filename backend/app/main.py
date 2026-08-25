@@ -4,17 +4,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from .audit.api import router as audit_router
 from .auth.api import router as auth_router
+from .classify.api_admin import router as classification_admin_router
 from .config.api_admin import router as admin_config_router
 from .config.api_public import router as catalog_router
 from .core.logging import setup_logging
 from .core.middleware import RequestContextMiddleware
-from .db.session import engine
+from .db.session import SessionLocal, engine
 from .feishu import router as feishu_router
 from .knowledge_sources import router as knowledge_sources_router
+from .llm.api import router as llm_config_router
+from .llm.migration import ensure_llm_schema_v2
 from .system_logs.api import router as logs_router
 
 logger = logging.getLogger("app.error")
@@ -34,9 +37,28 @@ def _check_infrastructure() -> None:
         ) from exc
 
 
+def _migrate_llm_config() -> None:
+    """启动时执行旧版 LLM 配置到 schema_version=2 的幂等迁移（DD-20 §12）。
+
+    表尚未创建（首次迁移前）或迁移失败时仅记录告警，不阻断启动；
+    后续首个写操作会再次触发迁移。已在主事务外使用独立短事务提交。
+    """
+    try:
+        with SessionLocal() as session:
+            if not inspect(session.get_bind()).has_table("config_revisions", schema="platform"):
+                logger.warning("llm_config_migration_skipped config_revisions 表不存在")
+                return
+            if ensure_llm_schema_v2(session):
+                session.commit()
+                logger.info("llm_config_migration_done 旧版 LLM 配置已迁移到 schema_version=2")
+    except Exception:
+        logger.warning("llm_config_migration_failed 迁移失败，将在首个写操作时重试", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _check_infrastructure()
+    _migrate_llm_config()
     yield
 
 
@@ -81,6 +103,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router)
 app.include_router(catalog_router)
 app.include_router(admin_config_router)
+app.include_router(classification_admin_router)
+app.include_router(llm_config_router)
 app.include_router(audit_router)
 app.include_router(logs_router)
 app.include_router(feishu_router)

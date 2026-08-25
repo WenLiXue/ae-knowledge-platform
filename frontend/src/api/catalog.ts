@@ -7,29 +7,28 @@
  * -      /api/v1/admin/source-priorities
  * -      /api/v1/admin/llm-config
  */
-import { apiGet, apiPatch, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "./client";
 import type { ApiList } from "../types/api";
 import type {
   CatalogItem,
   DocumentType,
-  LlmConfig,
-  LlmConfigSaveInput,
   ProductVersion,
   SourcePriority,
 } from "../types/config";
 
 // ---- 目录查询（public） ----
+// signal 用于请求取消（组件卸载/切换条件时中止，DD-19 §4.4）。
 
-export function listCatalogProducts(): Promise<ApiList<CatalogItem>> {
-  return apiGet<ApiList<CatalogItem>>("/api/v1/catalog/products");
+export function listCatalogProducts(signal?: AbortSignal): Promise<ApiList<CatalogItem>> {
+  return apiGet<ApiList<CatalogItem>>("/api/v1/catalog/products", signal);
 }
 
-export function listCatalogVersions(productId: string): Promise<ApiList<ProductVersion>> {
-  return apiGet<ApiList<ProductVersion>>(`/api/v1/catalog/products/${productId}/versions`);
+export function listCatalogVersions(productId: string, signal?: AbortSignal): Promise<ApiList<ProductVersion>> {
+  return apiGet<ApiList<ProductVersion>>(`/api/v1/catalog/products/${productId}/versions`, signal);
 }
 
-export function listCatalogDocumentTypes(): Promise<ApiList<DocumentType>> {
-  return apiGet<ApiList<DocumentType>>("/api/v1/catalog/document-types");
+export function listCatalogDocumentTypes(signal?: AbortSignal): Promise<ApiList<DocumentType>> {
+  return apiGet<ApiList<DocumentType>>("/api/v1/catalog/document-types", signal);
 }
 
 export function listCatalogProductForms(): Promise<ApiList<CatalogItem>> {
@@ -58,6 +57,10 @@ export function adminSetProductStatus(id: string, status: "ENABLED" | "DISABLED"
   return apiPost<CatalogItem>(`/api/v1/admin/catalog/products/${id}/${status === "ENABLED" ? "enable" : "disable"}`);
 }
 
+export function adminDeleteProduct(id: string): Promise<void> {
+  return apiDelete<void>(`/api/v1/admin/catalog/products/${id}`);
+}
+
 // ---- 管理员：版本 ----
 
 export function adminListVersions(productId: string): Promise<ApiList<ProductVersion>> {
@@ -74,6 +77,10 @@ export function adminUpdateVersion(id: string, data: Record<string, unknown>): P
 
 export function adminSetVersionStatus(id: string, status: "ENABLED" | "DISABLED"): Promise<ProductVersion> {
   return apiPost<ProductVersion>(`/api/v1/admin/catalog/versions/${id}/${status === "ENABLED" ? "enable" : "disable"}`);
+}
+
+export function adminDeleteVersion(id: string): Promise<void> {
+  return apiDelete<void>(`/api/v1/admin/catalog/versions/${id}`);
 }
 
 // ---- 管理员：文档类型 ----
@@ -94,6 +101,10 @@ export function adminSetDocumentTypeStatus(id: string, status: "ENABLED" | "DISA
   return apiPost<DocumentType>(`/api/v1/admin/catalog/document-types/${id}/${status === "ENABLED" ? "enable" : "disable"}`);
 }
 
+export function adminDeleteDocumentType(id: string): Promise<void> {
+  return apiDelete<void>(`/api/v1/admin/catalog/document-types/${id}`);
+}
+
 // ---- 管理员：产品形态 ----
 
 export function adminListProductForms(): Promise<ApiList<CatalogItem>> {
@@ -112,6 +123,10 @@ export function adminSetProductFormStatus(id: string, status: "ENABLED" | "DISAB
   return apiPost<CatalogItem>(`/api/v1/admin/catalog/product-forms/${id}/${status === "ENABLED" ? "enable" : "disable"}`);
 }
 
+export function adminDeleteProductForm(id: string): Promise<void> {
+  return apiDelete<void>(`/api/v1/admin/catalog/product-forms/${id}`);
+}
+
 // ---- 来源优先级 ----
 
 export function adminListSourcePriorities(): Promise<ApiList<SourcePriority>> {
@@ -122,18 +137,4 @@ export function adminUpdateSourcePriorities(
   items: Array<{ source_code: string; priority: number }>,
 ): Promise<ApiList<SourcePriority>> {
   return apiPatch<ApiList<SourcePriority>>("/api/v1/admin/source-priorities", { items });
-}
-
-// ---- LLM 配置 ----
-
-export function getLlmConfig(): Promise<LlmConfig> {
-  return apiGet<LlmConfig>("/api/v1/admin/llm-config");
-}
-
-export function updateLlmConfig(data: LlmConfigSaveInput): Promise<LlmConfig> {
-  return apiPut<LlmConfig>("/api/v1/admin/llm-config", data);
-}
-
-export function testLlmConfig(data: LlmConfigSaveInput): Promise<{ ok: boolean; message: string }> {
-  return apiPost<{ ok: boolean; message: string }>("/api/v1/admin/llm-config/test", data);
 }

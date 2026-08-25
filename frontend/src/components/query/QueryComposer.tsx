@@ -1,4 +1,4 @@
-import { useState, type Ref } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import {
   Box,
   Button,
@@ -15,7 +15,11 @@ import {
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
-import { CATALOG_OPTIONS } from "../../api/conversations";
+import {
+  listCatalogDocumentTypes,
+  listCatalogProducts,
+  listCatalogVersions,
+} from "../../api/catalog";
 import type { QueryFilters } from "../../types/conversations";
 
 interface QueryComposerProps {
@@ -30,24 +34,23 @@ interface QueryComposerProps {
   inputRef?: Ref<HTMLInputElement | HTMLTextAreaElement>;
 }
 
-function productName(id: string): string {
-  return CATALOG_OPTIONS.products.find((item) => item.id === id)?.name ?? id;
+/** 目录选项：筛选下拉/标签只用 id 与展示名，不绑定 Mock code（DD-19 §4.4）。 */
+interface CatalogOption {
+  id: string;
+  name: string;
 }
 
-function versionName(id: string): string {
-  for (const versions of Object.values(CATALOG_OPTIONS.versions)) {
-    const found = versions.find((item) => item.id === id);
-    if (found) return found.name;
-  }
-  return id;
-}
-
-function documentTypeName(id: string): string {
-  return CATALOG_OPTIONS.documentTypes.find((item) => item.id === id)?.name ?? id;
+/** 判定是否为请求取消（卸载/切换条件时中止，不视为错误）。 */
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 /**
  * 知识查询 Composer：问题输入 + 可选查询范围（默认收起）+ 发送。
+ * 筛选目录（产品/版本/文档类型）来自真实 catalog API：
+ * - 产品与文档类型挂载时加载；产品变化时按需加载版本；
+ * - 加载失败保留问题输入，筛选区展示错误与重试；
+ * - 已选择但已停用/不存在的历史值展示为“已停用”，不参与新选择。
  * 与 HTML 原型 .composer 的布局逻辑一致，但保持组件级局部样式，
  * 不全局改动 MUI 组件。
  */
@@ -63,30 +66,110 @@ export function QueryComposer({
 }: QueryComposerProps) {
   const [scopeOpen, setScopeOpen] = useState(false);
 
-  const availableVersions = filters.product_id
-    ? (CATALOG_OPTIONS.versions[filters.product_id] ?? [])
-    : [];
+  const [products, setProducts] = useState<CatalogOption[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<CatalogOption[]>([]);
+  const [versions, setVersions] = useState<CatalogOption[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+
+  // 已见过的目录项名称快照：目录停用/刷新期间，已选历史值仍可显示名称而非裸 id。
+  const knownNames = useRef<Map<string, string>>(new Map());
+
+  // 初始目录（产品 + 文档类型）加载；卸载时中止，不更新已卸载组件状态。
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setCatalogLoading(true);
+    setLoadError(null);
+    Promise.all([
+      listCatalogProducts(controller.signal),
+      listCatalogDocumentTypes(controller.signal),
+    ])
+      .then(([productList, docTypeList]) => {
+        if (!active) return;
+        const productItems = productList.items.map((p) => ({ id: p.id, name: p.name }));
+        const docItems = docTypeList.items.map((t) => ({ id: t.id, name: t.name }));
+        productItems.forEach((p) => knownNames.current.set(p.id, p.name));
+        docItems.forEach((t) => knownNames.current.set(t.id, t.name));
+        setProducts(productItems);
+        setDocumentTypes(docItems);
+        setCatalogLoading(false);
+      })
+      .catch((error) => {
+        if (!active || isAbort(error)) return;
+        setCatalogLoading(false);
+        setLoadError("目录加载失败，请检查网络后重试。");
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [retryToken]);
+
+  // 产品变化时按需加载版本；产品清空/加载失败时清空版本（不阻断提问）。
+  useEffect(() => {
+    const productId = filters.product_id;
+    const controller = new AbortController();
+    let active = true;
+    if (!productId) {
+      setVersions([]);
+      setVersionsLoading(false);
+      return () => controller.abort();
+    }
+    setVersionsLoading(true);
+    listCatalogVersions(productId, controller.signal)
+      .then((list) => {
+        if (!active) return;
+        const items = list.items.map((v) => ({ id: v.id, name: v.version_code }));
+        items.forEach((v) => knownNames.current.set(v.id, v.name));
+        setVersions(items);
+        setVersionsLoading(false);
+      })
+      .catch((error) => {
+        if (!active || isAbort(error)) return;
+        setVersions([]);
+        setVersionsLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [filters.product_id]);
+
+  /** 解析已选项名称：当前目录 → 历史快照 → null（表示已停用/不存在）。 */
+  function catalogName(id: string, options: CatalogOption[]): string | null {
+    return options.find((item) => item.id === id)?.name ?? knownNames.current.get(id) ?? null;
+  }
 
   // 已选条件：以可移除 Chip 呈现；移除产品时同时移除版本。
-  const chips: { key: string; label: string; onRemove: () => void }[] = [];
+  // 已停用/不存在的历史值按“已停用”标注，但不作为可选项。
+  const chips: { key: string; label: string; disabled: boolean; onRemove: () => void }[] = [];
   if (filters.product_id) {
+    const name = catalogName(filters.product_id, products);
     chips.push({
       key: "product",
-      label: productName(filters.product_id),
+      label: name ?? filters.product_id,
+      disabled: name === null,
       onRemove: () => onFiltersChange({ ...filters, product_id: null, product_version_id: null }),
     });
   }
   if (filters.product_version_id) {
+    const name = catalogName(filters.product_version_id, versions);
     chips.push({
       key: "version",
-      label: versionName(filters.product_version_id),
+      label: name ?? filters.product_version_id,
+      disabled: name === null,
       onRemove: () => onFiltersChange({ ...filters, product_version_id: null }),
     });
   }
   if (filters.document_type_id) {
+    const name = catalogName(filters.document_type_id, documentTypes);
     chips.push({
       key: "document-type",
-      label: documentTypeName(filters.document_type_id),
+      label: name ?? filters.document_type_id,
+      disabled: name === null,
       onRemove: () => onFiltersChange({ ...filters, document_type_id: null }),
     });
   }
@@ -200,6 +283,14 @@ export function QueryComposer({
               }}
             >
               {chip.label}
+              {chip.disabled ? (
+                <Typography
+                  component="span"
+                  sx={{ ml: 0.5, fontSize: 10, fontWeight: 400, color: "text.disabled" }}
+                >
+                  已停用
+                </Typography>
+              ) : null}
             </Button>
           ))}
         </Stack>
@@ -242,7 +333,34 @@ export function QueryComposer({
             bgcolor: "background.paper",
           }}
         >
-          <FormControl size="small" fullWidth>
+          {catalogLoading ? (
+            <Stack
+              direction="row"
+              alignItems="center"
+              gap={1}
+              sx={{ gridColumn: { xs: "1", sm: "1 / -1" }, color: "text.secondary" }}
+            >
+              <CircularProgress size={14} />
+              <Typography variant="caption">正在加载目录…</Typography>
+            </Stack>
+          ) : null}
+          {loadError ? (
+            <Stack
+              direction="row"
+              alignItems="center"
+              gap={1}
+              sx={{ gridColumn: { xs: "1", sm: "1 / -1" } }}
+            >
+              <Typography variant="caption" color="error">
+                {loadError}
+              </Typography>
+              <Button size="small" variant="text" onClick={() => setRetryToken((token) => token + 1)}>
+                重试
+              </Button>
+            </Stack>
+          ) : null}
+
+          <FormControl size="small" fullWidth disabled={catalogLoading}>
             <InputLabel id="query-product-label">产品</InputLabel>
             <Select
               labelId="query-product-label"
@@ -255,7 +373,7 @@ export function QueryComposer({
               }}
             >
               <MenuItem value="">全部产品</MenuItem>
-              {CATALOG_OPTIONS.products.map((product) => (
+              {products.map((product) => (
                 <MenuItem key={product.id} value={product.id}>
                   {product.name}
                 </MenuItem>
@@ -271,17 +389,17 @@ export function QueryComposer({
               onChange={(event) =>
                 onFiltersChange({ ...filters, product_version_id: (event.target.value as string) || null })
               }
-              disabled={!filters.product_id}
+              disabled={!filters.product_id || versionsLoading}
             >
               <MenuItem value="">{filters.product_id ? "全部版本" : "请先选择产品"}</MenuItem>
-              {availableVersions.map((version) => (
+              {versions.map((version) => (
                 <MenuItem key={version.id} value={version.id}>
                   {version.name}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" fullWidth>
+          <FormControl size="small" fullWidth disabled={catalogLoading}>
             <InputLabel id="query-doc-type-label">文档类型</InputLabel>
             <Select
               labelId="query-doc-type-label"
@@ -292,7 +410,7 @@ export function QueryComposer({
               }
             >
               <MenuItem value="">全部类型</MenuItem>
-              {CATALOG_OPTIONS.documentTypes.map((type) => (
+              {documentTypes.map((type) => (
                 <MenuItem key={type.id} value={type.id}>
                   {type.name}
                 </MenuItem>

@@ -121,6 +121,8 @@ export function SystemLogsPage() {
   );
 
   useEffect(() => {
+    // 筛选条件变化时接口从第一页重新查询，分页器也必须同步归零。
+    setPage(0);
     void load(buildQuery(0));
   }, [load, buildQuery]);
 
@@ -267,7 +269,7 @@ export function SystemLogsPage() {
             </Table>
           </TableContainer>
         )}
-        {!loading && rows.length > 0 && (
+        {!loading && total > 0 && (
           <TablePagination
             component="div"
             count={total}

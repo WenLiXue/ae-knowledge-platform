@@ -16,6 +16,7 @@ import {
   IconButton,
   LinearProgress,
   MenuItem,
+  Pagination,
   Stack,
   Tab,
   Table,
@@ -108,6 +109,9 @@ export function AuditLogsPage() {
   const [items, setItems] = useState<AuditLogListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
+  // 游标接口没有页码，保存每一页的起始游标以支持上一页。
+  const [pageCursors, setPageCursors] = useState<(string | null)[]>([null]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [summary, setSummary] = useState<AuditLogSummary | null>(null);
@@ -162,6 +166,8 @@ export function AuditLogsPage() {
         setItems(data.items);
         setNextCursor(data.next_cursor ?? null);
         setHasMore(data.has_more ?? false);
+        setPage(0);
+        setPageCursors([null]);
         if (summaryParams) {
           void loadSummary(summaryParams.start_at ?? "", summaryParams.end_at ?? "");
         }
@@ -186,20 +192,27 @@ export function AuditLogsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadMore = async () => {
-    if (!nextCursor || loading) return;
+  const changePage = async (nextPage: number) => {
+    if (loading || nextPage < 0 || (nextPage > page && !hasMore)) return;
+    const cursor = pageCursors[nextPage] ?? null;
     setLoading(true);
     try {
-      const data = await listAuditLogs({ ...applied, cursor: nextCursor, limit: 50 });
-      setItems((prev) => [...prev, ...data.items]);
+      const data = await listAuditLogs({ ...applied, cursor: cursor ?? undefined, limit: 50 });
+      setItems(data.items);
       setNextCursor(data.next_cursor ?? null);
       setHasMore(data.has_more ?? false);
+      setPage(nextPage);
+      if (nextPage === page + 1 && data.next_cursor) {
+        setPageCursors((prev) => [...prev, data.next_cursor ?? null]);
+      }
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil((summary?.total ?? 0) / 50));
 
   const onTabChange = (_: unknown, value: OutcomeTab) => {
     const nextOutcome: "" | AuditOutcome = value === "all" ? "" : value;
@@ -582,19 +595,25 @@ export function AuditLogsPage() {
                 </Table>
               </TableContainer>
               <Stack
-                direction="row"
-                spacing={2}
+                spacing={1.5}
                 alignItems="center"
-                justifyContent="space-between"
                 sx={{ px: 2, py: 1.5, borderTop: 1, borderColor: "divider" }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  当前显示 {items.length} 条，共 {summary?.total ?? "…"} 条
+                  当前显示 {items.length} 条，第 {page + 1} / {totalPages} 页，共 {summary?.total ?? "…"} 条
                 </Typography>
-                {hasMore && (
-                  <Button size="small" onClick={() => void loadMore()} disabled={loading}>
-                    {loading ? "加载中…" : "加载更多"}
-                  </Button>
+                {totalPages > 1 && (
+                  <Box sx={{ pt: 1 }}>
+                    <Pagination
+                      count={totalPages}
+                      page={page + 1}
+                      onChange={(_event, value) => void changePage(value - 1)}
+                      color="primary"
+                      showFirstButton
+                      showLastButton
+                      disabled={loading}
+                    />
+                  </Box>
                 )}
               </Stack>
             </>

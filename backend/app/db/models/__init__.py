@@ -3,11 +3,15 @@ from .catalog import DocumentType, Product, ProductForm, ProductVersion, SourceP
 from .config import ConfigRevision, SecretValue
 from .knowledge import DocumentVersion, FeishuSourceDetail, KnowledgeSource
 from .log import LogEvent
+from .rag import ClassificationResult, DocumentChunk, DocumentMetadata
 from .task import ProcessingTask, TaskAttempt
 from .user import User
 
 __all__ = [
+    "ClassificationResult",
     "ConfigRevision",
+    "DocumentChunk",
+    "DocumentMetadata",
     "DocumentType",
     "DocumentVersion",
     "ExternalCredential",

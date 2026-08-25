@@ -1,0 +1,213 @@
+"""OpenAI-compatible Model Gateway 适配器（DD-19 §7）。
+
+- 统一超时（connect/read/total）、有限重试（网络、429、临时 5xx）；
+- 400/401/403、Schema 错误不做重试，转稳定错误码；
+- 严格校验供应商响应，脏数据不透传业务；
+- 日志只含 request_id/model/耗时/用量/稳定错误码，不含正文、Prompt、Token、密钥。
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+
+import httpx
+
+from .base import (
+    ChatRequest,
+    ChatResponse,
+    ChatUsage,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    EmbeddingUsage,
+    RerankRequest,
+    RerankResponse,
+)
+from .errors import GatewayError
+from .schemas import (
+    OpenAIChatResponse,
+    OpenAIEmbeddingResponse,
+    OpenAIRerankResponse,
+    ValidationError,
+)
+
+logger = logging.getLogger(__name__)
+
+_ENDPOINTS = {
+    "chat": "chat/completions",
+    "embedding": "embeddings",
+    "rerank": "rerank",
+}
+
+
+def _request_id() -> str:
+    return uuid.uuid4().hex
+
+
+class OpenAICompatibleGateway:
+    """OpenAI-compatible 协议适配器。provider=openai-compatible。"""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        total_timeout: float = 300.0,
+        retries: int = 2,
+        retry_backoff_seconds: float = 0.5,
+        http_client: httpx.Client | None = None,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.total_timeout = total_timeout
+        self.retries = retries
+        self.retry_backoff_seconds = retry_backoff_seconds
+        self._http_client = http_client
+
+    def _client(self) -> httpx.Client:
+        if self._http_client is None:
+            self._http_client = httpx.Client(timeout=self.total_timeout)
+        return self._http_client
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def _post(self, endpoint: str, payload: dict, *, request_id: str) -> dict:
+        """POST 并做有限重试。非 200 按状态码映射稳定错误。"""
+        url = f"{self.base_url}/{endpoint}"
+        last_error: GatewayError | None = None
+        for attempt in range(self.retries + 1):
+            try:
+                response = self._client().post(url, json=payload, headers=self._headers())
+            except httpx.TimeoutException as exc:
+                last_error = GatewayError("NETWORK", "TIMEOUT", "模型调用超时", retryable=True)
+            except httpx.TransportError as exc:
+                last_error = GatewayError("NETWORK", "TRANSPORT_ERROR", "模型调用网络错误", retryable=True)
+            else:
+                if response.status_code == 200:
+                    try:
+                        return response.json()
+                    except ValueError as exc:
+                        raise GatewayError("SCHEMA", "INVALID_JSON", "模型返回非法 JSON", retryable=False) from exc
+                if response.status_code in (401, 403):
+                    raise GatewayError("AUTH", "AUTH_FAILED", "模型凭据无效或无权访问", retryable=False, status=response.status_code)
+                if response.status_code in (400, 404, 422):
+                    raise GatewayError("VALIDATION", "BAD_REQUEST", f"模型请求被拒绝（{response.status_code}）", retryable=False, status=response.status_code)
+                # 429 / 5xx：可重试
+                if response.status_code == 429:
+                    last_error = GatewayError("RATE_LIMIT", "RATE_LIMIT", "模型调用触发限流", retryable=True, status=429)
+                else:
+                    last_error = GatewayError("PROVIDER", f"PROVIDER_{response.status_code}", "模型服务异常", retryable=True, status=response.status_code)
+            if attempt < self.retries:
+                time.sleep(self.retry_backoff_seconds * (2 ** attempt))
+                continue
+            break
+        assert last_error is not None
+        raise last_error
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        request_id = _request_id()
+        started = time.monotonic()
+        payload = {"model": request.model, "messages": request.messages}
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
+        data = self._post(_ENDPOINTS["chat"], payload, request_id=request_id)
+        try:
+            validated = OpenAIChatResponse.model_validate(data)
+        except ValidationError as exc:
+            raise GatewayError("SCHEMA", "CHAT_SCHEMA_INVALID", "模型响应不符合对话协议", retryable=False) from exc
+        if not validated.choices or not validated.choices[0].message.get("content"):
+            raise GatewayError("SCHEMA", "CHAT_EMPTY", "模型返回空内容", retryable=False)
+        usage = validated.usage
+        response = ChatResponse(
+            model=validated.model,
+            content=str(validated.choices[0].message["content"]),
+            usage=ChatUsage(
+                prompt_tokens=usage.prompt_tokens if usage else 0,
+                completion_tokens=usage.completion_tokens if usage else 0,
+                total_tokens=usage.total_tokens if usage else 0,
+            ),
+            raw=data,
+        )
+        logger.debug(
+            "gateway_chat",
+            extra={
+                "request_id": request_id,
+                "model": request.model,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+            },
+        )
+        return response
+
+    def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        request_id = _request_id()
+        started = time.monotonic()
+        data = self._post(_ENDPOINTS["embedding"], {"model": request.model, "input": request.input}, request_id=request_id)
+        try:
+            validated = OpenAIEmbeddingResponse.model_validate(data)
+        except ValidationError as exc:
+            raise GatewayError("SCHEMA", "EMBEDDING_SCHEMA_INVALID", "模型响应不符合向量协议", retryable=False) from exc
+        if len(validated.data) != len(request.input):
+            raise GatewayError("SCHEMA", "EMBEDDING_COUNT_MISMATCH", "向量数量与输入不一致", retryable=False)
+        usage = validated.usage
+        response = EmbeddingResponse(
+            model=validated.model,
+            data=[{"index": item.index, "embedding": item.embedding} for item in validated.data],
+            usage=EmbeddingUsage(
+                prompt_tokens=usage.prompt_tokens if usage else 0,
+                total_tokens=usage.total_tokens if usage else 0,
+            ),
+            raw=data,
+        )
+        logger.debug(
+            "gateway_embed",
+            extra={
+                "request_id": request_id,
+                "model": request.model,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+                "batch_size": len(request.input),
+            },
+        )
+        return response
+
+    def rerank(self, request: RerankRequest) -> RerankResponse:
+        request_id = _request_id()
+        started = time.monotonic()
+        payload = {"model": request.model, "query": request.query, "documents": request.documents}
+        if request.top_n is not None:
+            payload["top_n"] = request.top_n
+        data = self._post(_ENDPOINTS["rerank"], payload, request_id=request_id)
+        try:
+            validated = OpenAIRerankResponse.model_validate(data)
+        except ValidationError as exc:
+            raise GatewayError("SCHEMA", "RERANK_SCHEMA_INVALID", "模型响应不符合重排协议", retryable=False) from exc
+        response = RerankResponse(
+            model=validated.model,
+            results=[
+                {"index": item.index, "relevance_score": item.relevance_score, "document": item.document}
+                for item in validated.results
+            ],
+            raw=data,
+        )
+        logger.debug(
+            "gateway_rerank",
+            extra={
+                "request_id": request_id,
+                "model": request.model,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+                "documents": len(request.documents),
+            },
+        )
+        return response

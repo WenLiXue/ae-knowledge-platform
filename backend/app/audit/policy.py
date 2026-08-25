@@ -79,6 +79,31 @@ def _llm_spec() -> ActionSpec:
     )
 
 
+_LLM_MODEL_FIELDS = (
+    "name", "model_type", "provider", "base_url", "model_name", "enabled", "has_api_key",
+)
+
+_LLM_MODEL_LABELS = {
+    "name": "配置名称", "model_type": "模型类型", "provider": "服务商",
+    "base_url": "Base URL", "model_name": "Model 名称", "enabled": "启用状态",
+    "has_api_key": "API Key 是否已配置", "used_by": "引用服务",
+}
+
+
+def _llm_model_spec(action: str, *, with_used_by: bool = False) -> ActionSpec:
+    fields = _LLM_MODEL_FIELDS + (("used_by",) if with_used_by else ())
+    return ActionSpec(action, "CONFIG", "LLM_MODEL", fields, True, "high", _LLM_MODEL_LABELS)
+
+
+def _binding_spec() -> ActionSpec:
+    labels = {
+        "QA": "智能问答", "DOCUMENT_CLASSIFICATION": "文档自动分类",
+        "DOCUMENT_EMBEDDING": "文档向量化", "RETRIEVAL_RERANK": "检索重排",
+    }
+    fields = ("QA", "DOCUMENT_CLASSIFICATION", "DOCUMENT_EMBEDDING", "RETRIEVAL_RERANK")
+    return ActionSpec("config.llm.binding.update", "CONFIG", "LLM_BINDING", fields, True, "high", labels)
+
+
 # 代码级动作注册表。动作码为稳定枚举；新增动作必须在此登记。
 ACTION_REGISTRY: dict[str, ActionSpec] = {
     # ---- AUTH ----
@@ -88,6 +113,12 @@ ACTION_REGISTRY: dict[str, ActionSpec] = {
     "auth.feishu.unbind": _spec("auth.feishu.unbind", "AUTH", "USER", risk="high"),
     # ---- CONFIG：LLM 配置 ----
     "config.llm.update": _llm_spec(),
+    # 模型管理与服务配置（DD-20 §13）
+    "config.llm.model.create": _llm_model_spec("config.llm.model.create"),
+    "config.llm.model.update": _llm_model_spec("config.llm.model.update"),
+    "config.llm.model.enable": _llm_model_spec("config.llm.model.enable"),
+    "config.llm.model.disable": _llm_model_spec("config.llm.model.disable", with_used_by=True),
+    "config.llm.binding.update": _binding_spec(),
     # ---- CONFIG：来源优先级 ----
     "config.source_priority.update": _spec(
         "config.source_priority.update", "CONFIG", "SOURCE_PRIORITY", ("priority",), risk="medium"
@@ -97,18 +128,37 @@ ACTION_REGISTRY: dict[str, ActionSpec] = {
     "config.catalog.product.update": _spec("config.catalog.product.update", "CONFIG", "PRODUCT", ("name", "status", "sort_order"), risk="medium"),
     "config.catalog.product.enable": _spec("config.catalog.product.enable", "CONFIG", "PRODUCT", ("status",), risk="medium"),
     "config.catalog.product.disable": _spec("config.catalog.product.disable", "CONFIG", "PRODUCT", ("status",), risk="medium"),
+    "config.catalog.product.delete": _spec("config.catalog.product.delete", "CONFIG", "PRODUCT", risk="high"),
     "config.catalog.version.create": _spec("config.catalog.version.create", "CONFIG", "PRODUCT_VERSION", ("version_code", "major_version", "minor_version", "release_date", "status", "sort_order"), risk="medium"),
     "config.catalog.version.update": _spec("config.catalog.version.update", "CONFIG", "PRODUCT_VERSION", ("version_code", "major_version", "minor_version", "release_date", "status", "sort_order"), risk="medium"),
     "config.catalog.version.enable": _spec("config.catalog.version.enable", "CONFIG", "PRODUCT_VERSION", ("status",), risk="medium"),
     "config.catalog.version.disable": _spec("config.catalog.version.disable", "CONFIG", "PRODUCT_VERSION", ("status",), risk="medium"),
+    "config.catalog.version.delete": _spec("config.catalog.version.delete", "CONFIG", "PRODUCT_VERSION", risk="high"),
     "config.catalog.document_type.create": _spec("config.catalog.document_type.create", "CONFIG", "DOCUMENT_TYPE", ("code", "name", "description", "status", "sort_order"), risk="medium"),
     "config.catalog.document_type.update": _spec("config.catalog.document_type.update", "CONFIG", "DOCUMENT_TYPE", ("name", "description", "status", "sort_order"), risk="medium"),
     "config.catalog.document_type.enable": _spec("config.catalog.document_type.enable", "CONFIG", "DOCUMENT_TYPE", ("status",), risk="medium"),
     "config.catalog.document_type.disable": _spec("config.catalog.document_type.disable", "CONFIG", "DOCUMENT_TYPE", ("status",), risk="medium"),
+    "config.catalog.document_type.delete": _spec("config.catalog.document_type.delete", "CONFIG", "DOCUMENT_TYPE", risk="high"),
     "config.catalog.product_form.create": _spec("config.catalog.product_form.create", "CONFIG", "PRODUCT_FORM", ("code", "name", "status", "sort_order"), risk="medium"),
     "config.catalog.product_form.update": _spec("config.catalog.product_form.update", "CONFIG", "PRODUCT_FORM", ("name", "status", "sort_order"), risk="medium"),
     "config.catalog.product_form.enable": _spec("config.catalog.product_form.enable", "CONFIG", "PRODUCT_FORM", ("status",), risk="medium"),
     "config.catalog.product_form.disable": _spec("config.catalog.product_form.disable", "CONFIG", "PRODUCT_FORM", ("status",), risk="medium"),
+    "config.catalog.product_form.delete": _spec("config.catalog.product_form.delete", "CONFIG", "PRODUCT_FORM", risk="high"),
+    # ---- CLASSIFICATION：人工确认（DD-19 §9） ----
+    "classification.pending.confirm_relevant": _spec(
+        "classification.pending.confirm_relevant", "CLASSIFICATION", "CLASSIFICATION_PENDING",
+        ("relevance", "product_code", "product_version_code", "document_type_code",
+         "product_form_code", "is_domestic", "module_name", "business_topic", "summary",
+         "keywords"), risk="high",
+    ),
+    "classification.pending.confirm_irrelevant": _spec(
+        "classification.pending.confirm_irrelevant", "CLASSIFICATION", "CLASSIFICATION_PENDING",
+        ("relevance", "offline_reason"), risk="high",
+    ),
+    "classification.pending.reclassify": _spec(
+        "classification.pending.reclassify", "CLASSIFICATION", "CLASSIFICATION_PENDING",
+        ("relevance", "config_revision", "model_key"), risk="high",
+    ),
     # ---- AUDIT ----
     "audit.query": _spec("audit.query", "AUDIT", "AUDIT_LOG", risk="low"),
     "audit.view_detail": _spec("audit.view_detail", "AUDIT", "AUDIT_LOG", risk="medium"),

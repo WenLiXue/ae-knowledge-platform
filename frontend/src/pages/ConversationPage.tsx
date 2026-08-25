@@ -10,7 +10,6 @@ import {
   CircularProgress,
   IconButton,
   Link,
-  LinearProgress,
   Paper,
   Stack,
   Table,
@@ -29,8 +28,6 @@ import ThumbUpOffAltIcon from "@mui/icons-material/ThumbUpOffAlt";
 import ThumbDownOffAltIcon from "@mui/icons-material/ThumbDownOffAlt";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import {
-  appendAssistantMessage,
-  buildFollowUpAnswer,
   createMessage,
   getConversation,
   getMessages,
@@ -361,10 +358,8 @@ export function ConversationPage() {
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [streaming, setStreaming] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const streamTimerRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!conversationId) return;
@@ -386,38 +381,19 @@ export function ConversationPage() {
   }, [load]);
 
   useEffect(() => {
-    return () => {
-      if (streamTimerRef.current) {
-        window.clearTimeout(streamTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [messages]);
 
   const handleSend = async () => {
     const content = input.trim();
-    if (!conversationId || !content || sending || streaming) return;
+    if (!conversationId || !content || sending) return;
     setSending(true);
     setError(null);
     try {
-      // MOCK: createMessage 当前仅写入 Mock 数据；随后以“流式占位”模拟生成过程。
       await createMessage(conversationId, content);
       const msgs = await getMessages(conversationId);
       setMessages(msgs.items);
       setInput("");
-      setStreaming(true);
-
-      streamTimerRef.current = window.setTimeout(() => {
-        const answer = buildFollowUpAnswer(content);
-        appendAssistantMessage(conversationId, answer);
-        void getMessages(conversationId).then((next) => {
-          setMessages(next.items);
-          setStreaming(false);
-        });
-      }, 1200);
     } catch (err) {
       setError(err);
     } finally {
@@ -439,8 +415,8 @@ export function ConversationPage() {
 
   // 查询工作区不再由外层 Container 提供宽度，页面自身补充等价约束。
   return (
-    <Box sx={{ width: "100%", maxWidth: 880, mx: "auto", p: { xs: 2, sm: 3 } }}>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+    <Box sx={{ width: "100%", maxWidth: 960, height: "100%", minHeight: 0, mx: "auto", p: { xs: 1.5, sm: 2.5 }, display: "flex", flexDirection: "column" }}>
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5, flexShrink: 0 }}>
         <IconButton component={RouterLink} to="/search" aria-label="返回知识查询">
           <ArrowBackIcon />
         </IconButton>
@@ -462,7 +438,7 @@ export function ConversationPage() {
 
       {error ? <ErrorAlert error={error} onRetry={() => void load()} title="操作失败" /> : null}
 
-      <Card sx={{ display: "flex", flexDirection: "column", minHeight: { xs: "60vh", md: "70vh" } }}>
+      <Card sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
         <CardContent
           sx={{
             flexGrow: 1,
@@ -470,7 +446,7 @@ export function ConversationPage() {
             display: "flex",
             flexDirection: "column",
             gap: 2,
-            maxHeight: { md: 560 },
+            minHeight: 0,
             p: { xs: 2, sm: 2.5 },
             "&:last-child": { pb: { xs: 2, sm: 2.5 } },
           }}
@@ -486,17 +462,36 @@ export function ConversationPage() {
             messages.map((message) => <MessageRow key={message.id} message={message} />)
           )}
 
-          {streaming && (
-            <Stack direction="row" justifyContent="flex-start">
-              <Card sx={{ width: "100%", maxWidth: 880 }}>
-                <CardContent>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    正在检索知识库并生成答案…
-                  </Typography>
-                  <LinearProgress />
-                </CardContent>
-              </Card>
-            </Stack>
+          {messages.length > 0 && !messages.some((message) => message.role === "assistant") && (
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 180,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                px: 2,
+              }}
+            >
+              <Paper
+                variant="outlined"
+                sx={{
+                  width: "min(100%, 520px)",
+                  px: 3,
+                  py: 2.5,
+                  textAlign: "center",
+                  borderStyle: "dashed",
+                  bgcolor: "rgba(255,255,255,0.62)",
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                  问题已收到，等待知识库检索
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  检索结果和来源引用会显示在这里。当前服务尚未返回答案，请稍后再试。
+                </Typography>
+              </Paper>
+            </Box>
           )}
 
           <div ref={bottomRef} />
@@ -514,7 +509,7 @@ export function ConversationPage() {
               maxRows={4}
               fullWidth
               size="small"
-              disabled={streaming}
+              disabled={sending}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -527,7 +522,7 @@ export function ConversationPage() {
                 <IconButton
                   color="primary"
                   onClick={() => void handleSend()}
-                  disabled={!input.trim() || sending || streaming}
+                  disabled={!input.trim() || sending}
                   sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}
                 >
                   {sending ? <CircularProgress size={20} /> : <SendIcon />}

@@ -1,39 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Box, Button, Stack, Typography, useMediaQuery, type Theme } from "@mui/material";
-import {
-  appendAssistantMessage,
-  buildFollowUpAnswer,
-  createConversation,
-  createMessage,
-} from "../api/conversations";
+import { Box, Stack, Typography, useMediaQuery, type Theme } from "@mui/material";
+import { createConversation, createMessage } from "../api/conversations";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { QueryComposer } from "../components/query/QueryComposer";
 import { useConversationWorkspace } from "../conversations/ConversationWorkspaceContext";
 import type { QueryFilters } from "../types/conversations";
-
-const EXAMPLE_QUESTIONS = [
-  {
-    title: "查询产品规格",
-    subtitle: "T90000 的 CPU、内存和磁盘配置",
-    question: "T90000 的 CPU、内存和磁盘配置是什么？",
-  },
-  {
-    title: "了解部署要求",
-    subtitle: "V7.0 的标准部署方式和环境要求",
-    question: "V7.0 的标准部署方式和环境要求是什么？",
-  },
-  {
-    title: "比较功能模式",
-    subtitle: "网桥模式和路由模式的区别",
-    question: "网桥模式和路由模式有什么区别？",
-  },
-  {
-    title: "查找历史案例",
-    subtitle: "白云机场相关的实施与问题案例",
-    question: "有哪些白云机场相关的历史案例？",
-  },
-];
 
 const EMPTY_FILTERS: QueryFilters = {
   product_id: null,
@@ -71,8 +43,6 @@ export function SearchPage() {
     try {
       const conversation = await createConversation({ filters });
       await createMessage(conversation.id, content, filters);
-      // MOCK: 首问即生成一条演示回答，保证进入会话后即可看到问答内容与低依据提示。
-      appendAssistantMessage(conversation.id, buildFollowUpAnswer(content));
       // 新会话进入侧栏列表。
       void refreshConversations();
       navigate(`/conversations/${conversation.id}`);
@@ -83,13 +53,8 @@ export function SearchPage() {
     }
   };
 
-  const handleExampleClick = (value: string) => {
-    setQuestion(value);
-    inputRef.current?.focus();
-  };
-
   return (
-    <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+    <Box sx={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* 顶部轻量工具栏：移动端由 AppBar 承担，避免双顶栏 */}
       <Stack
         direction="row"
@@ -149,66 +114,6 @@ export function SearchPage() {
             autoFocus={isDesktop}
             inputRef={inputRef}
           />
-
-          <Box
-            component="ul"
-            aria-label="查询建议"
-            sx={{
-              listStyle: "none",
-              p: 0,
-              m: 0,
-              mt: 2.5,
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-              gap: 1,
-            }}
-          >
-            {EXAMPLE_QUESTIONS.map((example) => (
-              <Box component="li" key={example.title} sx={{ minWidth: 0 }}>
-                <Button
-                  fullWidth
-                  onClick={() => handleExampleClick(example.question)}
-                  sx={{
-                    display: "block",
-                    textAlign: "left",
-                    minHeight: 56,
-                    py: 1,
-                    px: 1.5,
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 2,
-                    bgcolor: "transparent",
-                    color: "text.primary",
-                    fontWeight: 400,
-                    "&:hover": { bgcolor: "background.paper" },
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    fontWeight={650}
-                    component="span"
-                    sx={{ display: "block" }}
-                  >
-                    {example.title}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    component="span"
-                    sx={{
-                      display: "block",
-                      mt: 0.5,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {example.subtitle}
-                  </Typography>
-                </Button>
-              </Box>
-            ))}
-          </Box>
 
           <Typography
             variant="caption"

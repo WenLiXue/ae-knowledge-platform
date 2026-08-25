@@ -6,15 +6,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..auth import crypto
-from ..core.config import get_settings
 from ..db.models.catalog import (
     DocumentType,
     Product,
@@ -22,10 +17,8 @@ from ..db.models.catalog import (
     ProductVersion,
     SourcePriority,
 )
-from ..db.models.config import ConfigRevision, SecretValue
-
-LLM_NAMESPACE = "llm"
-LLM_API_KEY_NAME = "api_key"
+from ..db.models.knowledge import DocumentVersion, KnowledgeSource
+from ..db.models.task import ProcessingTask
 
 
 class ConfigError(Exception):
@@ -134,6 +127,17 @@ def set_product_status(db: Session, product_id, status: str) -> Product:
     return product
 
 
+def delete_product(db: Session, product_id) -> None:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise ConfigError("NOT_FOUND", "产品不存在", status=404)
+    version_count = db.scalar(select(ProductVersion.id).where(ProductVersion.product_id == product_id).limit(1))
+    if version_count is not None:
+        raise ConfigError("REFERENCED", "产品下仍有版本，不能删除；请先删除或停用所有版本。", status=409)
+    db.delete(product)
+    db.flush()
+
+
 # ---- 产品版本 ----
 
 def create_product_version(db: Session, product_id, data) -> ProductVersion:
@@ -189,6 +193,20 @@ def set_product_version_status(db: Session, version_id, status: str) -> ProductV
     return version
 
 
+def delete_product_version(db: Session, version_id) -> None:
+    version = db.get(ProductVersion, version_id)
+    if version is None:
+        raise ConfigError("NOT_FOUND", "版本不存在", status=404)
+    source_ref = db.scalar(select(KnowledgeSource.id).where(
+        (KnowledgeSource.current_version_id == version_id) | (KnowledgeSource.pending_version_id == version_id)
+    ).limit(1))
+    task_ref = db.scalar(select(ProcessingTask.id).where(ProcessingTask.version_id == version_id).limit(1))
+    if source_ref is not None or task_ref is not None:
+        raise ConfigError("REFERENCED", "版本已被知识来源或处理任务引用，不能删除；请停用或执行清理流程。", status=409)
+    db.delete(version)
+    db.flush()
+
+
 # ---- 文档类型 / 产品形态 ----
 
 def create_document_type(db: Session, data) -> DocumentType:
@@ -225,6 +243,14 @@ def set_document_type_status(db: Session, obj_id, status: str) -> DocumentType:
     return obj
 
 
+def delete_document_type(db: Session, obj_id) -> None:
+    obj = db.get(DocumentType, obj_id)
+    if obj is None:
+        raise ConfigError("NOT_FOUND", "文档类型不存在", status=404)
+    db.delete(obj)
+    db.flush()
+
+
 def create_product_form(db: Session, data) -> ProductForm:
     obj = ProductForm(code=data.code.strip(), name=data.name.strip(), status=data.status, sort_order=data.sort_order)
     db.add(obj)
@@ -259,6 +285,14 @@ def set_product_form_status(db: Session, obj_id, status: str) -> ProductForm:
     return obj
 
 
+def delete_product_form(db: Session, obj_id) -> None:
+    obj = db.get(ProductForm, obj_id)
+    if obj is None:
+        raise ConfigError("NOT_FOUND", "产品形态不存在", status=404)
+    db.delete(obj)
+    db.flush()
+
+
 # ---- 来源优先级 ----
 
 def update_source_priorities(db: Session, items: list) -> list[SourcePriority]:
@@ -277,80 +311,3 @@ def update_source_priorities(db: Session, items: list) -> list[SourcePriority]:
         row.priority = priority
     db.flush()
     return list_source_priorities(db)
-
-
-# ---- LLM 配置 ----
-
-def _active_revision(db: Session, namespace: str) -> ConfigRevision | None:
-    return db.execute(
-        select(ConfigRevision).where(
-            ConfigRevision.namespace == namespace, ConfigRevision.status == "ACTIVE"
-        )
-    ).scalars().first()
-
-
-def _get_secret(db: Session, namespace: str, key_name: str) -> str | None:
-    secret = db.get(SecretValue, (namespace, key_name))
-    if secret is None or not secret.ciphertext:
-        return None
-    return crypto.decrypt(bytes(secret.ciphertext), get_settings().token_enc_key)
-
-
-def get_llm_config(db: Session) -> dict:
-    rev = _active_revision(db, LLM_NAMESPACE)
-    content = rev.content if rev else {}
-    has_key = _get_secret(db, LLM_NAMESPACE, LLM_API_KEY_NAME) is not None
-    return {"config": content, "has_api_key": has_key, "revision": rev.id if rev else None}
-
-
-def update_llm_config(db: Session, data, user_id) -> dict:
-    current = _active_revision(db, LLM_NAMESPACE)
-    if current is not None:
-        current.status = "RETIRED"
-    content = data.model_dump(exclude={"api_key"})
-    new_rev = ConfigRevision(
-        namespace=LLM_NAMESPACE,
-        content=content,
-        status="ACTIVE",
-        created_by_user_id=user_id,
-        activated_at=datetime.now(timezone.utc),
-    )
-    db.add(new_rev)
-    if data.api_key is not None:
-        if data.api_key == "":
-            secret = db.get(SecretValue, (LLM_NAMESPACE, LLM_API_KEY_NAME))
-            if secret is not None:
-                db.delete(secret)
-        else:
-            ciphertext = crypto.encrypt(data.api_key, get_settings().token_enc_key)
-            secret = db.get(SecretValue, (LLM_NAMESPACE, LLM_API_KEY_NAME))
-            if secret is None:
-                secret = SecretValue(
-                    namespace=LLM_NAMESPACE, key_name=LLM_API_KEY_NAME,
-                    ciphertext=ciphertext, key_version="1",
-                )
-                db.add(secret)
-            else:
-                secret.ciphertext = ciphertext
-    db.flush()
-    return get_llm_config(db)
-
-
-def test_llm_config(db: Session, data) -> dict:
-    if not data.enabled or not data.base_url or not data.model:
-        return {"ok": False, "message": "需先启用并填写 base_url 与 model"}
-    api_key = data.api_key if data.api_key not in (None, "") else _get_secret(db, LLM_NAMESPACE, LLM_API_KEY_NAME)
-    if not api_key:
-        return {"ok": False, "message": "未配置 API Key"}
-    url = f"{data.base_url.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"model": data.model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}
-    try:
-        resp = httpx.post(url, headers=headers, json=payload, timeout=data.timeout_seconds)
-        if 200 <= resp.status_code < 300:
-            return {"ok": True, "message": f"连接成功（HTTP {resp.status_code}）"}
-        return {"ok": False, "message": f"服务返回 HTTP {resp.status_code}: {resp.text[:120]}"}
-    except httpx.TimeoutException:
-        return {"ok": False, "message": "连接超时"}
-    except httpx.HTTPError as exc:
-        return {"ok": False, "message": f"连接失败: {exc}"}

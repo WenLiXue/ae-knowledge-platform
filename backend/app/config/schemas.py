@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 # ---- 目录查询（public） ----
@@ -120,39 +120,3 @@ class SourcePriorityPatch(BaseModel):
 
 class SourcePrioritiesUpdate(BaseModel):
     items: list[SourcePriorityPatch] = Field(min_length=1, max_length=50)
-
-
-# ---- LLM 配置 ----
-
-class LLMConfig(BaseModel):
-    provider: str = Field(default="openai-compatible", max_length=64)
-    base_url: str = Field(default="", max_length=512)
-    model: str = Field(default="", max_length=128)
-    temperature: float = Field(default=0.2, ge=0, le=2)
-    top_p: float = Field(default=1.0, ge=0, le=1)
-    max_tokens: int = Field(default=2048, ge=1, le=1_000_000)
-    timeout_seconds: int = Field(default=60, ge=1, le=600)
-    classification_model: str = Field(default="", max_length=128)
-    embedding_model: str = Field(default="", max_length=128)
-    enabled: bool = False
-
-    @field_validator("base_url")
-    @classmethod
-    def _validate_url(cls, value: str) -> str:
-        if value and not value.startswith(("http://", "https://")):
-            raise ValueError("base_url 必须以 http:// 或 https:// 开头")
-        return value
-
-
-class LLMConfigOut(LLMConfig):
-    has_api_key: bool = False
-
-
-class LLMConfigUpdate(LLMConfig):
-    # api_key：提供则更新；空字符串表示清除；None 表示保持不变
-    api_key: str | None = None
-
-
-class LLMTestResult(BaseModel):
-    ok: bool
-    message: str

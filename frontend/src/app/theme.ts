@@ -70,6 +70,16 @@ const theme = createTheme({
     button: { textTransform: "none", fontWeight: 600 },
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        "html, body, #root": {
+          width: "100%",
+          height: "100%",
+          margin: 0,
+          overflow: "hidden",
+        },
+      },
+    },
     // 按钮：原型 .ae-button / .btn —— 白底描边为默认，主蓝为 primary
     MuiButton: {
       styleOverrides: {

@@ -61,11 +61,67 @@ def test_catalog_requires_no_auth() -> None:
     assert client.get("/api/v1/catalog/product-forms").status_code == 200
 
 
+# ---- 文档类型正式目录（DD-19 Phase 1） ----
+
+# 12 类稳定 code 与排序：与迁移 eb6fca22ccd9、前端 QueryComposer 保持一致（AC-CLS-001）。
+BASELINE_DOCUMENT_TYPES = [
+    ("product-spec", "产品规格", 10),
+    ("product-whitepaper", "产品白皮书", 20),
+    ("requirement", "需求说明书", 30),
+    ("design", "设计文档", 40),
+    ("deployment-guide", "部署说明", 50),
+    ("operation-manual", "操作手册", 60),
+    ("test-report", "测试报告", 70),
+    ("fault-analysis", "故障分析", 80),
+    ("seg-case", "SEG 问题案件", 90),
+    ("compatibility-list", "兼容性清单", 100),
+    ("release-note", "版本说明", 110),
+    ("other", "其他资料", 999),
+]
+
+
+def _seed_document_types() -> None:
+    from app.db.models.catalog import DocumentType
+
+    with SessionLocal() as s:
+        for code, name, sort_order in BASELINE_DOCUMENT_TYPES:
+            s.add(DocumentType(code=code, name=name, sort_order=sort_order))
+        s.commit()
+
+
+def test_catalog_document_types_baseline(admin: dict) -> None:
+    """前后端和数据库使用同一套 12 类稳定 code，按 sort_order 返回且全部启用态。"""
+    _seed_document_types()
+    resp = client.get("/api/v1/catalog/document-types")
+    assert resp.status_code == 200
+    items = resp.json()["data"]["items"]
+    assert [(i["code"], i["name"], i["sort_order"], i["status"]) for i in items] == [
+        (code, name, sort_order, "ENABLED") for code, name, sort_order in BASELINE_DOCUMENT_TYPES
+    ]
+
+
+def test_catalog_document_types_exclude_disabled(admin: dict) -> None:
+    """停用的文档类型不进入查询目录，且顺序仍按 sort_order 升序。"""
+    _seed_document_types()
+    resp_types = client.get("/api/v1/admin/catalog/document-types", cookies=admin)
+    other_id = next(i["id"] for i in resp_types.json()["data"]["items"] if i["code"] == "other")
+    assert client.post(f"/api/v1/admin/catalog/document-types/{other_id}/disable", cookies=admin).status_code == 200
+
+    resp = client.get("/api/v1/catalog/document-types")
+    items = resp.json()["data"]["items"]
+    codes = [i["code"] for i in items]
+    assert "other" not in codes
+    assert codes == [code for code, _, _ in BASELINE_DOCUMENT_TYPES if code != "other"]
+    sorts = [i["sort_order"] for i in items]
+    assert sorts == sorted(sorts)
+
+
 # ---- 管理员权限 ----
 
 def test_admin_endpoints_require_admin(user: dict) -> None:
     assert client.get("/api/v1/admin/catalog/products", cookies=user).status_code == 403
-    assert client.get("/api/v1/admin/llm-config", cookies=user).status_code == 403
+    assert client.get("/api/v1/admin/llm-config/models", cookies=user).status_code == 403
+    assert client.get("/api/v1/admin/llm-config/service-bindings", cookies=user).status_code == 403
     assert client.get("/api/v1/admin/source-priorities", cookies=user).status_code == 403
     assert client.get("/api/v1/admin/catalog/products").status_code == 401  # 未登录
 
@@ -152,52 +208,3 @@ def test_source_priorities_duplicate_priority_rejected(admin: dict) -> None:
     )
     assert resp.status_code == 409
     assert resp.json()["detail"]["code"] == "DUPLICATE_PRIORITY"
-
-
-# ---- LLM 配置 ----
-
-def test_llm_config_api_key_not_exposed(admin: dict) -> None:
-    initial = client.get("/api/v1/admin/llm-config", cookies=admin).json()["data"]
-    assert initial["has_api_key"] is False
-
-    payload = {
-        "provider": "openai-compatible",
-        "base_url": "http://localhost:9999/v1",
-        "model": "test-model",
-        "temperature": 0.2,
-        "top_p": 1.0,
-        "max_tokens": 2048,
-        "timeout_seconds": 60,
-        "classification_model": "",
-        "embedding_model": "",
-        "enabled": True,
-        "api_key": "sk-secret-123",
-    }
-    resp = client.put("/api/v1/admin/llm-config", json=payload, cookies=admin)
-    assert resp.status_code == 200
-    body = resp.json()["data"]
-    assert body["has_api_key"] is True
-    assert "sk-secret-123" not in resp.text
-    assert "api_key" not in body
-
-    from sqlalchemy import text as sa_text
-
-    with SessionLocal() as s:
-        ct = s.execute(
-            sa_text("SELECT ciphertext FROM platform.secret_values WHERE namespace='llm' AND key_name='api_key'")
-        ).scalar_one()
-    assert b"sk-secret-123" not in bytes(ct)
-
-
-def test_llm_config_clear_api_key(admin: dict) -> None:
-    payload = {
-        "base_url": "http://localhost:9999/v1", "model": "m",
-        "provider": "openai-compatible", "temperature": 0.2, "top_p": 1.0,
-        "max_tokens": 2048, "timeout_seconds": 60,
-        "classification_model": "", "embedding_model": "", "enabled": False,
-        "api_key": "sk-tmp",
-    }
-    client.put("/api/v1/admin/llm-config", json=payload, cookies=admin)
-    clear = {**payload, "api_key": ""}
-    resp = client.put("/api/v1/admin/llm-config", json=clear, cookies=admin)
-    assert resp.json()["data"]["has_api_key"] is False

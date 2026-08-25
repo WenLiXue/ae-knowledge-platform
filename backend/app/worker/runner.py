@@ -29,6 +29,7 @@ from ..feishu_auth.base import FeishuOAuthClient
 from ..feishu_auth.factory import get_feishu_oauth_client
 from ..feishu_provider.base import FeishuDocumentProvider
 from ..feishu_provider.factory import get_feishu_provider
+from ..search.factory import get_search_adapter
 from ..storage.local import LocalObjectStore
 from . import pipeline
 
@@ -53,6 +54,7 @@ class WorkerRunner:
         provider: FeishuDocumentProvider | None = None,
         oauth_client: FeishuOAuthClient | None = None,
         store=None,
+        search=None,
     ):
         settings = get_settings()
         self.session_factory = session_factory or SessionLocal
@@ -70,6 +72,7 @@ class WorkerRunner:
         self.provider = provider or get_feishu_provider(settings)
         self.oauth_client = oauth_client or get_feishu_oauth_client(settings)
         self.store = store or LocalObjectStore(settings.storage_root)
+        self.search = search or get_search_adapter(settings)
 
     def claim_and_execute(self, batch_size: int | None = None) -> list[str]:
         """执行一个轮询周期：领取一批任务并逐个执行，返回每个任务的执行结果。"""
@@ -179,6 +182,7 @@ class WorkerRunner:
                         provider=self.provider,
                         oauth_client=self.oauth_client,
                         store=self.store,
+                        search=self.search,
                     )
                 except pipeline.PipelineError as exc:
                     return self._handle_failure(session, locked, exc)

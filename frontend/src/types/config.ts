@@ -35,20 +35,66 @@ export interface SourcePriority {
   status: string;
 }
 
-export interface LlmConfig {
+// ---- LLM 模型管理与服务配置（DD-20） ----
+
+export type LlmModelType = "CHAT" | "EMBEDDING" | "RERANK";
+
+export interface LlmModel {
+  id: string;
+  name: string;
+  model_type: LlmModelType;
   provider: string;
   base_url: string;
-  model: string;
-  temperature: number;
-  top_p: number;
-  max_tokens: number;
-  timeout_seconds: number;
-  classification_model: string;
-  embedding_model: string;
+  model_name: string;
   enabled: boolean;
   has_api_key: boolean;
+  used_by: string[];
 }
 
-export interface LlmConfigSaveInput extends Omit<LlmConfig, "has_api_key"> {
+export interface LlmModelSaveInput {
+  name: string;
+  model_type: LlmModelType;
+  provider: string;
+  base_url: string;
+  model_name: string;
   api_key?: string | null;
+  enabled: boolean;
+  expected_revision: number | null;
+}
+
+export interface LlmModelTestInput {
+  model_type: LlmModelType;
+  provider: string;
+  base_url: string;
+  model_name: string;
+  api_key?: string | null;
+  model_id?: string | null;
+}
+
+export interface LlmModelTestResult {
+  ok: boolean;
+  message: string;
+  duration_ms: number;
+  dimension?: number | null;
+}
+
+export type ServiceType = "QA" | "DOCUMENT_CLASSIFICATION" | "DOCUMENT_EMBEDDING" | "RETRIEVAL_RERANK";
+
+export interface ServiceBinding {
+  service_type: ServiceType;
+  display_name: string;
+  description: string;
+  required: boolean;
+  model: { id: string; name: string; model_name: string } | null;
+}
+
+export interface ServiceBindings {
+  revision: number | null;
+  services: ServiceBinding[];
+  models: LlmModel[];
+}
+
+export interface ServiceBindingsSaveInput {
+  expected_revision: number | null;
+  bindings: Record<ServiceType, string | null>;
 }

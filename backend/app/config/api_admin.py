@@ -25,10 +25,6 @@ from .schemas import (
     DocumentTypeCreate,
     DocumentTypeOut,
     DocumentTypeUpdate,
-    LLMConfig,
-    LLMConfigOut,
-    LLMConfigUpdate,
-    LLMTestResult,
     ProductCreate,
     ProductFormCreate,
     ProductFormOut,
@@ -214,6 +210,23 @@ def admin_enable_product(
     return {"data": ProductOut(**_catalog_dict(p))}
 
 
+@router.delete("/catalog/products/{product_id}", status_code=204)
+def admin_delete_product(
+    product_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product.delete")),
+):
+    before = db.get(Product, product_id)
+    try:
+        service.delete_product(db, product_id)
+    except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product.delete", error_code=exc.code, target_type="PRODUCT", target_id=str(product_id), target_name=before.name if before else None)
+        raise _handle(exc)
+    _audit_success(db, admin, request, "config.catalog.product.delete", target_type="PRODUCT", target_id=str(product_id), target_name=before.name if before else None)
+    db.commit()
+
+
 # ---- 产品版本 ----
 
 @router.get("/catalog/products/{product_id}/versions")
@@ -321,6 +334,23 @@ def admin_enable_version(
     return {"data": _version_dict(v)}
 
 
+@router.delete("/catalog/versions/{version_id}", status_code=204)
+def admin_delete_version(
+    version_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.version.delete")),
+):
+    before = db.get(ProductVersion, version_id)
+    try:
+        service.delete_product_version(db, version_id)
+    except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.version.delete", error_code=exc.code, target_type="PRODUCT_VERSION", target_id=str(version_id), target_name=before.version_code if before else None)
+        raise _handle(exc)
+    _audit_success(db, admin, request, "config.catalog.version.delete", target_type="PRODUCT_VERSION", target_id=str(version_id), target_name=before.version_code if before else None)
+    db.commit()
+
+
 # ---- 文档类型 ----
 
 @router.get("/catalog/document-types")
@@ -422,6 +452,23 @@ def admin_enable_document_type(
     )
     db.commit()
     return {"data": DocumentTypeOut(**_catalog_dict(t), description=t.description)}
+
+
+@router.delete("/catalog/document-types/{type_id}", status_code=204)
+def admin_delete_document_type(
+    type_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.document_type.delete")),
+):
+    before = db.get(DocumentType, type_id)
+    try:
+        service.delete_document_type(db, type_id)
+    except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.document_type.delete", error_code=exc.code, target_type="DOCUMENT_TYPE", target_id=str(type_id), target_name=before.name if before else None)
+        raise _handle(exc)
+    _audit_success(db, admin, request, "config.catalog.document_type.delete", target_type="DOCUMENT_TYPE", target_id=str(type_id), target_name=before.name if before else None)
+    db.commit()
 
 
 # ---- 产品形态 ----
@@ -526,6 +573,23 @@ def admin_enable_product_form(
     return {"data": ProductFormOut(**_catalog_dict(f))}
 
 
+@router.delete("/catalog/product-forms/{form_id}", status_code=204)
+def admin_delete_product_form(
+    form_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_action("config.catalog.product_form.delete")),
+):
+    before = db.get(ProductForm, form_id)
+    try:
+        service.delete_product_form(db, form_id)
+    except service.ConfigError as exc:
+        _audit_failure(admin, request, "config.catalog.product_form.delete", error_code=exc.code, target_type="PRODUCT_FORM", target_id=str(form_id), target_name=before.name if before else None)
+        raise _handle(exc)
+    _audit_success(db, admin, request, "config.catalog.product_form.delete", target_type="PRODUCT_FORM", target_id=str(form_id), target_name=before.name if before else None)
+    db.commit()
+
+
 # ---- 来源优先级 ----
 
 @router.get("/source-priorities")
@@ -562,53 +626,3 @@ def admin_update_source_priorities(
         SourcePriorityOut(source_code=sp.source_code, display_name=sp.display_name, priority=sp.priority, status=sp.status)
         for sp in rows
     ]}}
-
-
-# ---- LLM 配置 ----
-
-@router.get("/llm-config")
-def admin_get_llm_config(db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
-    data = service.get_llm_config(db)
-    cfg = LLMConfig.model_validate(data["config"])
-    return {"data": LLMConfigOut(**cfg.model_dump(), has_api_key=data["has_api_key"]).model_dump()}
-
-
-@router.put("/llm-config")
-def admin_update_llm_config(
-    data: LLMConfigUpdate,
-    request: Request,
-    db: Session = Depends(get_db),
-    admin: User = Depends(require_admin_action("config.llm.update")),
-):
-    before = service.get_llm_config(db)
-    try:
-        result = service.update_llm_config(db, data, admin.id)
-    except service.ConfigError as exc:
-        _audit_failure(admin, request, "config.llm.update", error_code=exc.code, target_type="LLM_CONFIG", target_name="LLM 配置")
-        raise _handle(exc)
-    before_cfg, after_cfg = before["config"], result["config"]
-    changes = audit_service.build_changes({
-        "provider": (before_cfg.get("provider"), after_cfg.get("provider")),
-        "base_url": (before_cfg.get("base_url"), after_cfg.get("base_url")),
-        "model": (before_cfg.get("model"), after_cfg.get("model")),
-        "temperature": (before_cfg.get("temperature"), after_cfg.get("temperature")),
-        "top_p": (before_cfg.get("top_p"), after_cfg.get("top_p")),
-        "max_tokens": (before_cfg.get("max_tokens"), after_cfg.get("max_tokens")),
-        "timeout_seconds": (before_cfg.get("timeout_seconds"), after_cfg.get("timeout_seconds")),
-        "classification_model": (before_cfg.get("classification_model"), after_cfg.get("classification_model")),
-        "embedding_model": (before_cfg.get("embedding_model"), after_cfg.get("embedding_model")),
-        "enabled": (before_cfg.get("enabled"), after_cfg.get("enabled")),
-        "has_api_key": (before["has_api_key"], result["has_api_key"]),
-    })
-    _audit_success(
-        db, admin, request, "config.llm.update", target_type="LLM_CONFIG", target_name="LLM 配置", changes=changes,
-    )
-    db.commit()
-    cfg = LLMConfig.model_validate(result["config"])
-    return {"data": LLMConfigOut(**cfg.model_dump(), has_api_key=result["has_api_key"]).model_dump()}
-
-
-@router.post("/llm-config/test")
-def admin_test_llm_config(data: LLMConfigUpdate, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
-    result = service.test_llm_config(db, data)
-    return {"data": LLMTestResult(**result).model_dump()}

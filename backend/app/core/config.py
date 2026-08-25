@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     # 是否把 ERROR+ 日志 best-effort 持久化到 platform.log_events
     log_persist_errors: bool = True
 
+    # ---- 分类与 RAG 功能开关（DD-19 Phase 0） ----
+    # 真实能力逐阶段上线：默认全部关闭，仅走 Mock/旧流程；每个开关
+    # 在对应 Phase（分类 Phase 3、索引 Phase 4、问答 Phase 6）启用时才打开。
+    # 打开前必须满足该 Phase 的验收标准，并确认回滚边界。
+    feature_real_classification: bool = False
+    feature_real_indexing: bool = False
+    feature_real_qa: bool = False
+
     # 任务 Worker 配置
     worker_id: str = "worker-local"
     worker_batch_size: int = 5
@@ -50,6 +58,16 @@ class Settings(BaseSettings):
     feishu_timeout_seconds: float = 10.0
     # 本地对象存储根目录（对象存储接入前，Worker FETCH 的 raw 内容落盘位置）
     storage_root: str = "storage"
+
+    # 检索引擎与向量化（DD-19 §11.2，Phase 4）
+    # search_engine=fake：内存实现（开发/测试默认）；opensearch：OpenSearch REST（生产首选）
+    search_engine: str = "fake"
+    search_index_name: str = "knowledge_chunks"
+    opensearch_base_url: str = ""
+    opensearch_username: str = ""
+    opensearch_password: str = ""
+    # 文档向量化单批最大条数（EMBED 阶段）
+    embedding_batch_size: int = 32
 
     # 飞书 OAuth / 用户绑定（凭据仅从 .env/环境变量读取，禁止写入代码）
     # 授权/登录 host（扫码登录 passport 授权地址前缀）
