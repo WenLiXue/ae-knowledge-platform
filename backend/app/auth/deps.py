@@ -30,6 +30,16 @@ def get_current_user(
     return user
 
 
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """必需管理员：非管理员返回 403 FORBIDDEN。"""
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "需要管理员权限"},
+        )
+    return user
+
+
 def get_optional_user(
     request: Request, db: Session = Depends(get_db)
 ) -> User | None:

@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import { RequireAuth } from "../auth/AuthContext";
+import { RequireAdmin, RequireAuth } from "../auth/AuthContext";
 import { PlaceholderPage } from "../components/PlaceholderPage";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { MainLayout } from "../layouts/MainLayout";
@@ -7,6 +7,8 @@ import { ConversationPage } from "../pages/ConversationPage";
 import { DocumentDetailPage } from "../pages/DocumentDetailPage";
 import { DocumentImportPage } from "../pages/DocumentImportPage";
 import { DocumentsPage } from "../pages/DocumentsPage";
+import { KnowledgeConfigPage } from "../pages/admin/KnowledgeConfigPage";
+import { LlmConfigPage } from "../pages/admin/LlmConfigPage";
 import { LoginPage } from "../pages/LoginPage";
 import { SearchPage } from "../pages/SearchPage";
 
@@ -62,20 +64,34 @@ export const router = createBrowserRouter([
       {
         path: "admin/knowledge-config",
         element: (
-          <PlaceholderPage title="知识库配置" description="管理知识库、产品、版本与文档类型等基础字典。" />
+          <RequireAdmin>
+            <KnowledgeConfigPage />
+          </RequireAdmin>
         ),
       },
       {
         path: "admin/llm-config",
-        element: <PlaceholderPage title="LLM 配置" description="配置大模型服务商、模型参数与提示词。" />,
+        element: (
+          <RequireAdmin>
+            <LlmConfigPage />
+          </RequireAdmin>
+        ),
       },
       {
         path: "admin/users",
-        element: <PlaceholderPage title="用户管理" description="管理系统用户、角色与飞书绑定。" />,
+        element: (
+          <RequireAdmin>
+            <PlaceholderPage title="用户管理" description="管理系统用户、角色与飞书绑定。" />
+          </RequireAdmin>
+        ),
       },
       {
         path: "admin/audit-logs",
-        element: <PlaceholderPage title="审计日志" description="查询登录、导入、配置变更等操作审计记录。" />,
+        element: (
+          <RequireAdmin>
+            <PlaceholderPage title="审计日志" description="查询登录、导入、配置变更等操作审计记录。" />
+          </RequireAdmin>
+        ),
       },
       {
         path: "settings/profile",

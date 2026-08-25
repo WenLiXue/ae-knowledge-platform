@@ -59,6 +59,9 @@ def clean_tables(setup_test_database) -> None:
                 "TRUNCATE tasking.task_attempts, tasking.processing_tasks, "
                 "knowledge.feishu_source_details, knowledge.document_versions, "
                 "knowledge.knowledge_sources, "
+                "knowledge.source_priorities, knowledge.product_forms, "
+                "knowledge.document_types, knowledge.product_versions, knowledge.products, "
+                "platform.secret_values, platform.config_revisions, "
                 "auth.oauth_states, auth.login_sessions, auth.external_credentials, "
                 "auth.external_identities, auth.users RESTART IDENTITY CASCADE"
             )

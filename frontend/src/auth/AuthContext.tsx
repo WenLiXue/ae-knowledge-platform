@@ -92,3 +92,19 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
   return <>{children}</>;
 }
+
+/** 仅管理员可访问：非管理员跳转首页。 */
+export function RequireAdmin({ children }: { children: ReactNode }) {
+  const { user, initializing } = useAuth();
+
+  if (initializing) {
+    return <FullPageLoading />;
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.role !== "admin") {
+    return <Navigate to="/search" replace />;
+  }
+  return <>{children}</>;
+}
