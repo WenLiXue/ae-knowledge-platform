@@ -155,6 +155,7 @@ def test_factory_unsupported_provider() -> None:
         config_revision=1,
         model_config_id="m1",
         provider="google",
+        protocol="google",  # 非 openai-compatible 协议 → factory 抛 UNSUPPORTED_PROVIDER
         base_url="http://x",
         model_name="m",
         api_key="k",

@@ -94,6 +94,12 @@ def execute_stage(
     search=None,
 ) -> str | None:
     """执行一个阶段任务，返回下一个任务类型；None 表示流水线终止。"""
+    # 答案任务不绑定来源/版本（payload 携带 answer_id），先分发避免空 source/version 校验；
+    # 延迟导入避免与 qa.worker（引用本模块 PipelineError）循环导入
+    if task.task_type == "GENERATE_ANSWER":
+        from ..qa.worker import run_generate_answer
+
+        return run_generate_answer(session, task, search=search)
     source = session.get(KnowledgeSource, task.source_id)
     version = session.get(DocumentVersion, task.version_id)
     if source is None or version is None:

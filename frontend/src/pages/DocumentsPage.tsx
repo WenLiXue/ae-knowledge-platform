@@ -27,7 +27,7 @@ import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 import { RESOURCE_TYPE_LABEL, SOURCE_STATUS_META } from "../types/statusMeta";
-import type { KnowledgeSource } from "../types/documents";
+import type { ClassificationSummary, KnowledgeSource } from "../types/documents";
 
 const SOURCE_STATUS_OPTIONS = Object.keys(SOURCE_STATUS_META);
 const TYPE_OPTIONS = ["WIKI", "DOCX"];
@@ -157,7 +157,15 @@ export function DocumentsPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {visibleSources.map((source) => (
+                {visibleSources.map((source) => {
+                  // 列表分类为轻量 Summary 形状（产品/类型），详情才是 Detail 形状
+                  const cls: ClassificationSummary | null =
+                    source.classification && "product_code" in source.classification
+                      ? source.classification
+                      : null;
+                  const productName = cls?.product_name ?? cls?.product_code ?? null;
+                  const typeName = cls?.document_type_name ?? cls?.document_type_code ?? null;
+                  return (
                   <TableRow
                     key={source.source_id}
                     hover
@@ -181,7 +189,15 @@ export function DocumentsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {source.status === "PENDING_CONFIRMATION" ? (
+                      {productName || typeName ? (
+                        <Typography variant="body2">
+                          {productName && <Box component="span" fontWeight={600}>{productName}</Box>}
+                          {productName && typeName && (
+                            <Box component="span" sx={{ color: "text.disabled", mx: 0.5 }}>·</Box>
+                          )}
+                          {typeName && <Box component="span" sx={{ color: "text.secondary" }}>{typeName}</Box>}
+                        </Typography>
+                      ) : source.status === "PENDING_CONFIRMATION" ? (
                         <Chip size="small" label="待分类确认" color="warning" variant="outlined" />
                       ) : (
                         "—"
@@ -203,7 +219,8 @@ export function DocumentsPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}

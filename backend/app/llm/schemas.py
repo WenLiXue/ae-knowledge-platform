@@ -16,6 +16,7 @@ ModelType = Literal["CHAT", "EMBEDDING", "RERANK"]
 # 协议行为统一走 openai-compatible 适配器，服务商名称仅作管理员识别用途，
 # 不硬编码客户特定枚举值。运行时适配器选择由后续 DD-19 按 provider 映射。
 Provider = str
+Protocol = Literal["openai-compatible", "anthropic"]
 ServiceType = Literal["QA", "DOCUMENT_CLASSIFICATION", "DOCUMENT_EMBEDDING", "RETRIEVAL_RERANK"]
 
 
@@ -27,8 +28,11 @@ class LlmModelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     model_type: ModelType
     provider: Provider = Field(default="openai-compatible", min_length=1, max_length=64)
+    protocol: Protocol = "openai-compatible"
     base_url: str = Field(min_length=1, max_length=512)
     model_name: str = Field(min_length=1, max_length=128)
+    embedding_dimension: int | None = Field(default=None, ge=1, le=32768)
+    normalize_embeddings: bool | None = None
     api_key: str | None = None
     enabled: bool = True
     expected_revision: int | None = None
@@ -40,8 +44,11 @@ class LlmModelUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     model_type: ModelType | None = None
     provider: Provider | None = Field(default=None, min_length=1, max_length=64)
+    protocol: Protocol | None = None
     base_url: str | None = Field(default=None, min_length=1, max_length=512)
     model_name: str | None = Field(default=None, min_length=1, max_length=128)
+    embedding_dimension: int | None = Field(default=None, ge=1, le=32768)
+    normalize_embeddings: bool | None = None
     api_key: str | None = None
     enabled: bool | None = None
     expected_revision: int | None = None
@@ -54,8 +61,11 @@ class LlmModelOut(BaseModel):
     name: str
     model_type: ModelType
     provider: str
+    protocol: Protocol
     base_url: str
     model_name: str
+    embedding_dimension: int | None
+    normalize_embeddings: bool | None
     enabled: bool
     has_api_key: bool
     used_by: list[str]
@@ -78,8 +88,11 @@ class LlmModelTestRequest(BaseModel):
 
     model_type: ModelType
     provider: Provider = Field(default="openai-compatible", min_length=1, max_length=64)
+    protocol: Protocol = "openai-compatible"
     base_url: str = Field(min_length=1, max_length=512)
     model_name: str = Field(min_length=1, max_length=128)
+    embedding_dimension: int | None = Field(default=None, ge=1, le=32768)
+    normalize_embeddings: bool | None = None
     api_key: str | None = None
     model_id: str | None = None
 

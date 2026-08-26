@@ -19,6 +19,12 @@ _DEFAULT_TEST_URL = (
 os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_URL))
 # 测试环境强制使用 Fake 飞书实现（真实环境变量优先于 .env，隔离开发者本机的 real 配置）
 os.environ["FEISHU_PROVIDER"] = "fake"
+# 测试环境强制真实能力开关为 false（优先级高于 .env），避免 dev .env 的
+# FEATURE_REAL_QA/INDEXING/CLASSIFICATION=true 污染测试库（测试库无 LLM 配置）；
+# 需要真实路径的用例自行 monkeypatch 置 true。
+os.environ["FEATURE_REAL_QA"] = "false"
+os.environ["FEATURE_REAL_CLASSIFICATION"] = "false"
+os.environ["FEATURE_REAL_INDEXING"] = "false"
 # 审计导出文件写入系统临时目录，避免污染仓库
 os.environ.setdefault(
     "AUDIT_EXPORT_DIR", os.path.join(tempfile.gettempdir(), "ae_audit_exports_test")
@@ -52,6 +58,13 @@ def setup_test_database() -> None:
     cfg = Config("alembic.ini")
     command.upgrade(cfg, "head")
 
+    # 会话级初始化 LangGraph checkpoint（agent_runtime schema）。
+    # 必须在任何开放事务之外调用：setup() 含 CREATE INDEX CONCURRENTLY，
+    # 会阻塞等待所有活跃事务结束。
+    from app.agent.runtime import ensure_checkpoint_schema
+
+    ensure_checkpoint_schema()
+
 
 @pytest.fixture(autouse=True)
 def clean_tables(setup_test_database) -> None:
@@ -69,6 +82,9 @@ def clean_tables(setup_test_database) -> None:
                 "platform.secret_values, platform.config_revisions, "
                 "platform.audit_exports, platform.audit_logs, "
                 "platform.log_events, "
+                "conversation.answer_feedback, conversation.answer_citations, "
+                "conversation.answers, conversation.messages, conversation.conversations, "
+                "conversation.conversation_memories, conversation.agent_runs, "
                 "conversation.retrieval_candidates, conversation.retrieval_runs, "
                 "auth.oauth_states, auth.login_sessions, auth.external_credentials, "
                 "auth.external_identities, auth.users RESTART IDENTITY CASCADE"

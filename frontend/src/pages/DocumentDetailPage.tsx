@@ -91,6 +91,12 @@ export function DocumentDetailPage() {
   }
 
   const failed = source.status === "FAILED";
+  const classification = source.classification;
+  const classifiedOutput = classification?.output ?? {};
+  const outputText = (key: string) => {
+    const value = classifiedOutput[key];
+    return value === null || value === undefined || value === "" ? "—" : String(value);
+  };
 
   return (
     <>
@@ -164,6 +170,56 @@ export function DocumentDetailPage() {
           <InfoRow label="处理阶段">
             <StatusChip value={source.processing_stage} kind="stage" />
           </InfoRow>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            分类结果
+          </Typography>
+          {!classification ? (
+            <Typography variant="body2" color="text.secondary">
+              当前版本尚未生成分类结果。完成分类任务后，这里会显示模型判断和提取的元数据。
+            </Typography>
+          ) : (
+            <>
+              <InfoRow label="相关性">
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip
+                    size="small"
+                    label={classification.relevance ?? "未判定"}
+                    color={classification.relevance === "RELEVANT" ? "success" : classification.relevance === "UNCERTAIN" ? "warning" : "default"}
+                    variant="outlined"
+                  />
+                  {classification.relevance_confidence !== null && (
+                    <Typography variant="body2" color="text.secondary">
+                      置信度 {(classification.relevance_confidence * 100).toFixed(1)}%
+                    </Typography>
+                  )}
+                </Stack>
+              </InfoRow>
+              <InfoRow label="产品 / 版本">
+                {outputText("product_code")} / {outputText("product_version_code")}
+              </InfoRow>
+              <InfoRow label="文档类型 / 产品形态">
+                {outputText("document_type_code")} / {outputText("product_form_code")}
+              </InfoRow>
+              <InfoRow label="模块 / 业务主题">
+                {classification.metadata.module_name ?? "—"} / {classification.metadata.business_topic ?? "—"}
+              </InfoRow>
+              <InfoRow label="摘要">
+                {classification.metadata.summary ?? outputText("summary")}
+              </InfoRow>
+              <InfoRow label="关键词">
+                {classification.metadata.keywords.length > 0 ? classification.metadata.keywords.join("、") : "—"}
+              </InfoRow>
+              {classification.reason_summary && <InfoRow label="判定说明">{classification.reason_summary}</InfoRow>}
+              {classification.missing_fields.length > 0 && (
+                <InfoRow label="缺失字段">{classification.missing_fields.join("、")}</InfoRow>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

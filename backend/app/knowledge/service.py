@@ -7,10 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..db.models.catalog import DocumentType, Product, ProductVersion
 from ..db.models.knowledge import DocumentVersion, FeishuSourceDetail, KnowledgeSource
 from ..db.models.task import ProcessingTask
+from ..db.models.rag import ClassificationResult, DocumentMetadata
 from . import repository
 
 FETCH_TASK_TYPE = "FETCH"
@@ -26,6 +29,7 @@ class SubmitItemIn:
     revision: str | None = None
     modified_at: datetime | None = None
     owner_name: str | None = None
+    original_url: str | None = None
 
 
 @dataclass
@@ -103,6 +107,7 @@ def submit_feishu_sources(
             source_id=source.id,
             resource_type=item.resource_type.upper(),
             resource_token=canonical_key,
+            original_url=item.original_url,
             last_seen_revision=item.revision,
             last_seen_modified_at=item.modified_at,
         )
@@ -183,11 +188,52 @@ def _build_duplicate_outcome(
     )
 
 
+def _list_classifications(session: Session, version_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """列表级轻量分类：产品/版本/文档类型（不含置信度、证据），避免逐来源 N+1。"""
+    if not version_ids:
+        return {}
+    metas = {
+        m.version_id: m
+        for m in session.execute(
+            select(DocumentMetadata).where(DocumentMetadata.version_id.in_(version_ids))
+        ).scalars()
+    }
+    if not metas:
+        return {}
+
+    def _map(model, ids: set) -> dict:
+        ids = {i for i in ids if i is not None}
+        if not ids:
+            return {}
+        return {row.id: row for row in session.execute(select(model).where(model.id.in_(ids))).scalars()}
+
+    products = _map(Product, {m.product_id for m in metas.values()})
+    versions = _map(ProductVersion, {m.product_version_id for m in metas.values()})
+    doc_types = _map(DocumentType, {m.document_type_id for m in metas.values()})
+
+    out: dict[uuid.UUID, dict] = {}
+    for vid, meta in metas.items():
+        product = products.get(meta.product_id) if meta.product_id else None
+        pv = versions.get(meta.product_version_id) if meta.product_version_id else None
+        doc_type = doc_types.get(meta.document_type_id) if meta.document_type_id else None
+        out[vid] = {
+            "product_code": product.code if product else None,
+            "product_name": product.name if product else None,
+            "product_version_code": pv.version_code if pv else None,
+            "document_type_code": doc_type.code if doc_type else None,
+            "document_type_name": doc_type.name if doc_type else None,
+        }
+    return out
+
+
 def list_knowledge_sources(session: Session) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
+    version_ids: list[uuid.UUID] = []
     for source, detail in repository.list_sources_with_detail(session):
         latest = repository.get_latest_version(session, source.id)
         task = repository.get_latest_task(session, source.id)
+        if latest is not None:
+            version_ids.append(latest.id)
         items.append(
             {
                 **_source_display_source(source),
@@ -199,6 +245,10 @@ def list_knowledge_sources(session: Session) -> list[dict[str, object]]:
                 "task_status": task.status if task else None,
             }
         )
+    classifications = _list_classifications(session, version_ids)
+    for item in items:
+        version_id = item.get("version_id")
+        item["classification"] = classifications.get(uuid.UUID(str(version_id))) if version_id else None
     return items
 
 
@@ -209,6 +259,38 @@ def get_knowledge_source(session: Session, source_id: uuid.UUID) -> dict[str, ob
     detail = repository.get_source_detail(session, source_id)
     latest = repository.get_latest_version(session, source_id)
     task = repository.get_latest_task(session, source_id)
+    classification = None
+    if latest is not None:
+        result = session.execute(
+            select(ClassificationResult)
+            .where(ClassificationResult.version_id == latest.id)
+            .order_by(ClassificationResult.created_at.desc())
+            .limit(1)
+        ).scalars().first()
+        metadata = session.get(DocumentMetadata, latest.id)
+        if result is not None or metadata is not None:
+            output = (result.output_json if result else None) or {}
+            classification = {
+                "relevance": result.relevance if result else None,
+                "relevance_confidence": float(result.relevance_confidence) if result and result.relevance_confidence is not None else None,
+                "reason_summary": result.reason_summary if result else None,
+                "missing_fields": (result.missing_fields or []) if result else [],
+                "evidence": (result.evidence_json or []) if result else [],
+                "output": output,
+                "model_key": result.model_key if result else None,
+                "config_revision": result.classification_config_revision if result else None,
+                "created_at": result.created_at.isoformat() if result and result.created_at else None,
+                "metadata": {
+                    "product_id": str(metadata.product_id) if metadata and metadata.product_id else None,
+                    "product_version_id": str(metadata.product_version_id) if metadata and metadata.product_version_id else None,
+                    "document_type_id": str(metadata.document_type_id) if metadata and metadata.document_type_id else None,
+                    "product_form_id": str(metadata.product_form_id) if metadata and metadata.product_form_id else None,
+                    "module_name": metadata.module_name if metadata else None,
+                    "business_topic": metadata.business_topic if metadata else None,
+                    "summary": metadata.summary if metadata else None,
+                    "keywords": metadata.keywords if metadata else [],
+                },
+            }
     return {
         **_source_display_source(source),
         "resource_token": detail.resource_token if detail else None,
@@ -222,6 +304,7 @@ def get_knowledge_source(session: Session, source_id: uuid.UUID) -> dict[str, ob
         "task_status": task.status if task else None,
         "last_error_code": task.last_error_code if task else None,
         "last_error_summary": task.last_error_summary if task else None,
+        "classification": classification,
     }
 
 

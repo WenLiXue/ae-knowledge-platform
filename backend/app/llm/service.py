@@ -256,8 +256,11 @@ def _model_out(db: Session, state: dict, model: dict) -> dict:
         "name": model["name"],
         "model_type": model["model_type"],
         "provider": model["provider"],
+        "protocol": model.get("protocol", "openai-compatible"),
         "base_url": model["base_url"],
         "model_name": model["model_name"],
+        "embedding_dimension": model.get("embedding_dimension"),
+        "normalize_embeddings": model.get("normalize_embeddings"),
         "enabled": model["enabled"],
         "has_api_key": _get_secret(db, model["id"]) is not None,
         "used_by": _used_by(state, model["id"]),
@@ -292,8 +295,16 @@ def create_model(db: Session, data, user_id) -> dict:
         "name": name,
         "model_type": data.model_type,
         "provider": data.provider,
+        "protocol": data.protocol,
         "base_url": base_url,
         "model_name": model_name,
+        "embedding_dimension": (
+            data.embedding_dimension or 1536 if data.model_type == "EMBEDDING" else None
+        ),
+        "normalize_embeddings": (
+            data.normalize_embeddings if data.model_type == "EMBEDDING" and data.normalize_embeddings is not None
+            else True if data.model_type == "EMBEDDING" else None
+        ),
         "enabled": data.enabled,
     }
     state["models"][model_id] = model
@@ -325,12 +336,22 @@ def update_model(db: Session, model_id: str, data, user_id) -> dict:
     if data.provider is not None:
         _check_provider(data.provider)
         model["provider"] = data.provider
+    if data.protocol is not None:
+        model["protocol"] = data.protocol
     if data.base_url is not None:
         base_url = _normalize_base_url(data.base_url)
         _validate_endpoint(base_url)
         model["base_url"] = base_url
     if data.model_name is not None:
         model["model_name"] = data.model_name.strip()
+    if data.embedding_dimension is not None:
+        if model["model_type"] != "EMBEDDING":
+            raise LLMConfigError("INVALID_MODEL_PARAMETER", "只有 Embedding 模型可以配置向量维度", status=422)
+        model["embedding_dimension"] = data.embedding_dimension
+    if data.normalize_embeddings is not None:
+        if model["model_type"] != "EMBEDDING":
+            raise LLMConfigError("INVALID_MODEL_PARAMETER", "只有 Embedding 模型可以配置归一化", status=422)
+        model["normalize_embeddings"] = data.normalize_embeddings
     if data.enabled is not None:
         if not data.enabled and model["enabled"] and used_by:
             raise LLMConfigError("MODEL_CONFIG_IN_USE", _in_use_message(used_by), status=409)

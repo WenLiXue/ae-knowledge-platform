@@ -9,6 +9,7 @@ from sqlalchemy import inspect, text
 from .audit.api import router as audit_router
 from .auth.api import router as auth_router
 from .classify.api_admin import router as classification_admin_router
+from .conversation.api import router as conversation_router
 from .config.api_admin import router as admin_config_router
 from .config.api_public import router as catalog_router
 from .core.logging import setup_logging
@@ -109,6 +110,7 @@ app.include_router(audit_router)
 app.include_router(logs_router)
 app.include_router(feishu_router)
 app.include_router(knowledge_sources_router)
+app.include_router(conversation_router)
 
 
 @app.get("/health", tags=["system"])

@@ -46,6 +46,7 @@ import { ApiError } from "../../types/api";
 import type {
   LlmModel,
   LlmModelType,
+  LlmProtocol,
   ServiceBindings,
   ServiceType,
 } from "../../types/config";
@@ -77,8 +78,11 @@ interface ModelForm {
   name: string;
   model_type: LlmModelType;
   provider: string;
+  protocol: LlmProtocol;
   base_url: string;
   model_name: string;
+  embedding_dimension: string;
+  normalize_embeddings: boolean;
   api_key: string;
   enabled: boolean;
 }
@@ -87,11 +91,17 @@ const EMPTY_FORM: ModelForm = {
   name: "",
   model_type: "CHAT",
   provider: "openai-compatible",
+  protocol: "openai-compatible",
   base_url: "",
   model_name: "",
+  embedding_dimension: "",
+  normalize_embeddings: true,
   api_key: "",
   enabled: true,
 };
+
+const DEFAULT_EMBEDDING_DIMENSION = "1536";
+const DEFAULT_NORMALIZE_EMBEDDINGS = true;
 
 function isConflict(error: unknown, code: string): boolean {
   return error instanceof ApiError && error.code === code;
@@ -140,8 +150,15 @@ function ModelsTab({ onGoToServices }: { onGoToServices: () => void }) {
       name: row.name,
       model_type: row.model_type,
       provider: row.provider,
+      protocol: row.protocol,
       base_url: row.base_url,
       model_name: row.model_name,
+      embedding_dimension: row.embedding_dimension
+        ? String(row.embedding_dimension)
+        : row.model_type === "EMBEDDING"
+          ? DEFAULT_EMBEDDING_DIMENSION
+          : "",
+      normalize_embeddings: row.normalize_embeddings ?? DEFAULT_NORMALIZE_EMBEDDINGS,
       api_key: "",
       enabled: row.enabled,
     });
@@ -158,8 +175,11 @@ function ModelsTab({ onGoToServices }: { onGoToServices: () => void }) {
         name: form.name.trim(),
         model_type: form.model_type,
         provider: form.provider,
+        protocol: form.protocol,
         base_url: form.base_url.trim().replace(/\/+$/, ""),
         model_name: form.model_name.trim(),
+        embedding_dimension: form.model_type === "EMBEDDING" && form.embedding_dimension ? Number(form.embedding_dimension) : null,
+        normalize_embeddings: form.model_type === "EMBEDDING" ? form.normalize_embeddings : null,
         api_key: form.api_key === "" ? null : form.api_key,
         enabled: form.enabled,
         expected_revision: revision,
@@ -210,8 +230,11 @@ function ModelsTab({ onGoToServices }: { onGoToServices: () => void }) {
       const result = await adminTestModel({
         model_type: row.model_type,
         provider: row.provider,
+        protocol: row.protocol,
         base_url: row.base_url,
         model_name: row.model_name,
+        embedding_dimension: row.embedding_dimension,
+        normalize_embeddings: row.normalize_embeddings,
         api_key: null,
         model_id: row.id,
       });
@@ -293,7 +316,21 @@ function ModelsTab({ onGoToServices }: { onGoToServices: () => void }) {
                 label="模型类型"
                 value={form.model_type}
                 disabled={dialog?.mode === "edit" && (dialog as { mode: "edit"; row: LlmModel }).row.used_by.length > 0}
-                onChange={(e) => setForm({ ...form, model_type: e.target.value as LlmModelType })}
+                onChange={(e) => {
+                  const modelType = e.target.value as LlmModelType;
+                  setForm({
+                    ...form,
+                    model_type: modelType,
+                    embedding_dimension:
+                      modelType === "EMBEDDING"
+                        ? form.embedding_dimension || DEFAULT_EMBEDDING_DIMENSION
+                        : "",
+                    normalize_embeddings:
+                      modelType === "EMBEDDING"
+                        ? form.normalize_embeddings
+                        : DEFAULT_NORMALIZE_EMBEDDINGS,
+                  });
+                }}
               >
                 <MenuItem value="CHAT">Chat</MenuItem>
                 <MenuItem value="EMBEDDING">Embedding</MenuItem>
@@ -306,8 +343,37 @@ function ModelsTab({ onGoToServices }: { onGoToServices: () => void }) {
               </Typography>
             )}
             <TextField size="small" label="服务商" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} />
+            <FormControl size="small" fullWidth>
+              <InputLabel>请求协议</InputLabel>
+              <Select
+                label="请求协议"
+                value={form.protocol}
+                onChange={(e) => setForm({ ...form, protocol: e.target.value as LlmProtocol })}
+              >
+                <MenuItem value="openai-compatible">OpenAI-compatible</MenuItem>
+                <MenuItem value="anthropic" disabled>Anthropic Messages（适配器待接入）</MenuItem>
+              </Select>
+            </FormControl>
             <TextField size="small" label="Base URL" placeholder="https://llm.example.com/v1" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} />
             <TextField size="small" label="Model 名称" placeholder="Qwen3-32B" value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} />
+            {form.model_type === "EMBEDDING" && (
+              <>
+                <TextField
+                  size="small"
+                  type="number"
+                  label="向量维度"
+                  placeholder="例如 1536"
+                  value={form.embedding_dimension}
+                  onChange={(e) => setForm({ ...form, embedding_dimension: e.target.value })}
+                  helperText="必须与向量库索引维度一致"
+                  inputProps={{ min: 1, max: 32768 }}
+                />
+                <FormControlLabel
+                  control={<Switch checked={form.normalize_embeddings} onChange={(e) => setForm({ ...form, normalize_embeddings: e.target.checked })} />}
+                  label="归一化向量"
+                />
+              </>
+            )}
             <TextField
               size="small"
               label={hasKey ? "API Key（留空保持不变）" : "API Key"}
@@ -325,7 +391,7 @@ function ModelsTab({ onGoToServices }: { onGoToServices: () => void }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialog(null)}>取消</Button>
-          <Button variant="contained" disabled={saving || !form.name || !form.base_url || !form.model_name} onClick={() => void submit()}>
+          <Button variant="contained" disabled={saving || !form.name || !form.base_url || !form.model_name || (form.model_type === "EMBEDDING" && !form.embedding_dimension)} onClick={() => void submit()}>
             {saving ? "保存中…" : "保存"}
           </Button>
         </DialogActions>

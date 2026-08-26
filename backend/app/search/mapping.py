@@ -7,12 +7,14 @@
 
 from __future__ import annotations
 
-MAPPING_VERSION = "1"
+MAPPING_VERSION = "2"
 
 INDEX_MAPPING = {
     "settings": {
         "number_of_shards": 1,
         "number_of_replicas": 0,
+        # kNN 插件索引级开关：必须开启 knn_vector 字段才会构建 ANN 索引（真实服务器实测）
+        "index.knn": True,
         # kNN 需要的向量维度在 ensure_index 时按实际 embedding 维度填充
     },
     "mappings": {
@@ -23,7 +25,15 @@ INDEX_MAPPING = {
             "source_id": {"type": "keyword"},
             "version_id": {"type": "keyword"},
             "content": {"type": "text"},
-            "embedding": {"type": "knn_vector", "dimension": 768},
+            "embedding": {
+                "type": "knn_vector",
+                "dimension": 768,
+                "method": {
+                    "name": "hnsw",
+                    "space_type": "cosinesimil",
+                    "engine": "lucene",
+                },
+            },
             "content_sha256": {"type": "keyword"},
             "heading_path": {"type": "keyword"},
             "locator": {"enabled": False},

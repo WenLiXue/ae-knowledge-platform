@@ -38,14 +38,18 @@ export interface SourcePriority {
 // ---- LLM 模型管理与服务配置（DD-20） ----
 
 export type LlmModelType = "CHAT" | "EMBEDDING" | "RERANK";
+export type LlmProtocol = "openai-compatible" | "anthropic";
 
 export interface LlmModel {
   id: string;
   name: string;
   model_type: LlmModelType;
   provider: string;
+  protocol: LlmProtocol;
   base_url: string;
   model_name: string;
+  embedding_dimension: number | null;
+  normalize_embeddings: boolean | null;
   enabled: boolean;
   has_api_key: boolean;
   used_by: string[];
@@ -55,8 +59,11 @@ export interface LlmModelSaveInput {
   name: string;
   model_type: LlmModelType;
   provider: string;
+  protocol: LlmProtocol;
   base_url: string;
   model_name: string;
+  embedding_dimension?: number | null;
+  normalize_embeddings?: boolean | null;
   api_key?: string | null;
   enabled: boolean;
   expected_revision: number | null;
@@ -65,8 +72,11 @@ export interface LlmModelSaveInput {
 export interface LlmModelTestInput {
   model_type: LlmModelType;
   provider: string;
+  protocol: LlmProtocol;
   base_url: string;
   model_name: string;
+  embedding_dimension?: number | null;
+  normalize_embeddings?: boolean | null;
   api_key?: string | null;
   model_id?: string | null;
 }

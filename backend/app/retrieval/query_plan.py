@@ -16,7 +16,7 @@ _MAX_QUESTION_CHARS = 4000
 
 
 def build_query_plan(
-    db, question: str, filters: RetrievalFilters | None = None
+    db, question: str, filters: RetrievalFilters | None = None, *, operation: str = "ANSWER"
 ) -> QueryPlan:
     q = (question or "").strip()
     if not q:
@@ -28,6 +28,7 @@ def build_query_plan(
     filters = filters or RetrievalFilters()
     validate_filters(db, filters)
     return QueryPlan(
+        operation=operation,
         normalized_question=q,
         query_texts=[q],
         product_id=filters.product_id,

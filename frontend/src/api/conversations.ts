@@ -1,12 +1,17 @@
 /**
- * 会话与问答 API。
+ * 会话与问答 API（DD-08 §10-14、§12 SSE）。
  *
- * 对应后端设计文档第 10～14 节（会话 / 提问回答 / 引用 / 反馈）。
- * 后端接口尚未实现，当前全部返回 Mock 数据（下方均有 MOCK 标注）。
- * 接入真实后端时保留函数签名，改写函数体即可；页面无需改动。
+ * 已接入真实后端：会话 CRUD、提问、回答、反馈、取消、SSE 事件订阅。
+ * SSE 通过 EventSource（同源 Cookie 认证），断线由浏览器自动重连；页面刷新后
+ * 从 getMessages 恢复（含进行中回答的 assistant 消息）并重新订阅。
  */
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, API_BASE_URL } from "./client";
 import type { ApiList } from "../types/api";
 import type {
+  Answer,
+  AnswerBlock,
+  AnswerType,
+  Citation,
   Conversation,
   FeedbackRating,
   Message,
@@ -22,6 +27,7 @@ export interface CreateMessageResult {
   message_id: string;
   answer_id: string;
   status: string;
+  events_url: string;
 }
 
 export interface FeedbackInput {
@@ -30,91 +36,138 @@ export interface FeedbackInput {
   comment?: string;
 }
 
-// ==================== MOCK 数据 ====================
-
-const MOCK_DELAY_MS = 500;
-
-function delay(ms = MOCK_DELAY_MS): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** 进行中回答的展示状态。 */
+export interface StreamingAnswer {
+  answer_id: string;
+  status: string;
+  progress_stage: string | null;
+  answer_type: AnswerType | null;
+  summary: string | null;
+  blocks: AnswerBlock[];
+  citations: Citation[];
+  degradation_flags: string[];
 }
 
-function newId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+export function listConversations(signal?: AbortSignal): Promise<ApiList<Conversation>> {
+  return apiGet<ApiList<Conversation>>("/api/v1/conversations", signal);
 }
 
-// 不再预置历史会话；列表只展示当前运行期间新建的会话。
-const mockMessages: Record<string, Message[]> = {};
-let mockConversations: Conversation[] = [];
-
-// ==================== API（MOCK 实现） ====================
-
-export async function listConversations(): Promise<ApiList<Conversation>> {
-  // MOCK: GET /api/v1/conversations
-  await delay();
-  return { items: [...mockConversations] };
+export function getConversation(conversationId: string, signal?: AbortSignal): Promise<Conversation> {
+  return apiGet<Conversation>(`/api/v1/conversations/${conversationId}`, signal);
 }
 
-export async function getConversation(conversationId: string): Promise<Conversation> {
-  // MOCK: GET /api/v1/conversations/{id}
-  await delay(300);
-  const conversation = mockConversations.find((item) => item.id === conversationId);
-  if (!conversation) {
-    throw new Error("会话不存在或已删除。");
-  }
-  return { ...conversation };
+export function createConversation(input: CreateConversationInput): Promise<Conversation> {
+  return apiPost<Conversation>("/api/v1/conversations", input);
 }
 
-export async function createConversation(input: CreateConversationInput): Promise<Conversation> {
-  // MOCK: POST /api/v1/conversations
-  await delay(400);
-  const conversation: Conversation = {
-    id: newId("conv"),
-    title: input.title ?? "新会话",
-    status: "ACTIVE",
-    filters: input.filters ?? { product_id: null, product_version_id: null, document_type_id: null },
-    last_message_at: null,
-    created_at: new Date().toISOString(),
-  };
-  mockConversations = [conversation, ...mockConversations];
-  return { ...conversation };
+export function updateConversation(
+  conversationId: string,
+  input: { title?: string; filters?: QueryFilters },
+): Promise<Conversation> {
+  return apiPatch<Conversation>(`/api/v1/conversations/${conversationId}`, input);
 }
 
-export async function getMessages(conversationId: string): Promise<ApiList<Message>> {
-  // MOCK: GET /api/v1/conversations/{id}/messages
-  await delay();
-  return { items: mockMessages[conversationId] ?? [] };
+export function deleteConversation(conversationId: string): Promise<void> {
+  return apiDelete<void>(`/api/v1/conversations/${conversationId}`);
 }
 
-export async function createMessage(
+export function getMessages(conversationId: string, signal?: AbortSignal): Promise<ApiList<Message>> {
+  return apiGet<ApiList<Message>>(`/api/v1/conversations/${conversationId}/messages`, signal);
+}
+
+export function createMessage(
   conversationId: string,
   content: string,
   filters?: QueryFilters,
 ): Promise<CreateMessageResult> {
-  // MOCK: POST /api/v1/conversations/{id}/messages
-  await delay(400);
-  const messageId = newId("msg");
-  const answerId = newId("ans");
-  const userMessage: Message = {
-    id: messageId,
-    conversation_id: conversationId,
-    role: "user",
-    content: content.trim(),
-    answer: null,
-    created_at: new Date().toISOString(),
-  };
-  const existing = mockMessages[conversationId] ?? [];
-  mockMessages[conversationId] = [...existing, userMessage];
-  const conversation = mockConversations.find((item) => item.id === conversationId);
-  if (conversation) {
-    conversation.last_message_at = userMessage.created_at;
-    if (conversation.title === "新会话" && content.trim()) {
-      conversation.title = content.trim().slice(0, 20);
-    }
-  }
-  return { message_id: messageId, answer_id: answerId, status: "PENDING" };
+  return apiPost<CreateMessageResult>(`/api/v1/conversations/${conversationId}/messages`, {
+    content,
+    filters,
+  });
 }
 
-export async function submitFeedback(_answerId: string, _input: FeedbackInput): Promise<void> {
-  // MOCK: PUT /api/v1/answers/{id}/feedback
-  await delay(200);
+export function getAnswer(answerId: string): Promise<Answer> {
+  return apiGet<Answer>(`/api/v1/answers/${answerId}`);
+}
+
+export function submitFeedback(
+  answerId: string,
+  input: FeedbackInput,
+): Promise<{ answer_id: string; status: string }> {
+  return apiPut(`/api/v1/answers/${answerId}/feedback`, input);
+}
+
+export function cancelAnswer(answerId: string): Promise<Answer> {
+  return apiPost<Answer>(`/api/v1/answers/${answerId}/cancel`);
+}
+
+export interface AnswerEventsHandlers {
+  onSnapshot?: (answer: Answer) => void;
+  onStatus?: (payload: { answer_id: string; status: string; progress_stage: string | null }) => void;
+  onBlock?: (block: AnswerBlock) => void;
+  onCitation?: (citation: Citation) => void;
+  onDone?: (payload: { answer_id: string; status: string; answer_type: string }) => void;
+  onEnd?: () => void;
+}
+
+/** 订阅回答 SSE 事件。返回清理函数（关闭连接）。断线后由页面刷新/重订阅恢复。 */
+export function subscribeAnswerEvents(
+  answerId: string,
+  handlers: AnswerEventsHandlers,
+): () => void {
+  // 用 fetch + ReadableStream 手动解析 SSE：前端(5173)与 API(8000)跨端口=跨源，
+  // EventSource 无法设置凭证（withCredentials 为只读 getter），fetch credentials:include
+  // 与普通 API 调用一致、可携带会话 Cookie。
+  let cancelled = false;
+  const controller = new AbortController();
+
+  const dispatch = (block: string) => {
+    const eventName = block.match(/^event:\s*(.+)$/m)?.[1];
+    const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
+    if (!eventName || !dataLine) return;
+    const payload = JSON.parse(dataLine.slice(5).trim());
+    if (eventName === "answer.snapshot") handlers.onSnapshot?.(payload);
+    else if (eventName === "answer.status") handlers.onStatus?.(payload);
+    else if (eventName === "answer.block") handlers.onBlock?.(payload);
+    else if (eventName === "answer.citation") handlers.onCitation?.(payload);
+    else if (eventName === "answer.done") handlers.onDone?.(payload);
+  };
+
+  void (async () => {
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/v1/answers/${answerId}/events`, {
+        credentials: "include",
+        signal: controller.signal,
+      });
+      if (!resp.ok || !resp.body) throw new Error(`SSE 连接失败（${resp.status}）`);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (!cancelled) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx = buffer.indexOf("\n\n");
+        while (idx !== -1) {
+          dispatch(buffer.slice(0, idx));
+          buffer = buffer.slice(idx + 2);
+          idx = buffer.indexOf("\n\n");
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return; // 主动取消/清理
+      // 连接中断：不做自动重连，交由页面刷新或重新提问恢复
+    } finally {
+      if (!cancelled) handlers.onEnd?.();
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    controller.abort();
+  };
+}
+
+export function isInProgress(status: string): boolean {
+  return status === "PENDING" || status === "RETRIEVING" || status === "STREAMING";
 }

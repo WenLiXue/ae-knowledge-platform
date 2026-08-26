@@ -28,6 +28,7 @@ export interface FeishuSubmitItem {
   client_item_id: string;
   resource_token: string;
   resource_type: FeishuResourceType;
+  url?: string | null;
 }
 
 /** 批量提交结果项。 */
@@ -90,6 +91,23 @@ export interface KnowledgeSource {
   task_id: string | null;
   task_status: string | null;
   created_at: string | null;
+  classification: ClassificationSummary | ClassificationDetail | null;
+}
+
+export interface ClassificationSummary {
+  relevance?: string | null;
+  relevance_confidence?: number | null;
+  product_code?: string | null;
+  product_name?: string | null;
+  product_version_code?: string | null;
+  document_type_code?: string | null;
+  document_type_name?: string | null;
+  product_form_code?: string | null;
+  is_domestic?: boolean | null;
+  module_name?: string | null;
+  business_topic?: string | null;
+  keywords?: string[];
+  summary?: string | null;
 }
 
 /** 知识来源详情（GET /knowledge-sources/{source_id}）。 */
@@ -99,6 +117,31 @@ export interface KnowledgeSourceDetail extends KnowledgeSource {
   processing_stage: string | null;
   last_error_code: string | null;
   last_error_summary: string | null;
+  classification: ClassificationDetail | null;
+}
+
+export interface ClassificationDetail {
+  relevance: string | null;
+  relevance_confidence: number | null;
+  reason_summary: string | null;
+  missing_fields: string[];
+  evidence: Array<Record<string, unknown>>;
+  output: Record<string, unknown>;
+  model_key: string | null;
+  config_revision: number | null;
+  created_at: string | null;
+  document_type_name?: string | null;
+  document_type_code?: string | null;
+  metadata: {
+    product_id: string | null;
+    product_version_id: string | null;
+    document_type_id: string | null;
+    product_form_id: string | null;
+    module_name: string | null;
+    business_topic: string | null;
+    summary: string | null;
+    keywords: string[];
+  };
 }
 
 /** 重试结果。 */

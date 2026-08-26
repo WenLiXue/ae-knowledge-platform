@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .auth.deps import get_optional_feishu_token
+from .auth.deps import get_optional_feishu_token, get_optional_user
 from .core.config import get_settings
+from .db.models.user import User
 from .db.session import get_db
 from .feishu_provider.base import AUTH, NOT_FOUND, FeishuError
 from .feishu_provider.factory import get_feishu_provider
@@ -39,6 +40,7 @@ class SubmitItem(BaseModel):
     client_item_id: str = Field(min_length=1, max_length=100)
     resource_token: str = Field(min_length=1, max_length=200)
     resource_type: ResourceType
+    url: str | None = None
 
 
 class SubmitRequest(BaseModel):
@@ -138,6 +140,7 @@ def list_documents(
 def submit_documents(
     payload: SubmitRequest,
     user_access_token: str | None = Depends(get_optional_feishu_token),
+    user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     # 同一次请求内不允许重复提交同一 token
@@ -150,7 +153,8 @@ def submit_documents(
             )
         seen.add(item.resource_token)
 
-    owner_user_id = uuid.UUID(get_settings().default_owner_user_id)
+    # 来源归属请求者用户（其飞书 token 才能被 FETCH 使用）；未登录回退系统默认用户
+    owner_user_id = user.id if user is not None else uuid.UUID(get_settings().default_owner_user_id)
     provider = get_feishu_provider()
 
     submit_items: list[service.SubmitItemIn] = []
@@ -166,6 +170,7 @@ def submit_documents(
                 client_item_id=item.client_item_id,
                 resource_token=item.resource_token,
                 resource_type=item.resource_type.value,
+                original_url=item.url or meta.url,
                 title=meta.title,
                 revision=meta.revision,
                 modified_at=meta.modified_at,

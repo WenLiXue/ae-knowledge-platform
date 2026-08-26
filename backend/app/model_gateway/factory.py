@@ -26,11 +26,11 @@ def create_gateway(
     retry_backoff_seconds: float = 0.5,
 ) -> OpenAICompatibleGateway:
     """按 provider 创建 gateway。当前仅支持 openai-compatible。"""
-    if model.provider != "openai-compatible":
+    if model.protocol != "openai-compatible":
         raise GatewayError(
             "CONFIG",
             "UNSUPPORTED_PROVIDER",
-            f"不支持的模型供应商: {model.provider}",
+            f"暂不支持的模型协议: {model.protocol}",
             retryable=False,
         )
     if not model.api_key:

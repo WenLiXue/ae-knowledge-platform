@@ -195,7 +195,11 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{row.code}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={row.status === "ENABLED" ? "启用" : "停用"} color={row.status === "ENABLED" ? "success" : "default"} variant="outlined" />
+                  {row.status === "ENABLED" ? (
+                    <Typography variant="body2" color="text.secondary">启用</Typography>
+                  ) : (
+                    <Chip size="small" label="已停用" color="default" variant="outlined" />
+                  )}
                 </TableCell>
                 <TableCell>{row.sort_order}</TableCell>
                 <TableCell align="right">
@@ -324,7 +328,11 @@ function VersionsSection({ product }: { product: CatalogItem }) {
                 <TableCell>{row.version_code}</TableCell>
                 <TableCell>{row.major_version ?? "-"} / {row.minor_version ?? "-"}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={row.status === "ENABLED" ? "启用" : "停用"} color={row.status === "ENABLED" ? "success" : "default"} variant="outlined" />
+                  {row.status === "ENABLED" ? (
+                    <Typography variant="body2" color="text.secondary">启用</Typography>
+                  ) : (
+                    <Chip size="small" label="已停用" color="default" variant="outlined" />
+                  )}
                 </TableCell>
                 <TableCell align="right">
                   <Button size="small" onClick={() => { setForm({ version_code: row.version_code, major_version: String(row.major_version ?? ""), minor_version: String(row.minor_version ?? ""), sort_order: row.sort_order }); setDialog({ mode: "edit", row }); }}>编辑</Button>
@@ -427,6 +435,14 @@ function SourcePrioritiesSection() {
   );
 }
 
+interface ProductForm {
+  name: string;
+  code: string;
+  sort_order: number;
+}
+
+const EMPTY_PRODUCT_FORM: ProductForm = { name: "", code: "", sort_order: 0 };
+
 /** 知识库配置页：产品/版本、文档类型、产品形态、来源优先级。 */
 export function KnowledgeConfigPage() {
   const [tab, setTab] = useState(0);
@@ -434,6 +450,44 @@ export function KnowledgeConfigPage() {
   const [productLoading, setProductLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<CatalogItem | null>(null);
   const [productNotice, setProductNotice] = useState<Notice | null>(null);
+  const [productDialog, setProductDialog] = useState<null | { mode: "create" } | { mode: "edit"; product: CatalogItem }>(null);
+  const [productForm, setProductForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
+  const [productSaving, setProductSaving] = useState(false);
+
+  const openProductCreate = () => {
+    setProductForm(EMPTY_PRODUCT_FORM);
+    setProductDialog({ mode: "create" });
+  };
+
+  const openProductEdit = (product: CatalogItem) => {
+    setProductForm({ name: product.name, code: product.code, sort_order: product.sort_order });
+    setProductDialog({ mode: "edit", product });
+  };
+
+  const submitProduct = async () => {
+    if (!productDialog || productSaving) return;
+    setProductSaving(true);
+    setProductNotice(null);
+    try {
+      const payload = { name: productForm.name, code: productForm.code, sort_order: productForm.sort_order };
+      if (productDialog.mode === "create") {
+        const created = await adminCreateProduct(payload);
+        setProducts((current) => [...current, created]);
+        setSelectedProduct(created);
+        setProductNotice({ severity: "success", text: `产品“${created.name}”已新增。` });
+      } else {
+        const updated = await adminUpdateProduct(productDialog.product.id, payload);
+        setProducts((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        setSelectedProduct((current) => (current?.id === updated.id ? updated : current));
+        setProductNotice({ severity: "success", text: `产品“${updated.name}”已更新。` });
+      }
+      setProductDialog(null);
+    } catch (err) {
+      setProductNotice({ severity: "error", text: getErrorMessage(err, "保存失败。") });
+    } finally {
+      setProductSaving(false);
+    }
+  };
 
   const deleteProduct = async (product: CatalogItem) => {
     if (!window.confirm(`确定删除产品“${product.name}”吗？产品下存在版本或其他引用时将无法删除。`)) return;
@@ -469,23 +523,54 @@ export function KnowledgeConfigPage() {
             {tab === 0 && (
               <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                 <Box sx={{ minWidth: { md: 260 } }}>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <Button variant="contained" size="small" onClick={openProductCreate}>新增产品</Button>
+                  </Stack>
                   {productNotice && <Alert severity={productNotice.severity} sx={{ mb: 1 }}>{productNotice.text}</Alert>}
                   {productLoading ? (
                     <LoadingState label="加载产品…" />
                   ) : products.length === 0 ? (
-                    <Typography color="text.secondary">暂无产品</Typography>
+                    <Typography color="text.secondary">暂无产品，点击上方“新增产品”创建。</Typography>
                   ) : (
-                    <Stack spacing={1}>
-                      {products.map((p) => (
-                        <Stack key={p.id} direction="row" spacing={0.5} alignItems="center">
-                          <Button variant={selectedProduct?.id === p.id ? "contained" : "outlined"} size="small" onClick={() => setSelectedProduct(p)} sx={{ flex: 1, justifyContent: "flex-start" }}>
-                            {p.name} <Chip size="small" sx={{ ml: 1 }} label={p.status === "ENABLED" ? "已启用" : "已停用"} variant="outlined" />
-                          </Button>
-                          <Button size="small" color="error" onClick={() => void deleteProduct(p)}>
-                            删除
-                          </Button>
-                        </Stack>
-                      ))}
+                    <Stack spacing={0.5}>
+                      {products.map((p) => {
+                        const selected = selectedProduct?.id === p.id;
+                        return (
+                          <Stack
+                            key={p.id}
+                            direction="row"
+                            spacing={0.5}
+                            alignItems="center"
+                            onClick={() => setSelectedProduct(p)}
+                            sx={{
+                              px: 1.25,
+                              py: 0.75,
+                              borderRadius: 1,
+                              cursor: "pointer",
+                              bgcolor: selected ? "action.selected" : "transparent",
+                              "&:hover": { bgcolor: selected ? "action.selected" : "action.hover" },
+                            }}
+                          >
+                            <Typography
+                              variant="body2"
+                              fontWeight={selected ? 600 : 400}
+                              noWrap
+                              sx={{ flex: 1, minWidth: 0 }}
+                            >
+                              {p.name}
+                            </Typography>
+                            {p.status !== "ENABLED" && (
+                              <Chip size="small" label="已停用" color="default" variant="outlined" />
+                            )}
+                            <Button size="small" onClick={(event) => { event.stopPropagation(); openProductEdit(p); }}>
+                              编辑
+                            </Button>
+                            <Button size="small" color="error" onClick={(event) => { event.stopPropagation(); void deleteProduct(p); }}>
+                              删除
+                            </Button>
+                          </Stack>
+                        );
+                      })}
                     </Stack>
                   )}
                 </Box>
@@ -500,6 +585,23 @@ export function KnowledgeConfigPage() {
           </Box>
         </CardContent>
       </Card>
+
+      <Dialog open={productDialog !== null} onClose={() => setProductDialog(null)} fullWidth maxWidth="sm">
+        <DialogTitle>{productDialog?.mode === "create" ? "新增产品" : "编辑产品"}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField size="small" label="名称" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
+            <TextField size="small" label="code" value={productForm.code} disabled={productDialog?.mode === "edit"} onChange={(e) => setProductForm({ ...productForm, code: e.target.value })} helperText="code 唯一，创建后不可修改" />
+            <TextField size="small" label="排序" type="number" value={productForm.sort_order} onChange={(e) => setProductForm({ ...productForm, sort_order: Number(e.target.value) })} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProductDialog(null)}>取消</Button>
+          <Button variant="contained" disabled={productSaving || !productForm.name || !productForm.code} onClick={() => void submitProduct()}>
+            {productSaving ? "保存中…" : "保存"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

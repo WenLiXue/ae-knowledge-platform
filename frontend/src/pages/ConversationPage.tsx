@@ -2,12 +2,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Link,
   Paper,
@@ -23,16 +30,26 @@ import {
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import SendIcon from "@mui/icons-material/Send";
 import ThumbUpOffAltIcon from "@mui/icons-material/ThumbUpOffAlt";
 import ThumbDownOffAltIcon from "@mui/icons-material/ThumbDownOffAlt";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
+  cancelAnswer,
   createMessage,
+  deleteConversation,
   getConversation,
   getMessages,
+  isInProgress,
   submitFeedback,
+  subscribeAnswerEvents,
+  updateConversation,
+  type StreamingAnswer,
 } from "../api/conversations";
+import { useConversationWorkspace } from "../conversations/ConversationWorkspaceContext";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { FullPageLoading } from "../components/LoadingState";
@@ -60,83 +77,112 @@ function formatFullTime(value: string): string {
   });
 }
 
+function streamStageText(streaming: StreamingAnswer): string {
+  const stage = streaming.progress_stage ?? streaming.status;
+  const labels: Record<string, string> = {
+    PENDING: "问题已提交，等待处理",
+    UNDERSTANDING: "正在理解问题",
+    RETRIEVING: "正在检索知识库",
+    RERANKING: "正在重排候选资料",
+    GENERATING: "正在生成答案",
+    VALIDATING: "正在校验引用",
+    STREAMING: "正在生成答案",
+    SUCCEEDED: "回答完成",
+    FAILED: "回答失败",
+    CANCELED: "已停止生成",
+  };
+  return labels[stage] ?? `处理中（${stage}）`;
+}
+
 function CitationList({ citations }: { citations: Citation[] }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <Box sx={{ mt: 2 }}>
-      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-        <ArticleOutlinedIcon fontSize="small" color="disabled" />
-        <Typography variant="subtitle2">来源引用</Typography>
-        <Typography variant="caption" color="text.secondary">
-          （{citations.length}）
-        </Typography>
-      </Stack>
-      <Stack spacing={1}>
-        {citations.map((citation) => {
-          const unavailable = citation.availability !== "AVAILABLE";
-          return (
-            <Paper key={citation.citation_no} variant="outlined" sx={{ p: 1.5 }}>
-              <Stack direction="row" spacing={1.5}>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: "#0958d9",
-                    fontWeight: 700,
-                    bgcolor: "#e6f4ff",
-                    borderRadius: 1,
-                    px: 0.75,
-                    py: 0.25,
-                    height: "fit-content",
-                    flexShrink: 0,
-                  }}
-                >
-                  {citation.citation_no}
-                </Typography>
-                <Box minWidth={0}>
-                  <Typography variant="body2" fontWeight={600}>
-                    {citation.document_title}
+    <Accordion
+      expanded={expanded}
+      onChange={(_event, nextExpanded) => setExpanded(nextExpanded)}
+      disableGutters
+      elevation={0}
+      sx={{ mt: 2, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
+    >
+      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, px: 1.5, "& .MuiAccordionSummary-content": { my: 1 } }}>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <ArticleOutlinedIcon fontSize="small" color="disabled" />
+          <Typography variant="subtitle2">来源引用</Typography>
+          <Typography variant="caption" color="text.secondary">
+            （{citations.length}）
+          </Typography>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 0, px: 1.5, pb: 1.5 }}>
+        <Stack spacing={1}>
+          {citations.map((citation) => {
+            const unavailable = citation.availability !== "AVAILABLE";
+            return (
+              <Paper key={citation.citation_no} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" spacing={1.5}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "#0958d9",
+                      fontWeight: 700,
+                      bgcolor: "#e6f4ff",
+                      borderRadius: 1,
+                      px: 0.75,
+                      py: 0.25,
+                      height: "fit-content",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {citation.citation_no}
                   </Typography>
-                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
-                    {citation.document_type && <Chip label={citation.document_type} size="small" />}
-                    {citation.version_label && <Chip label={citation.version_label} size="small" variant="outlined" />}
-                    <Chip
-                      label={`更新：${formatTime(citation.source_updated_at)}`}
-                      size="small"
-                      variant="outlined"
-                    />
-                  </Stack>
-                  {citation.excerpt && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                      {citation.excerpt}
+                  <Box minWidth={0}>
+                    <Typography variant="body2" fontWeight={600}>
+                      {citation.document_title}
                     </Typography>
-                  )}
-                  {citation.heading_path.length > 0 && (
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                      位置：{citation.heading_path.join(" / ")}
-                    </Typography>
-                  )}
-                  <Box sx={{ mt: 0.75 }}>
-                    {unavailable ? (
-                      <Typography variant="caption" color="warning.main">
-                        原文当前不可用
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+                      {citation.document_type && <Chip label={citation.document_type} size="small" />}
+                      {citation.version_label && <Chip label={citation.version_label} size="small" variant="outlined" />}
+                      <Chip
+                        label={`更新：${formatTime(citation.source_updated_at)}`}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Stack>
+                    {citation.excerpt && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                        {citation.excerpt}
                       </Typography>
-                    ) : (
-                      <Link
-                        href={citation.original_url ?? "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        underline="hover"
-                      >
-                        查看原文 →
-                      </Link>
                     )}
+                    {citation.heading_path.length > 0 && (
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                        位置：{citation.heading_path.join(" / ")}
+                      </Typography>
+                    )}
+                    <Box sx={{ mt: 0.75 }}>
+                      {unavailable || !citation.original_url ? (
+                        <Typography variant="caption" color="warning.main">
+                          {unavailable ? "原文当前不可用" : "暂无可用的原文地址"}
+                        </Typography>
+                      ) : (
+                        <Link
+                          href={citation.original_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          underline="hover"
+                        >
+                          查看原文 →
+                        </Link>
+                      )}
+                    </Box>
                   </Box>
-                </Box>
-              </Stack>
-            </Paper>
-          );
-        })}
-      </Stack>
-    </Box>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      </AccordionDetails>
+    </Accordion>
   );
 }
 
@@ -195,10 +241,12 @@ function AnswerView({ answer }: { answer: Answer }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  // 仅对已完成的回答判断证据充分性；进行中（answer_type 为 null）不提前提示依据不足
   const lowEvidence =
-    answer.answer_type !== "ANSWER" ||
-    answer.degradation_flags.includes("LOW_EVIDENCE") ||
-    answer.degradation_flags.includes("NO_EVIDENCE");
+    answer.status === "SUCCEEDED" &&
+    (answer.answer_type !== "ANSWER" ||
+      answer.degradation_flags.includes("LOW_EVIDENCE") ||
+      answer.degradation_flags.includes("NO_EVIDENCE"));
 
   const handleRate = (rating: FeedbackRating) => {
     if (submitted) return;
@@ -229,8 +277,16 @@ function AnswerView({ answer }: { answer: Answer }) {
     <Box>
       {/* 综合答案标题对齐原型 .answer-title */}
       <Typography sx={{ fontSize: 20, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
-        {answer.summary}
+        {answer.status === "FAILED"
+          ? answer.error_summary ?? "回答生成失败，请重新提问。"
+          : answer.summary}
       </Typography>
+
+      {answer.status === "FAILED" && (
+        <Alert severity="error" sx={{ mt: 1.5 }}>
+          本次回答未完成，可以保留当前问题并重新发送。
+        </Alert>
+      )}
 
       {answer.blocks.length > 0 && (
         <Stack spacing={1} sx={{ mt: 1.5 }}>
@@ -350,6 +406,7 @@ function MessageRow({ message }: { message: Message }) {
 export function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
+  const { refreshConversations } = useConversationWorkspace();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -358,46 +415,184 @@ export function ConversationPage() {
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState<StreamingAnswer | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
+  /** 拉取消息并检测是否有进行中的回答（刷新/断线后据此恢复 SSE 订阅）。 */
+  const refreshMessages = useCallback(async () => {
+    if (!conversationId) return;
+    const msgs = await getMessages(conversationId);
+    setMessages(msgs.items);
+    const active = msgs.items.find((m) => m.answer && isInProgress(m.answer.status));
+    if (active?.answer) {
+      const a = active.answer;
+      setStreaming({
+        answer_id: a.id,
+        status: a.status,
+        progress_stage: a.progress_stage ?? null,
+        answer_type: a.answer_type,
+        summary: a.summary,
+        blocks: a.blocks,
+        citations: a.citations,
+        degradation_flags: a.degradation_flags,
+      });
+    } else {
+      setStreaming(null);
+    }
+  }, [conversationId]);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
     if (!conversationId) return;
     setLoading(true);
     setError(null);
     try {
-      const [conv, msgs] = await Promise.all([getConversation(conversationId), getMessages(conversationId)]);
+      const [conv, msgs] = await Promise.all([
+        getConversation(conversationId, signal),
+        getMessages(conversationId, signal),
+      ]);
       setConversation(conv);
       setMessages(msgs.items);
+      const active = msgs.items.find((m) => m.answer && isInProgress(m.answer.status));
+      if (active?.answer) {
+        const a = active.answer;
+        setStreaming({
+          answer_id: a.id,
+          status: a.status,
+          progress_stage: a.progress_stage ?? null,
+          answer_type: a.answer_type,
+          summary: a.summary,
+          blocks: a.blocks,
+          citations: a.citations,
+          degradation_flags: a.degradation_flags,
+        });
+      }
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [conversationId]);
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
+
+  // 订阅进行中回答的 SSE：状态变化实时展示，终结后重拉消息流。
+  useEffect(() => {
+    if (!streaming?.answer_id) return;
+    let cancelled = false;
+    const close = subscribeAnswerEvents(streaming.answer_id, {
+      onSnapshot: (answer) => {
+        if (cancelled) return;
+        setStreaming({
+          answer_id: answer.id,
+          status: answer.status,
+          progress_stage: answer.progress_stage ?? null,
+          answer_type: answer.answer_type,
+          summary: answer.summary,
+          blocks: answer.blocks,
+          citations: answer.citations,
+          degradation_flags: answer.degradation_flags,
+        });
+        if (!isInProgress(answer.status)) {
+          close();
+          void refreshMessages();
+        }
+      },
+      onStatus: (payload) => {
+        if (cancelled) return;
+        setStreaming((prev) =>
+          prev ? { ...prev, status: payload.status, progress_stage: payload.progress_stage } : prev,
+        );
+      },
+      onBlock: (block) => {
+        if (cancelled) return;
+        setStreaming((prev) => (prev ? { ...prev, blocks: [...prev.blocks, block] } : prev));
+      },
+      onCitation: (citation) => {
+        if (cancelled) return;
+        setStreaming((prev) => (prev ? { ...prev, citations: [...prev.citations, citation] } : prev));
+      },
+      onDone: () => {
+        if (cancelled) return;
+        close();
+        void refreshMessages();
+      },
+      onEnd: () => {
+        if (!cancelled) void refreshMessages();
+      },
+    });
+    return () => {
+      cancelled = true;
+      close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming?.answer_id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streaming?.status]);
 
   const handleSend = async () => {
     const content = input.trim();
-    if (!conversationId || !content || sending) return;
+    if (!conversationId || !content || sending || streaming) return;
     setSending(true);
     setError(null);
     try {
       await createMessage(conversationId, content);
-      const msgs = await getMessages(conversationId);
-      setMessages(msgs.items);
       setInput("");
+      await refreshMessages();
     } catch (err) {
-      setError(err);
+      if (err instanceof Error && (err as { code?: string }).code === "ANSWER_ALREADY_IN_PROGRESS") {
+        setError(new Error("该会话已有回答正在生成，请稍候。"));
+      } else {
+        setError(err);
+      }
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!streaming) return;
+    try {
+      await cancelAnswer(streaming.answer_id);
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!conversationId || !conversation) return;
+    if (!window.confirm(`确定删除会话“${conversation.title}”吗？删除后不再显示，可在恢复入口找回。`)) return;
+    try {
+      await deleteConversation(conversationId);
+      await refreshConversations();
+      navigate("/search");
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  const handleRenameSave = async () => {
+    const title = renameValue.trim();
+    if (!conversationId || !conversation || !title || title === conversation.title) {
+      setRenameOpen(false);
+      return;
+    }
+    try {
+      const updated = await updateConversation(conversationId, { title });
+      setConversation(updated);
+      await refreshConversations();
+      setRenameOpen(false);
+    } catch (err) {
+      setError(err);
     }
   };
 
@@ -434,6 +629,20 @@ export function ConversationPage() {
             )}
           </Stack>
         </Box>
+        <Box sx={{ flexGrow: 1 }} />
+        <IconButton
+          size="small"
+          aria-label="重命名会话"
+          onClick={() => {
+            setRenameValue(conversation.title);
+            setRenameOpen(true);
+          }}
+        >
+          <EditOutlinedIcon fontSize="small" />
+        </IconButton>
+        <Button size="small" color="error" startIcon={<DeleteOutlineIcon fontSize="small" />} onClick={() => void handleDelete()}>
+          删除
+        </Button>
       </Stack>
 
       {error ? <ErrorAlert error={error} onRetry={() => void load()} title="操作失败" /> : null}
@@ -462,37 +671,59 @@ export function ConversationPage() {
             messages.map((message) => <MessageRow key={message.id} message={message} />)
           )}
 
-          {messages.length > 0 && !messages.some((message) => message.role === "assistant") && (
-            <Box
-              sx={{
-                flex: 1,
-                minHeight: 180,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                px: 2,
-              }}
-            >
-              <Paper
-                variant="outlined"
+          {streaming && (
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(255,255,255,0.62)" }}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <CircularProgress size={18} />
+                <Box minWidth={0}>
+                  <Typography variant="subtitle2">{streamStageText(streaming)}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {streaming.degradation_flags.length > 0
+                      ? "（降级模式：部分能力暂不可用）"
+                      : "检索结果和来源引用会显示在这里。"}
+                  </Typography>
+                </Box>
+                <Box sx={{ flexGrow: 1 }} />
+                <Button size="small" color="inherit" onClick={() => void handleCancel()}>
+                  停止生成
+                </Button>
+              </Stack>
+            </Paper>
+          )}
+
+          {!streaming &&
+            messages.length > 0 &&
+            !messages.some((message) => message.role === "assistant") && (
+              <Box
                 sx={{
-                  width: "min(100%, 520px)",
-                  px: 3,
-                  py: 2.5,
-                  textAlign: "center",
-                  borderStyle: "dashed",
-                  bgcolor: "rgba(255,255,255,0.62)",
+                  flex: 1,
+                  minHeight: 180,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  px: 2,
                 }}
               >
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  问题已收到，等待知识库检索
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  检索结果和来源引用会显示在这里。当前服务尚未返回答案，请稍后再试。
-                </Typography>
-              </Paper>
-            </Box>
-          )}
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    width: "min(100%, 520px)",
+                    px: 3,
+                    py: 2.5,
+                    textAlign: "center",
+                    borderStyle: "dashed",
+                    bgcolor: "rgba(255,255,255,0.62)",
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                    问题已收到，等待答案生成
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    检索结果和来源引用会显示在这里。
+                  </Typography>
+                </Paper>
+              </Box>
+            )}
 
           <div ref={bottomRef} />
         </CardContent>
@@ -509,7 +740,7 @@ export function ConversationPage() {
               maxRows={4}
               fullWidth
               size="small"
-              disabled={sending}
+              disabled={sending || !!streaming}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -517,12 +748,12 @@ export function ConversationPage() {
                 }
               }}
             />
-            <Tooltip title="发送">
+            <Tooltip title={streaming ? "回答生成中，请稍候" : "发送"}>
               <span>
                 <IconButton
                   color="primary"
                   onClick={() => void handleSend()}
-                  disabled={!input.trim() || sending}
+                  disabled={!input.trim() || sending || !!streaming}
                   sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}
                 >
                   {sending ? <CircularProgress size={20} /> : <SendIcon />}
@@ -540,6 +771,32 @@ export function ConversationPage() {
           </Stack>
         </Box>
       </Card>
+
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>重命名会话</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            size="small"
+            label="会话名称"
+            fullWidth
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void handleRenameSave();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameOpen(false)}>取消</Button>
+          <Button variant="contained" disabled={!renameValue.trim()} onClick={() => void handleRenameSave()}>
+            保存
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

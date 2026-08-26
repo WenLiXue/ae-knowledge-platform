@@ -33,6 +33,7 @@ class ResolvedModel:
     base_url: str
     model_name: str
     api_key: str | None
+    protocol: str = "openai-compatible"
 
 
 def resolve_service_model(db: Session, service_type: str) -> ResolvedModel | None:
@@ -74,6 +75,7 @@ def resolve_service_model(db: Session, service_type: str) -> ResolvedModel | Non
         config_revision=rev.id if rev is not None else None,
         model_config_id=model["id"],
         provider=model["provider"],
+        protocol=model.get("protocol", "openai-compatible"),
         base_url=model["base_url"],
         model_name=model["model_name"],
         api_key=api_key,

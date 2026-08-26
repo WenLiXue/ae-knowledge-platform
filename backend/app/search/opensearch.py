@@ -111,8 +111,10 @@ class OpenSearchSearchAdapter:
             lines.append(json.dumps(action, ensure_ascii=False))
             lines.append(json.dumps(body, ensure_ascii=False))
         payload = ("\n".join(lines) + "\n").encode("utf-8")
+        # ?refresh=true：写后立即对读可见（默认约 1s 刷新延迟会让紧随其后的
+        # VERIFY count/search 读到旧状态，真实服务器实测必要）
         resp = self._client().post(
-            f"{self.base_url}/{self.index_name}/_bulk",
+            f"{self.base_url}/{self.index_name}/_bulk?refresh=true",
             headers=self._headers(json_body=True),
             content=payload,
         )
@@ -143,7 +145,10 @@ class OpenSearchSearchAdapter:
 
     def delete_generation(self, generation: str) -> int:
         body = {"query": {"term": {"generation": generation}}}
-        data = self._request("POST", f"{self.index_name}/_delete_by_query", json_body=body)
+        # ?refresh=true：删除后立即可见，避免紧随其后的读仍命中旧 generation
+        data = self._request(
+            "POST", f"{self.index_name}/_delete_by_query?refresh=true", json_body=body
+        )
         return int(data.get("deleted", 0))
 
     def count_by_generation(self, generation: str) -> int:

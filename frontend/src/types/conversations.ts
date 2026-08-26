@@ -25,17 +25,30 @@ export interface Conversation {
   created_at: string;
 }
 
-/** 答案状态。 */
+/** 答案主状态（DD-08 §11.2）。细阶段走 progress_stage，不扩散为不稳定业务状态。 */
 export type AnswerStatus =
   | "PENDING"
+  | "RETRIEVING"
+  | "STREAMING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELED";
+
+/** 细阶段（DD-19 §13.2）。 */
+export type AnswerStage =
   | "UNDERSTANDING"
   | "RETRIEVING"
   | "RERANKING"
   | "GENERATING"
-  | "VALIDATING"
-  | "SUCCEEDED"
-  | "FAILED"
-  | "CANCELED";
+  | "VALIDATING";
+
+/** 最终结果类型（DD-10 §4）。 */
+export type AnswerType =
+  | "ANSWER"
+  | "PARTIAL"
+  | "CLARIFICATION"
+  | "INSUFFICIENT"
+  | "CONFLICT_WARNING";
 
 /** 引用可用状态。 */
 export type CitationAvailability =
@@ -60,7 +73,7 @@ export interface Citation {
 /** 回答内容块。 */
 export interface AnswerBlock {
   block_id: string;
-  type: "paragraph" | "table" | "list";
+  type: "paragraph" | "table" | "list" | "scope" | "warning" | "conflict";
   content: string | { columns: string[]; rows: string[][] };
   citation_nos: number[];
 }
@@ -69,12 +82,15 @@ export interface AnswerBlock {
 export interface Answer {
   id: string;
   status: AnswerStatus;
-  answer_type: "ANSWER" | "NO_EVIDENCE" | "LOW_EVIDENCE";
-  summary: string;
+  progress_stage?: AnswerStage | null;
+  answer_type: AnswerType | null;
+  summary: string | null;
   blocks: AnswerBlock[];
   citations: Citation[];
   degradation_flags: string[];
-  created_at: string | null;
+  error_code?: string | null;
+  error_summary?: string | null;
+  created_at: string;
   completed_at: string | null;
 }
 

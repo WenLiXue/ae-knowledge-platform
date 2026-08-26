@@ -128,11 +128,12 @@ class RetrievalService:
         question: str,
         filters: RetrievalFilters | None = None,
         *,
+        operation: str = "ANSWER",
         persist: bool = True,
     ) -> RetrievalResult:
         started = time.monotonic()
         config = load_retrieval_config(db)
-        plan = build_query_plan(db, question, filters)
+        plan = build_query_plan(db, question, filters, operation=operation)
         refs = resolve_active_versions(db, filters or RetrievalFilters())
         refs_by_version = {str(ref.version_id): ref for ref in refs}
         allowed_version_ids = list(refs_by_version.keys())

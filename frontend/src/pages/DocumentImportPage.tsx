@@ -144,6 +144,7 @@ export function DocumentImportPage() {
           client_item_id: token,
           resource_token: token,
           resource_type: document.resource_type,
+          url: document.url,
         };
       });
       const result = await submitFeishuDocuments(items);

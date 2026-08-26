@@ -23,6 +23,7 @@ from ..core.config import get_settings
 from ..core.context import TaskContext, reset_task_context, set_service, set_task_context
 from ..core.logging import setup_logging
 from ..db.models.knowledge import DocumentVersion, KnowledgeSource
+from ..db.models.conversation import Answer
 from ..db.models.task import ProcessingTask, TaskAttempt
 from ..db.session import SessionLocal
 from ..feishu_auth.base import FeishuOAuthClient
@@ -222,6 +223,7 @@ class WorkerRunner:
             )
             return "RETRY_WAIT"
         task.status = "FAILED"
+        self._mark_answer_failed(session, task, exc)
         self._mark_version_source_failed(session, task, exc)
         self._record_attempt(session, task.id, task.attempt_count, "FAILED", exc.category, exc.code)
         logger.error(
@@ -229,6 +231,23 @@ class WorkerRunner:
             extra={"category": exc.category, "code": exc.code, "error_summary": exc.message[:500]},
         )
         return "FAILED"
+
+    @staticmethod
+    def _mark_answer_failed(session: Session, task: ProcessingTask, exc: pipeline.PipelineError) -> None:
+        """任务最终失败时同步收敛问答状态，避免 UI 永久显示生成中。"""
+        if task.task_type != "GENERATE_ANSWER":
+            return
+        answer_id = (task.payload or {}).get("answer_id")
+        if not answer_id:
+            return
+        answer = session.get(Answer, answer_id)
+        if answer is None or answer.status not in ("PENDING", "RETRIEVING", "STREAMING"):
+            return
+        answer.status = "FAILED"
+        answer.progress_stage = None
+        answer.error_code = exc.code
+        answer.error_summary = exc.message[:500]
+        answer.completed_at = _now()
 
     def _handle_unexpected_error(self, task: ProcessingTask, exc: Exception) -> str:
         """未预期异常按 INTERNAL 可重试错误处理（回滚后重排）。"""
@@ -355,6 +374,15 @@ class WorkerRunner:
 def main() -> None:
     setup_logging()
     set_service("worker")
+    # Agent 开启时在启动阶段（无开放事务）初始化 checkpoint（DD-21 §11.3）。
+    # setup() 含 CREATE INDEX CONCURRENTLY，不能在有活跃事务时执行。
+    if get_settings().agent_graph_enabled:
+        try:
+            from ..agent.runtime import ensure_checkpoint_schema
+
+            ensure_checkpoint_schema()
+        except Exception:  # noqa: BLE001 初始化失败不阻断 Worker 启动，答案将无 checkpoint 运行
+            logger.exception("checkpoint 初始化失败，本轮无 checkpoint 运行")
     WorkerRunner().run_forever()
 
 

@@ -127,6 +127,73 @@ def add_document(
     return SeededDoc(source=source, version=version, chunks=rows)
 
 
+def make_user(s, *, is_admin: bool = False, display_name: str = "普通用户"):
+    """建一个系统用户（conftest 已播种 system 用户，本函数建业务用户）。"""
+    from app.db.models.user import User
+
+    user = User(display_name=display_name, status="ACTIVE", is_admin=is_admin, created_source="ADMIN")
+    s.add(user)
+    s.flush()
+    return user
+
+
+def user_cookies(s, user) -> dict:
+    """为指定用户建立会话 Cookie（供 TestClient 认证）。"""
+    from app.auth import sessions
+    from app.core.config import get_settings
+
+    token = sessions.create_session(s, user.id, 24)
+    s.commit()
+    return {get_settings().session_cookie_name: token}
+
+
+def fake_retrieval_service(adapter: FakeSearchAdapter):
+    """假检索服务：确定性 embed/rerank（共享 token 的余弦）。"""
+    from app.retrieval.service import EmbedOutcome, RetrievalService, RerankOutcome
+
+    def embed(db, query):
+        return EmbedOutcome(embedding=make_embedding(query), model_key="fake-embed")
+
+    def rerank(db, query, documents, top_n):
+        qv = make_embedding(query)
+        scored = []
+        for i, doc in enumerate(documents):
+            dv = make_embedding(doc)
+            dot = sum(a * b for a, b in zip(qv, dv))
+            na = (sum(a * a for a in qv)) ** 0.5
+            nb = (sum(a * a for a in dv)) ** 0.5
+            scored.append((i, dot / (na * nb) if na and nb else 0.0))
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return RerankOutcome(results=scored[:top_n], model_key="fake-rerank")
+
+    return RetrievalService(search=adapter, embed_fn=embed, rerank_fn=rerank)
+
+
+def run_answer_task(adapter, *, answer_id=None, chat_fn=None, settings=None):
+    """查找（最旧未执行）answer 的 GENERATE_ANSWER 任务并执行。
+
+    feature_real_qa 默认关闭 → 确定性 mock 生成；内部自开会话（worker 会多次 commit）。
+    """
+    from sqlalchemy import select
+
+    from app.db.session import SessionLocal
+    from app.db.models.task import ProcessingTask
+    from app.qa.worker import run_generate_answer
+
+    with SessionLocal() as s:
+        query = select(ProcessingTask).where(ProcessingTask.task_type == "GENERATE_ANSWER")
+        if answer_id:
+            query = query.where(ProcessingTask.payload["answer_id"].astext == str(answer_id))
+        task = s.execute(
+            query.order_by(ProcessingTask.created_at.desc()).limit(1)
+        ).scalars().first()
+        assert task is not None, "未找到 GENERATE_ANSWER 任务"
+        svc = fake_retrieval_service(adapter)
+        return run_generate_answer(
+            s, task, search=adapter, retrieval_service=svc, chat_fn=chat_fn, settings=settings
+        )
+
+
 def build_index_doc(
     source,
     version,

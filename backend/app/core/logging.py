@@ -28,6 +28,13 @@ _EXTRA_FIELDS = (
     "error_code", "method", "path", "query", "status", "duration_ms",
     "dependency", "http_method", "result",
     "stage", "next_stage", "category", "code", "attempt", "max_attempts", "error_summary",
+    # Agent 节点结构化日志（DD-21 §17.1）：只放行 ID/节点/耗时/计数，不放行正文与密钥
+    "run_id", "answer_id", "conversation_id", "graph_version", "node", "operation",
+    "step_count", "model_config_id", "retrieval_run_id", "degradation_flags",
+    "terminated", "query_rewrite_count", "citation_repair_count",
+    "input_token_count", "output_token_count",
+    # 受控脱敏采样（agent_log_payloads=true 时）——放行提问与回答摘要，不放行证据正文/提示词/密钥
+    "question", "answer", "answer_type", "evidence_count",
 )
 # JSON 行里展平的上下文字段顺序
 _CONTEXT_FIELDS = (
@@ -67,7 +74,11 @@ class JsonFormatter(logging.Formatter):
 
 
 class HumanFormatter(logging.Formatter):
-    """开发环境人类可读格式，附带 request_id/task_id 便于关联。"""
+    """开发环境人类可读格式，附带 request_id/task_id 便于关联。
+
+    Agent 结构化日志（DD-21 §17.1）：节点日志渲染 node/op/ms/step/run；
+    运行开始/完成/失败日志渲染截断的提问/答案预览与 answer_type/error_code。
+    """
 
     def format(self, record: logging.LogRecord) -> str:
         base = super().format(record)
@@ -78,6 +89,27 @@ class HumanFormatter(logging.Formatter):
             tags.append(f"request_id={rid}")
         if tid:
             tags.append(f"task_id={tid}")
+
+        def tag(key: str, label: str) -> None:
+            value = getattr(record, key, None)
+            if value is not None:
+                tags.append(f"{label}={value}")
+
+        node = getattr(record, "node", None)
+        if node:  # agent_node_finished：节点执行详情
+            tags.append(f"node={node}")
+            for key, label in (("operation", "op"), ("duration_ms", "ms"), ("step_count", "step")):
+                tag(key, label)
+            tag("retrieval_run_id", "run")
+            tag("error_code", "err")
+        msg = record.getMessage()
+        if msg in ("agent_run_start", "agent_answer_done", "agent_answer_failed"):
+            # 受控调试采样：完整提问与回答摘要（agent_log_payloads=true 时才有）
+            tag("question", "q")
+            tag("answer", "a")
+            tag("answer_type", "type")
+            tag("error_code", "err")
+            tag("evidence_count", "ev")
         return f"{base} {' '.join(tags)}".rstrip()
 
 

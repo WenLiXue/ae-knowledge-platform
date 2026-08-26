@@ -47,6 +47,40 @@ class Settings(BaseSettings):
     lease_seconds: int = 60
     # 重试退避基数（秒）：delay = base * 2 ** (attempt - 1)；测试可传 0 使重试立即可领取
     retry_base_delay_seconds: float = 1.0
+    # 回答超过该时长仍处于进行中状态时，读取接口会将其标记为失败，避免前端永久转圈。
+    answer_stale_timeout_seconds: int = 900
+
+    # ---- LangGraph 知识助手 Agent（DD-21） ----
+    # 初始关闭：新任务走旧 qa.worker 编排；灰度和验收通过后再开启（DD-21 §19 阶段 D）。
+    agent_graph_enabled: bool = False
+    agent_graph_version: str = "knowledge-assistant-v1"
+    # 单次 answer run 图总步数（节点执行数）硬限制。
+    # 最坏合法流程（一次 query rewrite + 一次 citation repair）约 14 个节点，
+    # 默认 16 为实施起点，可经黄金问题集调优（DD-21 §13）。
+    agent_max_steps: int = 16
+    # 单次 answer run 总截止时间（秒）；每次 Worker 重试按新 attempt 重新起算
+    agent_timeout_seconds: int = 90
+    # 各类修复上限：意图 Schema / 检索 query rewrite / 引用修复 / 记忆 Schema
+    agent_intent_repair_limit: int = 1
+    agent_query_rewrite_limit: int = 1
+    agent_citation_repair_limit: int = 1
+    agent_memory_repair_limit: int = 1
+    # 会话记忆 token 预算（DD-21 §8.3）
+    conversation_recent_token_budget: int = 6000
+    conversation_summary_token_budget: int = 1500
+    conversation_compaction_trigger_ratio: float = 0.70
+    # LangGraph checkpoint 连接串；空则复用业务库 database_url（独立 agent_runtime schema）
+    agent_checkpoint_dsn: str = ""
+    # 成功 checkpoint 保留天数（异步清理）；失败运行保留更长时间便于排查
+    agent_checkpoint_retention_days: int = 14
+    agent_checkpoint_failed_retention_days: int = 30
+    # 生成模型上下文窗口与输出预留（未配置模型能力字段时的保守默认，DD-21 §23）
+    agent_default_context_window: int = 32768
+    agent_reserved_output_tokens: int = 2048
+    # 受控脱敏采样日志（DD-21 §17.1，V1 默认关闭）：开启后 agent 日志包含
+    # 截断的提问/答案预览（question_preview ≤120 字、answer_preview ≤200 字），
+    # 便于排查；仍不记录完整问题、证据正文、提示词与密钥。
+    agent_log_payloads: bool = False
 
     # 飞书文档接入
     # fake：使用 FakeFeishuProvider（开发/测试默认）；real：接入真实飞书 API（需应用凭据与用户 OAuth）
