@@ -259,6 +259,10 @@ def _run_agent_flow(
     final_status = result.get("final_status") or "SUCCEEDED"
     if final_status == "CANCELED":
         return None
+    if final_status == "WAITING":
+        # 用户确认后由审批 API 重新创建同一 answer 的 GENERATE_ANSWER 任务；
+        # run_agent 会基于 answer_id 复用 checkpoint，不重置计划和计数器。
+        return None
     if final_status == "FAILED":
         code = result.get("error_code") or "AGENT_FAILED"
         retryable = code in _AGENT_RETRYABLE_CODES

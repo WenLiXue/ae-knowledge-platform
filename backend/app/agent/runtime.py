@@ -146,7 +146,21 @@ def run_agent(
     if checkpointer is not None:
         existing = checkpointer.get_tuple(config)
         if existing is not None:
-            result = graph.invoke(None, config=config, context=context)
+            if initial_state.get("resume_requested"):
+                resumed = dict(existing.checkpoint.get("channel_values", {}))
+                # A WAITING checkpoint ended at persist_result. Approval API has
+                # already validated the user decision; reopen only the blocked
+                # step and continue with the same bounded counters.
+                if resumed.get("final_status") == "WAITING":
+                    resumed["_terminate"] = False
+                    resumed["final_status"] = None
+                    resumed["suspended_reason"] = None
+                    for step in resumed.get("plan_steps", []):
+                        if step.get("status") == "WAITING_APPROVAL":
+                            step["status"] = "PENDING"
+                result = graph.invoke(resumed, config=config, context=context)
+            else:
+                result = graph.invoke(None, config=config, context=context)
         else:
             result = graph.invoke(initial_state, config=config, context=context)
     else:

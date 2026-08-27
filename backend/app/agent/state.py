@@ -31,6 +31,7 @@ EVIDENCE_QUALITIES = (
 FINAL_SUCCEEDED = "SUCCEEDED"
 FINAL_FAILED = "FAILED"
 FINAL_CANCELED = "CANCELED"
+FINAL_WAITING = "WAITING"
 
 
 class AgentState(TypedDict, total=False):
@@ -117,6 +118,7 @@ class AgentState(TypedDict, total=False):
 
     # 内部运行标记（终止路由用；可 JSON 序列化）
     _terminate: bool
+    resume_requested: bool
 
 
 def build_initial_state(
@@ -145,6 +147,7 @@ def build_initial_state(
         "goal": {},
         "execution_mode": "LEGACY_RAG",
         "tool_agent_enabled": bool(tool_agent_enabled),
+        "resume_requested": True,
         "completion_criteria": [],
         "requires_retrieval": False,
         "evidence": [],

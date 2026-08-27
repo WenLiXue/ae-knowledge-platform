@@ -92,6 +92,17 @@ def core_persist_result(state: dict, ctx):
             db.commit()
             return {"final_status": "CANCELED"}
 
+        if final_status == "WAITING":
+            answer.status = "WAITING"
+            answer.progress_stage = state.get("suspended_reason") or "WAITING_APPROVAL"
+            answer.error_code = None
+            answer.error_summary = None
+            if run is not None:
+                _finalize_run(db, state, answer, run, "WAITING")
+                run.completed_at = None
+            db.commit()
+            return {"final_status": "WAITING", "pending_approval_id": state.get("pending_approval_id")}
+
         # SUCCEEDED：答案 + 引用 + AgentRun 原子写
         answer.status = "SUCCEEDED"
         answer.progress_stage = None

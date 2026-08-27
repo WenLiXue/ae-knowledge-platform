@@ -157,7 +157,7 @@ class Message(Base, TimestampMixin):
 class Answer(Base, TimestampMixin):
     """conversation.answers —— 回答（DD-10 §4 状态机）。
 
-    同一会话最多一个 PENDING/RETRIEVING/STREAMING 回答（部分唯一索引兜底）。
+    同一会话最多一个 PENDING/WAITING/RETRIEVING/STREAMING 回答（部分唯一索引兜底）。
     """
 
     __tablename__ = "answers"
@@ -167,7 +167,7 @@ class Answer(Base, TimestampMixin):
             "uq_answer_open_per_conversation",
             "conversation_id",
             unique=True,
-            postgresql_where=text("status IN ('PENDING', 'RETRIEVING', 'STREAMING')"),
+            postgresql_where=text("status IN ('PENDING', 'WAITING', 'RETRIEVING', 'STREAMING')"),
         ),
         {"schema": "conversation", "comment": "回答"},
     )
@@ -306,7 +306,7 @@ class AgentRun(Base, TimestampMixin):
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversation.conversations.id"), nullable=False
     )
-    # PENDING / RUNNING / SUCCEEDED / FAILED / CANCELED
+    # PENDING / RUNNING / WAITING / SUCCEEDED / FAILED / CANCELED
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="PENDING", server_default="PENDING"
     )
@@ -404,3 +404,33 @@ class AgentToolCall(Base, TimestampMixin):
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class AgentApproval(Base, TimestampMixin):
+    """conversation.agent_approvals —— 绑定计划 revision 和参数 hash 的确认。"""
+
+    __tablename__ = "agent_approvals"
+    __table_args__ = (
+        Index("ix_agent_approvals_run_status", "run_id", "status"),
+        Index("ix_agent_approvals_expires", "expires_at"),
+        {"schema": "conversation", "comment": "Agent 工具确认"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_runs.id"), nullable=False
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_plans.id"), nullable=False
+    )
+    step_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_plan_steps.id"), nullable=False
+    )
+    requested_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("auth.users.id"), nullable=False)
+    decision_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("auth.users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING", server_default="PENDING")
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    arguments_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    impact_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

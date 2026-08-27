@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from ..contracts.plan import AgentPlan
 from ..contracts.tool import ToolCallProposal
-from ..tools.base import ToolContext
+from ..verifier import verify_plan
+from ..tools.base import ToolContext, ToolError
 
 
 def core_execute_tool(state: dict, ctx):
@@ -43,8 +44,64 @@ def core_execute_tool(state: dict, ctx):
         # authenticated retrieval path. Admin/action permissions are not granted.
         permissions=frozenset({"knowledge:read"}),
     )
-    result = ctx.tool_executor.execute(proposal, tool_context)
+    approval_id = state.get("pending_approval_id")
+    confirmed = False
+    if approval_id:
+        from ..approvals import verify_approval
+
+        try:
+            verify_approval(
+                ctx.session_factory,
+                approval_id=approval_id,
+                user_id=str(state.get("user_id") or ""),
+                plan_id=plan.id,
+                tool_name=proposal.tool_name,
+                arguments=proposal.arguments,
+            )
+        except ToolError as exc:
+            return {
+                "_terminate": True,
+                "final_status": "FAILED",
+                "error_code": exc.code,
+                "error_summary": exc.message,
+            }
+        confirmed = True
+    result = ctx.tool_executor.execute(proposal, tool_context, confirmed=confirmed)
     index = next(i for i, item in enumerate(plan.steps) if item.id == step.id)
+    if result.error_code == "APPROVAL_REQUIRED":
+        from ..approvals import create_approval
+
+        approval_id = create_approval(
+            ctx.session_factory,
+            state=state,
+            step_id=step.id,
+            tool_name=proposal.tool_name,
+            arguments=proposal.arguments,
+            impact_summary={
+                "tool": proposal.tool_name,
+                "step_title": step.title,
+                "risk": step.risk,
+                "summary": result.summary,
+            },
+            ttl_minutes=ctx.settings.agent_approval_ttl_minutes,
+        )
+        plan.steps[index] = step.model_copy(update={"status": "WAITING_APPROVAL"})
+        return {
+            "plan_steps": [item.model_dump(mode="json") for item in plan.steps],
+            "active_step_id": step.id,
+            "pending_approval_id": approval_id,
+            "suspended_reason": "等待用户确认后执行写工具",
+            "_terminate": True,
+            "final_status": "WAITING",
+            "observations": list(state.get("observations") or []) + [{
+                "step_id": step.id,
+                "tool_name": proposal.tool_name,
+                "status": "WAITING_APPROVAL",
+                "summary": result.summary,
+                "error_code": result.error_code,
+            }],
+            "tool_call_count": state.get("tool_call_count", 0),
+        }
     plan.steps[index] = step.model_copy(update={"status": "SUCCEEDED" if result.status == "SUCCEEDED" else "FAILED"})
     observations = list(state.get("observations") or [])
     observations.append({
@@ -71,6 +128,8 @@ def core_execute_tool(state: dict, ctx):
         "active_step_id": step.id,
         "observations": observations,
         "tool_call_count": state.get("tool_call_count", 0) + 1,
+        "pending_approval_id": None,
+        "verification_result": verify_plan(plan, observations).__dict__,
     }
     if result.status != "SUCCEEDED":
         update.update({
