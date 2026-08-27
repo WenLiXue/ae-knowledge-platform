@@ -12,12 +12,15 @@ from .context import AgentRuntimeContext
 from .nodes import (
     assess_evidence as assess_node,
     build_context as build_context_node,
+    create_plan as create_plan_node,
+    execute_tool as execute_tool_node,
     generate as generate_node,
     load_state as load_state_node,
     persist_result as persist_node,
     retrieve as retrieve_node,
     rewrite_query as rewrite_node,
     route_intent as route_intent_node,
+    understand_goal as understand_goal_node,
     update_memory as update_memory_node,
     validate as validate_node,
 )
@@ -25,6 +28,8 @@ from .nodes import node as wrap
 from .policies import (
     route_after_evidence,
     route_after_intent,
+    route_after_goal,
+    route_after_tool,
     route_after_load,
     route_after_validation,
 )
@@ -45,6 +50,9 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
 
     builder.add_node("load_state", wrap("load_state")(load_state_node.core_load_state))
     builder.add_node("build_context", wrap("build_context")(build_context_node.core_build_context))
+    builder.add_node("understand_goal", wrap("understand_goal")(understand_goal_node.core_understand_goal))
+    builder.add_node("create_plan", wrap("create_plan")(create_plan_node.core_create_plan))
+    builder.add_node("execute_tool", wrap("execute_tool")(execute_tool_node.core_execute_tool))
     builder.add_node("route_intent", wrap("route_intent")(route_intent_node.core_route_intent))
     builder.add_node("generate_general", wrap("generate_general")(generate_node.core_generate_general))
     builder.add_node("generate_grounded", wrap("generate_grounded")(generate_node.core_generate_grounded))
@@ -60,7 +68,19 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     builder.add_edge(START, "load_state")
     builder.add_conditional_edges("load_state", route_after_load, ["build_context", "persist_result"])
     builder.add_conditional_edges(
-        "build_context", _route_fixed("route_intent"), ["route_intent", "persist_result"]
+        "build_context",
+        lambda state: "understand_goal" if state.get("tool_agent_enabled") else "route_intent",
+        ["understand_goal", "route_intent"],
+    )
+    builder.add_conditional_edges(
+        "understand_goal", route_after_goal,
+        ["create_plan", "generate_general", "finalize_clarification", "persist_result"],
+    )
+    builder.add_conditional_edges(
+        "create_plan", _route_fixed("execute_tool"), ["execute_tool", "persist_result"]
+    )
+    builder.add_conditional_edges(
+        "execute_tool", route_after_tool, ["execute_tool", "assess_evidence", "persist_result"]
     )
     builder.add_conditional_edges(
         "route_intent",

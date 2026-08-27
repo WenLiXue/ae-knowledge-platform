@@ -61,6 +61,7 @@ class AgentState(TypedDict, total=False):
     # 查询理解与路由
     goal: dict
     execution_mode: str
+    tool_agent_enabled: bool
     completion_criteria: list[dict]
     operation: str
     normalized_question: str
@@ -128,6 +129,7 @@ def build_initial_state(
     question: str = "",
     filters_snapshot: dict | None = None,
     cancel_requested: bool = False,
+    tool_agent_enabled: bool = False,
 ) -> AgentState:
     """构造初始状态：只含身份/幂等字段，其余由节点逐步填充。"""
     return {
@@ -142,6 +144,7 @@ def build_initial_state(
         "operation": "",
         "goal": {},
         "execution_mode": "LEGACY_RAG",
+        "tool_agent_enabled": bool(tool_agent_enabled),
         "completion_criteria": [],
         "requires_retrieval": False,
         "evidence": [],

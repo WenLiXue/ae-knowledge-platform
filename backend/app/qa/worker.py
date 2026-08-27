@@ -222,6 +222,7 @@ def _run_agent_flow(
             run_id=make_run_id(),
             graph_version=settings.agent_graph_version,
             filters_snapshot=conversation.filters_snapshot if conversation else {},
+            tool_agent_enabled=bool(settings.agent_tools_enabled and settings.agent_planner_enabled),
         )
         if settings.agent_log_payloads:
             # 受控调试采样：显式开启后记录完整提问与回答摘要，便于联调；

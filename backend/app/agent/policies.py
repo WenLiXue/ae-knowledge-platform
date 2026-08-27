@@ -126,6 +126,29 @@ def route_after_intent(state: AgentState) -> str:
     return "retrieve"
 
 
+def route_after_goal(state: AgentState) -> str:
+    """Select direct, clarification or bounded tool planning path."""
+    if state.get("_terminate"):
+        return "persist_result"
+    mode = state.get("execution_mode")
+    if mode == "CLARIFY":
+        return "finalize_clarification"
+    if mode == "DIRECT":
+        return "generate_general"
+    return "create_plan"
+
+
+def route_after_tool(state: AgentState) -> str:
+    if state.get("_terminate"):
+        return "persist_result"
+    pending = [step for step in state.get("plan_steps", []) if step.get("status") in ("PENDING", "READY")]
+    if pending:
+        done = {step.get("id") for step in state.get("plan_steps", []) if step.get("status") == "SUCCEEDED"}
+        if any(set(step.get("depends_on") or []).issubset(done) for step in pending):
+            return "execute_tool"
+    return "assess_evidence"
+
+
 def route_after_evidence(state: AgentState) -> str:
     if state.get("_terminate"):
         return "persist_result"
