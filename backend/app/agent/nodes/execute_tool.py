@@ -57,6 +57,15 @@ def core_execute_tool(state: dict, ctx):
         "evidence_refs": result.evidence_refs,
         "data": result.data,
     })
+    try:
+        from ..persistence import persist_tool_call
+
+        persist_tool_call(ctx.session_factory, state=state | {"active_step_id": step.id}, proposal=proposal, result=result)
+    except Exception:
+        # Execution result remains authoritative for this run; metadata write
+        # failure is observable but must not turn a successful read into a fake
+        # business failure.
+        pass
     update = {
         "plan_steps": [item.model_dump(mode="json") for item in plan.steps],
         "active_step_id": step.id,

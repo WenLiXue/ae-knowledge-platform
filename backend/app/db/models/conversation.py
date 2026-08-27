@@ -323,3 +323,84 @@ class AgentRun(Base, TimestampMixin):
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentPlan(Base, TimestampMixin):
+    """conversation.agent_plans —— 可恢复的用户目标与执行计划。"""
+
+    __tablename__ = "agent_plans"
+    __table_args__ = (
+        Index("ix_agent_plans_run", "run_id"),
+        Index("uq_agent_plans_run_revision", "run_id", "revision", unique=True),
+        {"schema": "conversation", "comment": "Agent 执行计划"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_runs.id"), nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    goal: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="DRAFT", server_default="DRAFT")
+    completion_criteria: Mapped[list | None] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+
+
+class AgentPlanStep(Base, TimestampMixin):
+    """conversation.agent_plan_steps —— 计划步骤状态和安全参数摘要。"""
+
+    __tablename__ = "agent_plan_steps"
+    __table_args__ = (
+        Index("uq_agent_plan_steps_plan_key", "plan_id", "step_key", unique=True),
+        Index("ix_agent_plan_steps_plan_status", "plan_id", "status"),
+        {"schema": "conversation", "comment": "Agent 计划步骤"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_plans.id"), nullable=False
+    )
+    step_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    capability: Mapped[str] = mapped_column(String(128), nullable=False)
+    dependencies: Mapped[list | None] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    risk: Mapped[str] = mapped_column(String(24), nullable=False, default="READ_ONLY", server_default="READ_ONLY")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING", server_default="PENDING")
+    input_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    output_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentToolCall(Base, TimestampMixin):
+    """conversation.agent_tool_calls —— 每次工具尝试的可审计、可恢复记录。"""
+
+    __tablename__ = "agent_tool_calls"
+    __table_args__ = (
+        Index("ix_agent_tool_calls_run_created", "run_id", "created_at"),
+        Index("uq_agent_tool_calls_step_attempt", "step_id", "attempt", unique=True),
+        {"schema": "conversation", "comment": "Agent 工具调用"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_runs.id"), nullable=False
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_plans.id"), nullable=False
+    )
+    step_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversation.agent_plan_steps.id"), nullable=False
+    )
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    idempotency_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    arguments_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    result_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    external_operation_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

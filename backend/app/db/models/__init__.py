@@ -3,6 +3,9 @@ from .catalog import DocumentType, Product, ProductForm, ProductVersion, SourceP
 from .config import ConfigRevision, SecretValue
 from .conversation import (
     AgentRun,
+    AgentPlan,
+    AgentPlanStep,
+    AgentToolCall,
     Answer,
     AnswerCitation,
     AnswerFeedback,
@@ -20,6 +23,9 @@ from .user import User
 
 __all__ = [
     "AgentRun",
+    "AgentPlan",
+    "AgentPlanStep",
+    "AgentToolCall",
     "Answer",
     "AnswerCitation",
     "AnswerFeedback",

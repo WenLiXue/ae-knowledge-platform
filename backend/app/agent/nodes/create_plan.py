@@ -36,6 +36,17 @@ def core_create_plan(state: dict, ctx):
             "error_code": "AGENT_PLAN_INVALID",
             "error_summary": "无法生成安全的工具执行计划",
         }
+    try:
+        from ..persistence import persist_plan
+
+        persist_plan(ctx.session_factory, answer_id=str(state["answer_id"]), plan=plan)
+    except Exception:
+        return {
+            "_terminate": True,
+            "final_status": "FAILED",
+            "error_code": "AGENT_PERSISTENCE_FAILED",
+            "error_summary": "工具计划持久化失败",
+        }
     return {
         "plan_id": plan.id,
         "plan_revision": plan.revision,
