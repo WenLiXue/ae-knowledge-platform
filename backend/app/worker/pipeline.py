@@ -148,7 +148,12 @@ def _fetch(
 
     # user_access_token 由来源 owner 的飞书绑定解析（未绑定则 None，Fake 忽略、Real 需凭据）
     user_access_token = get_user_access_token(session, source.owner_user_id, oauth_client)
-    content = provider.fetch_content(user_access_token, resource_token, resource_type)
+    content = provider.fetch_content(
+        user_access_token,
+        resource_token,
+        resource_type,
+        source_url=detail.original_url if detail else None,
+    )
 
     if version.external_revision and content.revision and version.external_revision != content.revision:
         return _bump_version(session, source, version, content)
@@ -223,7 +228,7 @@ def _parse(
     store.put(tmp_key, data)
     store.put(final_key, data)
     version.parsed_object_key = final_key
-    version.parser_name = "feishu-parse"
+    version.parser_name = "feishu-parse" if source.source_type == "FEISHU" else "upload-text-parse"
     version.parser_version = "1.0"
     logger.info("parse_done", extra={"stage": "PARSE", "element_count": parsed.stats.get("element_count", 0)})
     return NEXT_STAGE["PARSE"]

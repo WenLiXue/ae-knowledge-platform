@@ -56,3 +56,13 @@ export function submitFeishuDocuments(
 ): Promise<ApiList<FeishuSubmitResult>> {
   return apiPost<ApiList<FeishuSubmitResult>>("/api/v1/feishu/documents/submit", { items });
 }
+
+export function submitFeishuLinks(urls: string[]): Promise<ApiList<FeishuSubmitResult>> {
+  return apiPost<ApiList<FeishuSubmitResult>>("/api/v1/feishu/documents/submit-links", { urls });
+}
+
+export function uploadLocalDocuments(files: File[]): Promise<ApiList<FeishuSubmitResult>> {
+  const form = new FormData();
+  files.forEach((file) => form.append("files", file));
+  return apiPost<ApiList<FeishuSubmitResult>>("/api/v1/uploads/documents", form);
+}

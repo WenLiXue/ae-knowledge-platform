@@ -265,6 +265,26 @@ def test_rerank_ordering_applied_to_evidence() -> None:
         assert result.evidence[0].score_details["rerank_score"] is not None
 
 
+def test_rerank_low_score_candidates_are_not_selected_as_evidence() -> None:
+    with SessionLocal() as db:
+        adapter = FakeSearchAdapter()
+        _seed_full(db, adapter)
+
+        def scored_rerank(db, query, documents, top_n):
+            from app.retrieval.service import RerankOutcome
+            scores = [0.91, 0.08, 0.03]
+            return RerankOutcome(
+                results=[(index, scores[index] if index < len(scores) else 0.01) for index in range(min(top_n, len(documents)))],
+                model_key="threshold-test",
+            )
+
+        result = _service(adapter, rerank=scored_rerank).retrieve(
+            db, "E3800 的防病毒吞吐量是多少？"
+        )
+        assert len(result.evidence) == 1
+        assert result.evidence[0].score_details["rerank_score"] == 0.91
+
+
 def test_bm25_failure_records_failed_run_and_raises() -> None:
     class BM25FailAdapter(FakeSearchAdapter):
         def search(self, *, query_text=None, embedding=None, retrieval_type, top_k, version_ids=None):

@@ -4,6 +4,7 @@
 支持两种载体：
 - blocks 形式（Fake/结构化）：raw_payload["blocks"] = [{type, text, ...}, ...]
 - raw_content 形式（真实飞书 /raw_content）：raw_payload["raw_content"] = Markdown 文本
+- sheet 形式：raw_payload["sheets"] = [{sheet_id, title, range, values}, ...]
 
 正文按不可信数据处理：只做结构解析，不执行其中的指令、链接、宏或脚本（§2.3/§19）。
 输出元素均带稳定 element_id 与 locator，同一输入重复解析结果一致（幂等）。
@@ -38,6 +39,18 @@ def parse_feishu_payload(
 ) -> ParsedDocument:
     """解析 raw 对象为 ParsedDocument。空/非法输入返回空文档，不抛错。"""
     payload = payload or {}
+    if payload.get("type") == "sheet" and isinstance(payload.get("sheets"), list):
+        elements = _parse_sheets(payload)
+        return ParsedDocument(
+            title=title or str(payload.get("title") or ""),
+            source_type="sheet",
+            elements=elements,
+            stats={
+                "element_count": len(elements),
+                "sheet_count": len(payload.get("sheets") or []),
+                "truncated": bool(payload.get("truncated", False)),
+            },
+        )
     blocks = payload.get("blocks")
     if isinstance(blocks, list) and blocks:
         elements = _parse_blocks(blocks)
@@ -59,6 +72,81 @@ def parse_feishu_payload(
         elements=elements,
         stats={"element_count": len(elements), "truncated": False},
     )
+
+
+def _parse_sheets(payload: dict) -> list[ParsedElement]:
+    elements: list[ParsedElement] = []
+    source_url = payload.get("source_url") if isinstance(payload.get("source_url"), str) else None
+    spreadsheet_token = str(payload.get("spreadsheet_token") or "")
+    for sheet in payload.get("sheets") or []:
+        if not isinstance(sheet, dict):
+            continue
+        sheet_id = str(sheet.get("sheet_id") or "")
+        sheet_title = str(sheet.get("title") or sheet_id or "工作表")
+        heading_seq = len(elements)
+        elements.append(
+            _element(
+                heading_seq,
+                "heading",
+                text=sheet_title,
+                path=[],
+                locator_extra={
+                    "spreadsheet_token": spreadsheet_token,
+                    "sheet_id": sheet_id,
+                    "source_url": source_url,
+                },
+            )
+        )
+        values = _normalize_sheet_rows(sheet.get("values"))
+        if not values:
+            continue
+        columns = values[0]
+        rows = values[1:]
+        actual_range = _sheet_range(sheet_id, values)
+        region_seq = len(elements)
+        elements.append(
+            _element(
+                region_seq,
+                "sheet_region",
+                table={"columns": columns, "rows": rows},
+                path=[sheet_title],
+                locator_extra={
+                    "spreadsheet_token": spreadsheet_token,
+                    "sheet_id": sheet_id,
+                    "sheet_title": sheet_title,
+                    "range": actual_range,
+                    "source_url": source_url,
+                },
+            )
+        )
+    return elements
+
+
+def _normalize_sheet_rows(value: object) -> list[list[str]]:
+    if not isinstance(value, list):
+        return []
+    rows = [
+        [str(cell) if cell is not None else "" for cell in row]
+        for row in value
+        if isinstance(row, list)
+    ]
+    while rows and not any(cell.strip() for cell in rows[-1]):
+        rows.pop()
+    if not rows:
+        return []
+    width = max(len(row) for row in rows)
+    return [(row + [""] * (width - len(row))) for row in rows]
+
+
+def _sheet_range(sheet_id: str, rows: list[list[str]]) -> str:
+    width = max(len(row) for row in rows)
+    value = width
+    letters: list[str] = []
+    while value:
+        value, remainder = divmod(value - 1, 26)
+        letters.append(chr(ord("A") + remainder))
+    end_column = "".join(reversed(letters)) or "A"
+    return f"{sheet_id}!A1:{end_column}{len(rows)}"
 
 
 def _parse_blocks(blocks: list) -> list[ParsedElement]:
@@ -177,13 +265,17 @@ def _element(
     text: str | None = None,
     table: dict | None = None,
     path: list[str],
+    locator_extra: dict | None = None,
 ) -> ParsedElement:
     element_id = f"el-{seq:04d}"
+    locator = {"element_id": element_id, "index": seq}
+    if locator_extra:
+        locator.update({key: value for key, value in locator_extra.items() if value is not None})
     return ParsedElement(
         element_id=element_id,
         type=element_type,  # type: ignore[arg-type]  # 已由调用方映射到合法 Literal
         text=text,
         table=table,
         heading_path=path,
-        locator={"element_id": element_id, "index": seq},
+        locator=locator,
     )

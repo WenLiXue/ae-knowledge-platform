@@ -12,6 +12,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000
 
 export { API_BASE_URL };
 
+/** 平台登录会话失效事件；AuthProvider 监听后统一清理前端登录态。 */
+export const AUTH_REQUIRED_EVENT = "ae:auth-required";
+
 /** 状态码 → 用户可读兜底提示。 */
 const STATUS_FALLBACK: Record<number, string> = {
   400: "请求参数有误，请检查后重试。",
@@ -52,14 +55,15 @@ async function parseErrorPayload(response: Response): Promise<{ message: string;
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, signal } = options;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
 
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       credentials: "include",
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || isFormData ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
       signal,
     });
   } catch (error) {
@@ -71,6 +75,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!response.ok) {
     const { message, code } = await parseErrorPayload(response);
+    if (response.status === 401 && code === "AUTH_REQUIRED" && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
+    }
     throw new ApiError(
       response.status,
       message || STATUS_FALLBACK[response.status] || `请求失败（${response.status}）`,

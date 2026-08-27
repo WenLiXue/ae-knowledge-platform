@@ -1,11 +1,9 @@
 /**
  * 系统管理 API。
  *
- * 管理端接口（任务 / 配置 / 用户 / 审计日志，API-TASK-* / API-CFG-* / API-USER-*）
- * 后端尚未实现，管理页面当前为占位状态。
- * 此模块先集中维护管理端数据类型；待后端就绪后再补充函数实现。
+ * 管理端接口：任务（GET /api/v1/admin/tasks，DD-03）、审计日志等。
  */
-import type { ApiList } from "../types/api";
+import { apiGet } from "./client";
 
 export interface AdminTask {
   task_id: string;
@@ -13,10 +11,30 @@ export interface AdminTask {
   status: string;
   stage: string | null;
   attempt_count: number;
+  max_attempts: number;
+  last_error_category: string | null;
+  last_error_code: string | null;
   last_error_summary: string | null;
   source_id: string | null;
   source_name: string | null;
+  version_id: string | null;
+  priority: number;
   created_at: string | null;
+}
+
+export interface TaskListParams {
+  task_type?: string;
+  status?: string;
+  keyword?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface TaskListResult {
+  items: AdminTask[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface PendingClassificationItem {
@@ -48,7 +66,13 @@ export interface AuditLogEntry {
   created_at: string | null;
 }
 
-export function listAdminTasks(_params?: Record<string, unknown>): Promise<ApiList<AdminTask>> {
-  // TODO: 后端 API-TASK-001 就绪后实现。
-  throw new Error("管理任务接口尚未实现。");
+export function listAdminTasks(params: TaskListParams = {}): Promise<TaskListResult> {
+  const query = new URLSearchParams();
+  if (params.task_type) query.set("task_type", params.task_type);
+  if (params.status) query.set("status", params.status);
+  if (params.keyword) query.set("keyword", params.keyword);
+  query.set("limit", String(params.limit ?? 50));
+  query.set("offset", String(params.offset ?? 0));
+  const qs = query.toString();
+  return apiGet<TaskListResult>(`/api/v1/admin/tasks${qs ? `?${qs}` : ""}`);
 }

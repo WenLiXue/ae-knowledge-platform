@@ -10,7 +10,9 @@ import { DocumentsPage } from "../pages/DocumentsPage";
 import { AuditLogsPage } from "../pages/admin/AuditLogsPage";
 import { KnowledgeConfigPage } from "../pages/admin/KnowledgeConfigPage";
 import { LlmConfigPage } from "../pages/admin/LlmConfigPage";
+import { PendingClassificationPage } from "../pages/admin/PendingClassificationPage";
 import { SystemLogsPage } from "../pages/admin/SystemLogsPage";
+import { TasksPage } from "../pages/admin/TasksPage";
 import { LoginPage } from "../pages/LoginPage";
 import { SearchPage } from "../pages/SearchPage";
 
@@ -54,13 +56,17 @@ export const router = createBrowserRouter([
       {
         path: "admin/tasks",
         element: (
-          <PlaceholderPage title="处理任务" description="查看文档入库处理任务列表及每个阶段的执行进度。" />
+          <RequireAdmin>
+            <TasksPage />
+          </RequireAdmin>
         ),
       },
       {
         path: "admin/pending-classification",
         element: (
-          <PlaceholderPage title="待分类确认" description="人工确认文档分类结果，审核通过后进入向量化与索引。" />
+          <RequireAdmin>
+            <PendingClassificationPage />
+          </RequireAdmin>
         ),
       },
       {

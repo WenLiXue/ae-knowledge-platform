@@ -27,7 +27,7 @@ DEFAULT_PARAMS: dict = {
     "rrf_k": 60,
     "fusion_top_k": 40,
     "rerank_top_k": 12,
-    "rerank_min_score": 0.0,
+    "rerank_min_score": 0.2,
     "evidence_min": 4,
     "evidence_max": 8,
     "evidence_token_budget": 4000,
@@ -46,7 +46,7 @@ class RetrievalConfig:
     rrf_k: int = 60
     fusion_top_k: int = 40
     rerank_top_k: int = 12
-    rerank_min_score: float = 0.0
+    rerank_min_score: float = 0.2
     evidence_min: int = 4
     evidence_max: int = 8
     evidence_token_budget: int = 4000

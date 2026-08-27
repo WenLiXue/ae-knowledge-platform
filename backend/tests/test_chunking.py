@@ -131,8 +131,51 @@ def test_large_table_splits_by_row_with_repeated_header() -> None:
     assert len(chunks) > 1
     assert all(c.chunk_type == "table" for c in chunks)
     # 每块都重复表头（含表头行）
-    assert all("| 型号 | 值 |" in c.content for c in chunks)
+    detail_chunks = [c for c in chunks if c.locator.get("projection") is None]
+    assert all("| 型号 | 值 |" in c.content for c in detail_chunks)
     assert all(c.token_count <= config.hard_max_tokens for c in chunks)
+
+
+def test_split_wide_catalog_adds_complete_item_index() -> None:
+    config = ChunkingConfig(
+        target_min_tokens=10, target_max_tokens=40, hard_max_tokens=100,
+        overlap_tokens=0, max_table_split_rows=2,
+    )
+    models = [
+        "E3800", "T20000", "T80000", "T90000", "E380", "E680", "E1280",
+        "G680（国产化）", "G1280D", "G6800", "G40000", "E180 (EOS)",
+        "E380D (EOS)", "E680D (EOS)", "E980 (EOS)", "E1580 (EOS)",
+        "E6800 (EOS)", "T40000 (EOS)",
+    ]
+    rows = [["系列", model, "很长的规格说明" * 8] for model in models]
+    parsed = ParsedDocument(
+        title="AE硬件型号规格",
+        source_type="sheet",
+        elements=[_table(0, ["系列", "AE型号", "详细规格"], rows)],
+    )
+    chunks = chunk_document(parsed, config=config)
+    index = next(chunk for chunk in chunks if chunk.locator.get("projection") == "complete_item_index")
+    assert index.locator["item_count"] == len(models)
+    assert all(model in index.content for model in models)
+    assert "共 18 项" in index.content
+
+
+def test_model_index_ignores_merged_cell_values_without_model_codes() -> None:
+    config = ChunkingConfig(
+        target_min_tokens=10, target_max_tokens=40, hard_max_tokens=100,
+        overlap_tokens=0, max_table_split_rows=1,
+    )
+    parsed = ParsedDocument(
+        title="配置信息",
+        source_type="sheet",
+        elements=[_table(
+            0,
+            ["分类", "硬件设备型号", "详细配置"],
+            [["", "供应商", "很长的配置" * 10], ["", "飞腾", "很长的配置" * 10], ["", "海光", "很长的配置" * 10]],
+        )],
+    )
+    chunks = chunk_document(parsed, config=config)
+    assert not any(chunk.locator.get("projection") == "complete_item_index" for chunk in chunks)
 
 
 # ---- 幂等 / 边界 ----

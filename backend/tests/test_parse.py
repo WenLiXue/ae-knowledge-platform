@@ -62,3 +62,35 @@ def test_parse_empty_and_malformed() -> None:
     parsed = parse_feishu_payload({"raw_content": 123})
     assert parsed.elements == []
     assert parsed.stats["element_count"] == 0
+
+
+def test_sheet_payload_parses_regions_with_precise_locator() -> None:
+    parsed = parse_feishu_payload(
+        {
+            "type": "sheet",
+            "spreadsheet_token": "spreadsheet-x",
+            "source_url": "https://example.feishu.cn/wiki/node?sheet=tab-a",
+            "sheets": [{
+                "sheet_id": "tab-a",
+                "title": "需求列表",
+                "range": "tab-a!A1:C3",
+                "values": [
+                    ["编号", "名称", "优先级"],
+                    ["F01", "接口联动", "P0"],
+                    ["", "", ""],
+                ],
+            }],
+        },
+        title="需求表",
+        source_type="sheet",
+    )
+    assert [element.type for element in parsed.elements] == ["heading", "sheet_region"]
+    region = parsed.elements[1]
+    assert region.heading_path == ["需求列表"]
+    assert region.table == {
+        "columns": ["编号", "名称", "优先级"],
+        "rows": [["F01", "接口联动", "P0"]],
+    }
+    assert region.locator["sheet_id"] == "tab-a"
+    assert region.locator["range"] == "tab-a!A1:C2"
+    assert region.locator["source_url"].endswith("sheet=tab-a")

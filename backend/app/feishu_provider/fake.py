@@ -130,7 +130,12 @@ class FakeFeishuProvider(FeishuDocumentProvider):
         )
 
     def fetch_content(
-        self, user_access_token: str | None, resource_token: str, resource_type: str
+        self,
+        user_access_token: str | None,
+        resource_token: str,
+        resource_type: str,
+        *,
+        source_url: str | None = None,
     ) -> FeishuContent:
         self._fetch_calls[resource_token] += 1
         n = self._fetch_calls[resource_token]

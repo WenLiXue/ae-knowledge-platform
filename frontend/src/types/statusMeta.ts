@@ -103,8 +103,10 @@ export const TASK_TYPE_META: Record<string, string> = {
 export const RESOURCE_TYPE_LABEL: Record<string, string> = {
   WIKI: "知识库",
   DOCX: "文档",
+  SHEET: "电子表格",
   wiki: "知识库",
   docx: "文档",
+  sheet: "电子表格",
 };
 
 /** 获取任意状态的中文标签（未收录时展示原值、中性配色）。 */

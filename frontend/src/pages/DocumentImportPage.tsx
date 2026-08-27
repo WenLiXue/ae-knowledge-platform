@@ -17,12 +17,20 @@ import {
   Pagination,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from "@mui/material";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { getFeishuConnection, listFeishuDocuments, submitFeishuDocuments } from "../api/feishu";
+import {
+  getFeishuConnection,
+  listFeishuDocuments,
+  submitFeishuDocuments,
+  submitFeishuLinks,
+  uploadLocalDocuments,
+} from "../api/feishu";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
@@ -32,8 +40,9 @@ import { RESOURCE_TYPE_LABEL } from "../types/statusMeta";
 import type { FeishuDocument, FeishuResourceType, FeishuSubmitResult } from "../types/documents";
 
 type Notice = { severity: "info" | "success" | "error"; text: string };
+type ImportMode = "account" | "link" | "local";
 
-const TYPE_OPTIONS: FeishuResourceType[] = ["wiki", "docx"];
+const TYPE_OPTIONS: FeishuResourceType[] = ["wiki", "docx", "sheet"];
 
 /** 文档导入页：飞书文档搜索、类型筛选、多选批量提交入库。 */
 export function DocumentImportPage() {
@@ -51,6 +60,10 @@ export function DocumentImportPage() {
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<"" | "submitted" | "pending">("");
   const [sortBy, setSortBy] = useState<"modified" | "title">("modified");
+  const [importMode, setImportMode] = useState<ImportMode>("account");
+  const [linkText, setLinkText] = useState("");
+  const [localFiles, setLocalFiles] = useState<File[]>([]);
+  const [directSubmitting, setDirectSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -174,15 +187,69 @@ export function DocumentImportPage() {
     }
   };
 
+  const handleLinkSubmit = async () => {
+    const urls = linkText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    if (!urls.length || directSubmitting) return;
+    setDirectSubmitting(true);
+    setNotice(null);
+    try {
+      const result = await submitFeishuLinks(urls);
+      const duplicated = result.items.filter((item) => item.duplicate).length;
+      setNotice({
+        severity: duplicated === result.items.length ? "info" : "success",
+        text: `已提交 ${result.items.length - duplicated} 个飞书链接${duplicated ? `，${duplicated} 个已存在` : ""}。`,
+      });
+      setLinkText("");
+    } catch (err) {
+      setNotice({ severity: "error", text: getErrorMessage(err, "飞书链接提交失败。") });
+    } finally {
+      setDirectSubmitting(false);
+    }
+  };
+
+  const handleLocalUpload = async () => {
+    if (!localFiles.length || directSubmitting) return;
+    setDirectSubmitting(true);
+    setNotice(null);
+    try {
+      const result = await uploadLocalDocuments(localFiles);
+      const duplicated = result.items.filter((item) => item.duplicate).length;
+      setNotice({
+        severity: duplicated === result.items.length ? "info" : "success",
+        text: `已上传 ${result.items.length - duplicated} 个文件${duplicated ? `，${duplicated} 个内容重复` : ""}。`,
+      });
+      setLocalFiles([]);
+    } catch (err) {
+      setNotice({ severity: "error", text: getErrorMessage(err, "本地文件上传失败。") });
+    } finally {
+      setDirectSubmitting(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
         title="文档导入"
-        description="搜索并批量提交飞书文档，提交后系统将读取正文并进入处理流水线。"
+        description="从当前飞书账号、飞书链接或本地文件导入知识，统一进入处理流水线。"
       />
 
-      {error && <ErrorAlert error={error} onRetry={() => void load()} title="加载失败" />}
-      {!connected && !loading && !error && (
+      <Card sx={{ mb: 2 }}>
+        <Tabs
+          value={importMode}
+          onChange={(_event, value: ImportMode) => {
+            setImportMode(value);
+            setNotice(null);
+          }}
+          aria-label="选择文档导入方式"
+        >
+          <Tab value="account" label="当前账号文档" />
+          <Tab value="link" label="飞书链接" />
+          <Tab value="local" label="本地文件" />
+        </Tabs>
+      </Card>
+
+      {importMode === "account" && error && <ErrorAlert error={error} onRetry={() => void load()} title="加载失败" />}
+      {importMode === "account" && !connected && !loading && !error && (
         <Alert severity="info" sx={{ mb: 2 }}>
           飞书服务当前未连接，文档列表可能为空；请在后台配置飞书连接后刷新。
         </Alert>
@@ -193,7 +260,65 @@ export function DocumentImportPage() {
         </Alert>
       )}
 
-      <Card>
+      {importMode === "link" && (
+        <Card>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Typography variant="h6">通过飞书链接导入</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
+              每行粘贴一个 Wiki 或文档链接。系统会使用当前账号的飞书授权读取内容。
+            </Typography>
+            <TextField
+              multiline
+              minRows={5}
+              fullWidth
+              value={linkText}
+              onChange={(event) => setLinkText(event.target.value)}
+              placeholder={"https://example.feishu.cn/wiki/...\nhttps://example.feishu.cn/sheets/..."}
+              inputProps={{ "aria-label": "飞书文档链接" }}
+            />
+            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+              <Button variant="contained" disabled={!linkText.trim() || directSubmitting} onClick={() => void handleLinkSubmit()}>
+                {directSubmitting ? "解析提交中…" : "解析并提交"}
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {importMode === "local" && (
+        <Card>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Typography variant="h6">上传本地文件</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              支持 PDF、DOCX、XLSX；单个文件不超过 50 MB，每次最多 20 个。内容相同的文件会自动去重。
+            </Typography>
+            <Box
+              sx={{ mt: 2, p: 4, border: 1, borderStyle: "dashed", borderColor: "divider", borderRadius: 2, textAlign: "center", bgcolor: "grey.50" }}
+            >
+              <Button component="label" variant="outlined">
+                选择文件
+                <input
+                  hidden
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.xlsx"
+                  onChange={(event) => setLocalFiles(Array.from(event.target.files ?? []))}
+                />
+              </Button>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {localFiles.length ? `已选择 ${localFiles.length} 个文件：${localFiles.map((file) => file.name).join("、")}` : "尚未选择文件"}
+              </Typography>
+            </Box>
+            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+              <Button variant="contained" disabled={!localFiles.length || directSubmitting} onClick={() => void handleLocalUpload()}>
+                {directSubmitting ? "上传中…" : `上传并入库${localFiles.length ? `（${localFiles.length}）` : ""}`}
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {importMode === "account" && <><Card>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Stack spacing={2}>
             <Stack
@@ -370,7 +495,7 @@ export function DocumentImportPage() {
             </>
           )}
         </CardContent>
-      </Card>
+      </Card></>}
     </>
   );
 }

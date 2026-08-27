@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import parse_qs, quote, urlparse
 
 import httpx
 
@@ -112,9 +113,12 @@ class RealFeishuProvider(FeishuDocumentProvider):
             if resp.status_code == 429:
                 result = "rate_limited"
                 raise FeishuError(RATE_LIMIT, "FEISHU_RATE_LIMITED", "飞书接口限流", retryable=True)
-            if resp.status_code in (401, 403):
+            if resp.status_code == 401:
                 result = "auth_expired"
                 raise FeishuError(AUTH, "FEISHU_AUTH_EXPIRED", "飞书授权失效", retryable=False)
+            if resp.status_code == 403:
+                result = "permission_denied"
+                raise FeishuError(PERMISSION, "FEISHU_PERMISSION_DENIED", "无权访问该飞书资源", retryable=False)
             if resp.status_code == 404:
                 result = "not_found"
                 raise FeishuError(NOT_FOUND, "DOC_NOT_FOUND", "资源不存在", retryable=False)
@@ -179,7 +183,14 @@ class RealFeishuProvider(FeishuDocumentProvider):
 
     def resolve_url(self, user_access_token: str | None, url: str) -> FeishuDocument:
         token, resource_type = _parse_url(url)
-        return self.get_metadata(user_access_token, token, resource_type)
+        document = self.get_metadata(user_access_token, token, resource_type)
+        document.url = url
+        selected_sheet_id = _selected_sheet_id(url)
+        if selected_sheet_id:
+            document.extra["selected_sheet_id"] = selected_sheet_id
+            if document.resource_type == "sheet":
+                document.canonical_token = f"{document.resource_token}#{selected_sheet_id}"
+        return document
 
     def get_metadata(
         self, user_access_token: str | None, resource_token: str, resource_type: str
@@ -205,6 +216,20 @@ class RealFeishuProvider(FeishuDocumentProvider):
                 node_token=resource_token,
                 extra={"obj_token": obj_token, "node_token": resource_token},
             )
+        if resource_type == "sheet":
+            body = self._request(
+                "GET", f"/open-apis/sheets/v3/spreadsheets/{resource_token}",
+                token=user_access_token,
+            )
+            spreadsheet = body.get("data", {}).get("spreadsheet", {})
+            return FeishuDocument(
+                resource_token=resource_token,
+                canonical_token=resource_token,
+                title=spreadsheet.get("title", resource_token),
+                resource_type="sheet",
+                owner_name=spreadsheet.get("owner_id"),
+                url=spreadsheet.get("url"),
+            )
         body = self._request(
             "GET", f"/open-apis/docx/v1/documents/{resource_token}", token=user_access_token,
         )
@@ -220,12 +245,24 @@ class RealFeishuProvider(FeishuDocumentProvider):
         )
 
     def fetch_content(
-        self, user_access_token: str | None, resource_token: str, resource_type: str
+        self,
+        user_access_token: str | None,
+        resource_token: str,
+        resource_type: str,
+        *,
+        source_url: str | None = None,
     ) -> FeishuContent:
         if user_access_token is None:
             raise FeishuError(AUTH, "USER_TOKEN_MISSING", "缺少用户访问凭证", retryable=False)
         meta = self.get_metadata(user_access_token, resource_token, resource_type)
         obj_token = meta.resource_token
+        if meta.resource_type == "sheet":
+            return self._fetch_sheet(
+                user_access_token,
+                obj_token,
+                meta,
+                source_url=source_url,
+            )
         body = self._request(
             "GET", f"/open-apis/docx/v1/documents/{obj_token}/raw_content",
             token=user_access_token,
@@ -238,6 +275,97 @@ class RealFeishuProvider(FeishuDocumentProvider):
             revision=meta.revision,
             modified_at=meta.modified_at,
             raw_payload={"document_id": obj_token, "raw_content": text},
+        )
+
+    def _fetch_sheet(
+        self,
+        user_access_token: str,
+        spreadsheet_token: str,
+        meta: FeishuDocument,
+        *,
+        source_url: str | None,
+    ) -> FeishuContent:
+        body = self._request(
+            "GET",
+            f"/open-apis/sheets/v3/spreadsheets/{spreadsheet_token}/sheets/query",
+            token=user_access_token,
+        )
+        sheets = body.get("data", {}).get("sheets", []) or []
+        selected_sheet_id = _selected_sheet_id(source_url)
+        if selected_sheet_id:
+            sheets = [sheet for sheet in sheets if str(sheet.get("sheet_id")) == selected_sheet_id]
+            if not sheets:
+                raise FeishuError(
+                    NOT_FOUND,
+                    "SHEET_NOT_FOUND",
+                    "链接中指定的工作表不存在或当前用户无权访问",
+                    retryable=False,
+                )
+        else:
+            sheets = [sheet for sheet in sheets if not sheet.get("hidden", False)]
+
+        remaining_cells = 100_000
+        revision: str | None = None
+        payload_sheets: list[dict[str, Any]] = []
+        text_parts: list[str] = []
+        for sheet in sheets:
+            if remaining_cells <= 0:
+                break
+            sheet_id = str(sheet.get("sheet_id") or "")
+            if not sheet_id:
+                continue
+            grid = sheet.get("grid_properties") or {}
+            column_count = max(1, min(int(grid.get("column_count") or 1), 100))
+            row_count = max(1, int(grid.get("row_count") or 1))
+            row_count = min(row_count, max(1, remaining_cells // column_count))
+            cell_range = f"{sheet_id}!A1:{_column_name(column_count)}{row_count}"
+            value_body = self._request(
+                "GET",
+                f"/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/values/{quote(cell_range, safe='!:')}",
+                token=user_access_token,
+                params={
+                    "valueRenderOption": "FormattedValue",
+                    "dateTimeRenderOption": "FormattedString",
+                    "user_id_type": "open_id",
+                },
+            )
+            data = value_body.get("data", {})
+            value_range = data.get("valueRange", {}) or {}
+            values = _trim_sheet_values(value_range.get("values") or [])
+            current_revision = data.get("revision", value_range.get("revision"))
+            if current_revision is not None:
+                revision = str(current_revision)
+            if not values:
+                continue
+            actual_range = _actual_range(sheet_id, values)
+            sheet_title = str(sheet.get("title") or sheet_id)
+            payload_sheets.append(
+                {
+                    "sheet_id": sheet_id,
+                    "title": sheet_title,
+                    "range": actual_range,
+                    "values": values,
+                }
+            )
+            text_parts.append(sheet_title)
+            text_parts.extend("\t".join(_cell_text(cell) for cell in row) for row in values)
+            remaining_cells -= sum(len(row) for row in values)
+
+        raw_payload = {
+            "type": "sheet",
+            "spreadsheet_token": spreadsheet_token,
+            "title": meta.title,
+            "source_url": source_url or meta.url,
+            "sheets": payload_sheets,
+            "truncated": remaining_cells <= 0,
+        }
+        return FeishuContent(
+            title=meta.title,
+            text="\n".join(text_parts),
+            content_type="sheet",
+            revision=revision,
+            modified_at=meta.modified_at,
+            raw_payload=raw_payload,
         )
 
 
@@ -294,3 +422,47 @@ def _parse_url(url: str) -> tuple[str, str]:
             token = url.rsplit(marker, 1)[-1].split("?", 1)[0].rstrip("/")
             return token, resource_type
     raise FeishuError(VALIDATION, "UNSUPPORTED_URL", f"无法识别的飞书链接: {url}", retryable=False)
+
+
+def _selected_sheet_id(url: str | None) -> str | None:
+    if not url:
+        return None
+    values = parse_qs(urlparse(url).query).get("sheet") or []
+    value = values[0].strip() if values else ""
+    return value or None
+
+
+def _column_name(column_count: int) -> str:
+    value = column_count
+    chars: list[str] = []
+    while value:
+        value, remainder = divmod(value - 1, 26)
+        chars.append(chr(ord("A") + remainder))
+    return "".join(reversed(chars))
+
+
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return str(value.get("text") or value.get("link") or value)
+    return str(value)
+
+
+def _trim_sheet_values(raw_values: list[Any]) -> list[list[str]]:
+    rows = [
+        [_cell_text(cell).strip() for cell in row] if isinstance(row, list) else []
+        for row in raw_values
+    ]
+    while rows and not any(rows[-1]):
+        rows.pop()
+    if not rows:
+        return []
+    last_column = max((index for row in rows for index, value in enumerate(row) if value), default=-1)
+    if last_column < 0:
+        return []
+    return [(row + [""] * (last_column + 1 - len(row)))[: last_column + 1] for row in rows]
+
+
+def _actual_range(sheet_id: str, values: list[list[str]]) -> str:
+    return f"{sheet_id}!A1:{_column_name(max(len(row) for row in values))}{len(values)}"

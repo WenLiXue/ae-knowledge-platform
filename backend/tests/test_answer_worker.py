@@ -108,6 +108,7 @@ def test_real_generation_path_succeeds_with_citations(monkeypatch) -> None:
     assert answer["answer_type"] == "ANSWER"
     assert answer["summary"] == "T90000 配置 256GB 内存。"
     assert answer["blocks"][0]["citation_nos"] == [1]
+    assert len(answer["citations"]) == 1
     assert answer["citations"][0]["document_title"] == "AE 硬件规格"
 
 

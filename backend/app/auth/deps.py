@@ -63,3 +63,20 @@ def get_optional_feishu_token(
     if user is None:
         return None
     return auth_feishu.get_user_access_token(db, user.id, get_feishu_oauth_client())
+
+
+def get_required_feishu_token(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> str:
+    """要求平台会话和飞书授权均有效，并区分两类失效原因。"""
+    token = auth_feishu.get_user_access_token(db, user.id, get_feishu_oauth_client())
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "FEISHU_AUTH_REQUIRED",
+                "message": "飞书授权已失效，请重新进行飞书授权。当前账号仍可继续使用其他功能。",
+            },
+        )
+    return token

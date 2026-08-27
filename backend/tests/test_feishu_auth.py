@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from app.auth import feishu as auth_feishu
 from app.auth import service
+from app.auth import sessions
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.feishu_auth.fake import FakeFeishuOAuthClient
@@ -80,6 +81,35 @@ def test_me_requires_login() -> None:
     resp = client.get("/api/v1/auth/me")
     assert resp.status_code == 401
     assert resp.json()["detail"]["code"] == "AUTH_REQUIRED"
+
+
+def test_documents_distinguishes_expired_session_from_missing_feishu_token() -> None:
+    resp = client.get("/api/v1/feishu/documents")
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "AUTH_REQUIRED"
+
+
+def test_documents_requires_feishu_reauthorization_when_credential_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oauth = FakeFeishuOAuthClient()
+    oauth.refresh_should_fail = True
+    monkeypatch.setattr("app.auth.deps.get_feishu_oauth_client", lambda: oauth)
+    with SessionLocal() as s:
+        data = service.start_oauth(s, oauth, "http://cb")
+        result = service.process_oauth_callback(s, oauth, "code", data["state"], KEY)
+        raw_session = sessions.create_session(s, result.user.id, 1)
+        s.execute(
+            text("UPDATE auth.external_credentials SET access_expires_at = now() - interval '1 hour'")
+        )
+        s.commit()
+
+    resp = client.get(
+        "/api/v1/feishu/documents",
+        cookies={get_settings().session_cookie_name: raw_session},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "FEISHU_AUTH_REQUIRED"
 
 
 def test_same_feishu_identity_logs_in_same_user() -> None:

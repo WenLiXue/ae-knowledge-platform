@@ -466,13 +466,27 @@ def _run_generate_answer(
             retryable=getattr(exc, "retryable", False),
         ) from exc
 
-    # ---- 引用快照（批读取元数据） ----
-    citations = _build_citations(session, answer.id, retrieval.evidence)
+    # ---- 引用快照（只保留生成结果实际使用的证据） ----
+    used_evidence_ids = {
+        citation_id
+        for block in generated.blocks
+        for citation_id in block.citation_ids
+    }
+    cited_evidence = [
+        evidence for evidence in retrieval.evidence
+        if evidence.evidence_id in used_evidence_ids
+    ]
+    citation_id_to_no = {
+        evidence.evidence_id: citation_no
+        for citation_no, evidence in enumerate(cited_evidence, start=1)
+    }
+    citations = _build_citations(session, answer.id, cited_evidence)
 
     _persist_answer(
         session, answer,
         generated,
         citations_data=citations,
+        citation_id_to_no=citation_id_to_no,
         flags=flags + retrieval.degradation_flags,
         model_key=model_key,
         retrieval_config_revision=retrieval.config_revision,
@@ -483,6 +497,7 @@ def _run_generate_answer(
             "answer_id": str(answer.id),
             "answer_type": generated.answer_type,
             "evidence_count": len(retrieval.evidence),
+            "citation_count": len(cited_evidence),
             "flags": flags + retrieval.degradation_flags,
         },
     )
@@ -572,23 +587,20 @@ def _persist_answer(
     flags: list[str],
     model_key: str | None,
     retrieval_config_revision,
+    citation_id_to_no: dict[str, int] | None = None,
 ) -> None:
     """单一事务：Answer 最终内容 + 引用快照原子提交（DD-10 §3）。
 
-    证据 evidence_id 形如 E{no}，与引用序号一致（E1→citation_no 1）；引用编号由
-    生成模型引用集合确定，不在本函数推断。
+    检索证据编号可能不连续（例如模型仅使用 E1/E4），持久化前会压缩为连续的
+    citation_no，并通过 citation_id_to_no 回写各答案块。
     """
     blocks = []
     for i, block in enumerate(generated.blocks, start=1):
         citation_nos: list[int] = []
         for cid in block.citation_ids:
-            if cid.startswith("E"):
-                try:
-                    no = int(cid[1:])
-                    if 1 <= no <= len(citations_data):
-                        citation_nos.append(no)
-                except ValueError:
-                    continue
+            no = (citation_id_to_no or {}).get(cid)
+            if no is not None:
+                citation_nos.append(no)
         blocks.append(
             {
                 "block_id": f"b{i}",

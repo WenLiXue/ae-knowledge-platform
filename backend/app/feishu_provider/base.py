@@ -95,6 +95,11 @@ class FeishuDocumentProvider(ABC):
 
     @abstractmethod
     def fetch_content(
-        self, user_access_token: str | None, resource_token: str, resource_type: str
+        self,
+        user_access_token: str | None,
+        resource_token: str,
+        resource_type: str,
+        *,
+        source_url: str | None = None,
     ) -> FeishuContent:
         """读取文档正文与版本信息。"""

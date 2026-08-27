@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Annotated
@@ -9,11 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .auth.deps import get_optional_feishu_token, get_optional_user
+from .auth.deps import get_current_user, get_required_feishu_token
 from .core.config import get_settings
 from .db.models.user import User
 from .db.session import get_db
-from .feishu_provider.base import AUTH, NOT_FOUND, FeishuError
+from .feishu_provider.base import AUTH, NOT_FOUND, PERMISSION, FeishuError
 from .feishu_provider.factory import get_feishu_provider
 from .knowledge import service
 
@@ -23,6 +22,7 @@ router = APIRouter(prefix="/api/v1/feishu", tags=["feishu"])
 class ResourceType(StrEnum):
     WIKI = "wiki"
     DOCX = "docx"
+    SHEET = "sheet"
 
 
 class FeishuDocument(BaseModel):
@@ -47,6 +47,10 @@ class SubmitRequest(BaseModel):
     items: list[SubmitItem] = Field(min_length=1, max_length=50)
 
 
+class LinkSubmitRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=20)
+
+
 class SubmitResult(BaseModel):
     client_item_id: str
     resource_token: str
@@ -68,6 +72,11 @@ def _map_feishu_error(exc: FeishuError) -> HTTPException:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": exc.code, "message": exc.message},
         )
+    if exc.category == PERMISSION:
+        return HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": exc.code, "message": exc.message},
+        )
     return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail={"code": exc.code, "message": exc.message},
@@ -75,14 +84,16 @@ def _map_feishu_error(exc: FeishuError) -> HTTPException:
 
 
 @router.get("/connection")
-def get_connection() -> dict[str, object]:
-    """查询飞书绑定与授权可用状态（OAuth 接入前为占位）。"""
-
+def get_connection(
+    user: User = Depends(get_current_user),
+    _user_access_token: str = Depends(get_required_feishu_token),
+) -> dict[str, object]:
+    """查询当前登录用户的飞书授权可用状态。"""
     return {
         "data": {
             "connected": True,
             "provider": "feishu",
-            "display_name": "当前用户",
+            "display_name": user.display_name,
             "mode": get_settings().feishu_provider,
         }
     }
@@ -94,7 +105,7 @@ def list_documents(
     resource_type: Annotated[list[ResourceType] | None, Query()] = None,
     limit: int = Query(default=50, ge=1, le=50),
     page_token: str | None = Query(default=None),
-    user_access_token: str | None = Depends(get_optional_feishu_token),
+    user_access_token: str = Depends(get_required_feishu_token),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     provider = get_feishu_provider()
@@ -139,8 +150,8 @@ def list_documents(
 @router.post("/documents/submit", status_code=status.HTTP_202_ACCEPTED)
 def submit_documents(
     payload: SubmitRequest,
-    user_access_token: str | None = Depends(get_optional_feishu_token),
-    user: User | None = Depends(get_optional_user),
+    user_access_token: str = Depends(get_required_feishu_token),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     # 同一次请求内不允许重复提交同一 token
@@ -153,8 +164,8 @@ def submit_documents(
             )
         seen.add(item.resource_token)
 
-    # 来源归属请求者用户（其飞书 token 才能被 FETCH 使用）；未登录回退系统默认用户
-    owner_user_id = user.id if user is not None else uuid.UUID(get_settings().default_owner_user_id)
+    # 来源归属请求者用户（Worker 后续使用其飞书授权读取正文）。
+    owner_user_id = user.id
     provider = get_feishu_provider()
 
     submit_items: list[service.SubmitItemIn] = []
@@ -192,3 +203,56 @@ def submit_documents(
         for outcome in outcomes
     ]
     return {"data": {"items": results}}
+
+
+@router.post("/documents/submit-links", status_code=status.HTTP_202_ACCEPTED)
+def submit_document_links(
+    payload: LinkSubmitRequest,
+    user_access_token: str = Depends(get_required_feishu_token),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    provider = get_feishu_provider()
+    items: list[service.SubmitItemIn] = []
+    seen: set[str] = set()
+    for raw_url in payload.urls:
+        url = raw_url.strip()
+        if not url:
+            continue
+        try:
+            meta = provider.resolve_url(user_access_token, url)
+        except FeishuError as exc:
+            raise _map_feishu_error(exc) from exc
+        if meta.resource_type not in {
+            ResourceType.WIKI.value,
+            ResourceType.DOCX.value,
+            ResourceType.SHEET.value,
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail={"code": "UNSUPPORTED_FEISHU_RESOURCE", "message": "目前仅支持飞书 Wiki、文档和电子表格链接。"},
+            )
+        token = meta.canonical_token or meta.resource_token
+        if token in seen:
+            continue
+        seen.add(token)
+        items.append(
+            service.SubmitItemIn(
+                client_item_id=url,
+                resource_token=meta.resource_token,
+                resource_type=meta.resource_type,
+                canonical_key=token,
+                original_url=meta.url or url,
+                title=meta.title,
+                revision=meta.revision,
+                modified_at=meta.modified_at,
+                owner_name=meta.owner_name,
+            )
+        )
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "EMPTY_LINKS", "message": "请至少输入一个有效的飞书链接。"},
+        )
+    outcomes = service.submit_feishu_sources(db, items, user.id)
+    return {"data": {"items": [outcome.__dict__ for outcome in outcomes]}}

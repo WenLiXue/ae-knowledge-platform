@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -18,6 +20,8 @@ from . import repository
 
 FETCH_TASK_TYPE = "FETCH"
 FETCH_STAGE = "FETCHING"
+PARSE_TASK_TYPE = "PARSE"
+PARSE_STAGE = "PARSING"
 
 
 @dataclass
@@ -25,6 +29,7 @@ class SubmitItemIn:
     client_item_id: str
     resource_token: str
     resource_type: str
+    canonical_key: str | None = None
     title: str | None = None
     revision: str | None = None
     modified_at: datetime | None = None
@@ -86,7 +91,7 @@ def submit_feishu_sources(
     outcomes: list[SubmitOutcome] = []
 
     for item in items:
-        canonical_key = item.resource_token.strip()
+        canonical_key = (item.canonical_key or item.resource_token).strip()
         existing = repository.get_source_by_canonical_key(session, "FEISHU", canonical_key)
         if existing is not None:
             outcomes.append(_build_duplicate_outcome(session, item, existing))
@@ -106,7 +111,7 @@ def submit_feishu_sources(
         detail = FeishuSourceDetail(
             source_id=source.id,
             resource_type=item.resource_type.upper(),
-            resource_token=canonical_key,
+            resource_token=item.resource_token.strip(),
             original_url=item.original_url,
             last_seen_revision=item.revision,
             last_seen_modified_at=item.modified_at,
@@ -170,6 +175,95 @@ def submit_feishu_sources(
         )
 
     return outcomes
+
+
+def submit_manual_upload(
+    session: Session,
+    *,
+    owner_user_id: uuid.UUID,
+    filename: str,
+    content_type: str | None,
+    data: bytes,
+    extracted_text: str,
+    store,
+) -> SubmitOutcome:
+    """保存本地原文件及标准 raw 文本，并从 PARSE 阶段进入统一流水线。"""
+    digest = hashlib.sha256(data).hexdigest()
+    existing = repository.get_source_by_canonical_key(session, "MANUAL_UPLOAD", digest)
+    item = SubmitItemIn(client_item_id=filename, resource_token=digest, resource_type="file")
+    if existing is not None:
+        return _build_duplicate_outcome(session, item, existing)
+
+    source = KnowledgeSource(
+        owner_user_id=owner_user_id,
+        source_type="MANUAL_UPLOAD",
+        canonical_key=digest,
+        display_name=filename,
+        status="PROCESSING",
+        update_status="IDLE",
+    )
+    session.add(source)
+    session.flush()
+    version = DocumentVersion(
+        source_id=source.id,
+        version_no=1,
+        status="PROCESSING",
+        processing_stage=PARSE_STAGE,
+        content_sha256=digest,
+    )
+    session.add(version)
+    session.flush()
+
+    suffix = filename.rsplit(".", 1)[-1].casefold()
+    original_key = f"raw/{source.id}/{version.id}/original.{suffix}"
+    normalized_key = f"raw/{source.id}/{version.id}/normalized.json"
+    store.put(original_key, data)
+    store.put(
+        normalized_key,
+        json.dumps(
+            {
+                "type": suffix,
+                "raw_content": extracted_text,
+                "filename": filename,
+                "content_type": content_type,
+                "original_object_key": original_key,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8"),
+    )
+    version.raw_object_key = normalized_key
+
+    task = ProcessingTask(
+        task_type=PARSE_TASK_TYPE,
+        status="PENDING",
+        idempotency_key=_task_idempotency_key(version.id, PARSE_TASK_TYPE),
+        scheduled_at=_utcnow(),
+        source_id=source.id,
+        version_id=version.id,
+        payload={"source_id": str(source.id), "version_id": str(version.id), "reason": "UPLOAD"},
+        priority=100,
+        max_attempts=3,
+        created_by_user_id=owner_user_id,
+    )
+    session.add(task)
+    session.flush()
+    source.pending_version_id = version.id
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = repository.get_source_by_canonical_key(session, "MANUAL_UPLOAD", digest)
+        if existing is not None:
+            return _build_duplicate_outcome(session, item, existing)
+        raise
+    return SubmitOutcome(
+        client_item_id=filename,
+        resource_token=digest,
+        source_id=str(source.id),
+        version_id=str(version.id),
+        task_id=str(task.id),
+        status="PROCESSING",
+    )
 
 
 def _build_duplicate_outcome(

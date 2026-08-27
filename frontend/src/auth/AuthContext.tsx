@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { getCurrentUser, logoutRequest } from "../api/auth";
+import { AUTH_REQUIRED_EVENT } from "../api/client";
 import { FullPageLoading } from "../components/LoadingState";
 import type { User } from "../types/auth";
 
@@ -27,6 +28,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    const handleAuthRequired = () => {
+      if (active) {
+        setUser(null);
+        setInitializing(false);
+        // 服务端会话已无效，补充调用注销接口以删除浏览器中的 HttpOnly Cookie。
+        void logoutRequest().catch(() => undefined);
+      }
+    };
+    window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
     void getCurrentUser()
       .then((next) => {
         if (active) setUser(next);
@@ -39,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     return () => {
       active = false;
+      window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
     };
   }, []);
 

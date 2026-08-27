@@ -120,6 +120,7 @@ def test_retrieval_config_defaults() -> None:
         assert cfg.config_revision == 0
         assert cfg.bm25_top_k == 50
         assert cfg.rrf_k == 60
+        assert cfg.rerank_min_score == 0.2
         assert cfg.evidence_min == 4 and cfg.evidence_max == 8
 
 

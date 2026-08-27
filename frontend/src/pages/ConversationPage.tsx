@@ -7,8 +7,6 @@ import {
   AccordionSummary,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Dialog,
@@ -368,15 +366,19 @@ function AnswerView({ answer }: { answer: Answer }) {
 function MessageRow({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
-    <Stack direction="row" justifyContent={isUser ? "flex-end" : "flex-start"}>
+    <Stack
+      direction="row"
+      justifyContent={isUser ? "flex-end" : "flex-start"}
+      sx={{ px: { xs: 0, sm: 1 } }}
+    >
       {isUser ? (
         <Box
           sx={{
-            maxWidth: "72%",
+            maxWidth: { xs: "88%", sm: "72%" },
             // 问句气泡对齐原型 .question-bubble：浅蓝底 + 深蓝文字
             bgcolor: "#e6f4ff",
             color: "#17376f",
-            borderRadius: "14px 14px 3px 14px",
+            borderRadius: "16px 16px 4px 16px",
             px: 2,
             py: 1.25,
           }}
@@ -386,17 +388,30 @@ function MessageRow({ message }: { message: Message }) {
           </Typography>
         </Box>
       ) : (
-        <Card sx={{ width: "100%", maxWidth: 880 }}>
-          <CardContent>
-            {message.answer ? (
-              <AnswerView answer={message.answer} />
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                {message.content || "（答案生成中）"}
-              </Typography>
-            )}
-          </CardContent>
-        </Card>
+        <Box
+          component="article"
+          sx={{
+            width: "100%",
+            maxWidth: 1000,
+            py: { xs: 2, sm: 2.5 },
+            borderBottom: 1,
+            borderColor: "divider",
+          }}
+        >
+          <Typography
+            variant="overline"
+            sx={{ display: "block", mb: 1, color: "primary.main", letterSpacing: "0.08em" }}
+          >
+            知识助手
+          </Typography>
+          {message.answer ? (
+            <AnswerView answer={message.answer} />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              {message.content || "（答案生成中）"}
+            </Typography>
+          )}
+        </Box>
       )}
     </Stack>
   );
@@ -610,8 +625,26 @@ export function ConversationPage() {
 
   // 查询工作区不再由外层 Container 提供宽度，页面自身补充等价约束。
   return (
-    <Box sx={{ width: "100%", maxWidth: 960, height: "100%", minHeight: 0, mx: "auto", p: { xs: 1.5, sm: 2.5 }, display: "flex", flexDirection: "column" }}>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5, flexShrink: 0 }}>
+    <Box
+      sx={{
+        width: { xs: "100%", md: "calc(100% - 48px)" },
+        maxWidth: 1400,
+        height: "100%",
+        minHeight: 0,
+        ml: { xs: 0, md: "clamp(24px, 4vw, 64px)" },
+        mr: { xs: 0, md: "auto" },
+        px: { xs: 1.5, sm: 2.5 },
+        pt: { xs: 1.5, sm: 2 },
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={1.5}
+        alignItems="center"
+        sx={{ width: "100%", maxWidth: 1000, mb: 1.5, flexShrink: 0 }}
+      >
         <IconButton component={RouterLink} to="/search" aria-label="返回知识查询">
           <ArrowBackIcon />
         </IconButton>
@@ -647,8 +680,20 @@ export function ConversationPage() {
 
       {error ? <ErrorAlert error={error} onRetry={() => void load()} title="操作失败" /> : null}
 
-      <Card sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-        <CardContent
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          bgcolor: "background.paper",
+          border: 1,
+          borderColor: "divider",
+          borderRadius: 2,
+        }}
+      >
+        <Box
           sx={{
             flexGrow: 1,
             overflowY: "auto",
@@ -656,8 +701,11 @@ export function ConversationPage() {
             flexDirection: "column",
             gap: 2,
             minHeight: 0,
-            p: { xs: 2, sm: 2.5 },
-            "&:last-child": { pb: { xs: 2, sm: 2.5 } },
+            px: { xs: 2, sm: 3.5 },
+            py: { xs: 1, sm: 1.5 },
+            scrollbarGutter: "stable",
+            alignItems: "flex-start",
+            "& > *": { width: "100%", maxWidth: 1000 },
           }}
         >
           {messages.length === 0 ? (
@@ -726,12 +774,19 @@ export function ConversationPage() {
             )}
 
           <div ref={bottomRef} />
-        </CardContent>
+        </Box>
 
-        <Box sx={{ p: 2, borderTop: 1, borderColor: "divider", bgcolor: "grey.50" }}>
-          <Stack direction="row" spacing={1.5} alignItems="flex-end">
+        <Box
+          sx={{
+            px: { xs: 1.5, sm: 2.5 },
+            py: { xs: 1.5, sm: 2 },
+            borderTop: 1,
+            borderColor: "divider",
+            bgcolor: "#f8fafc",
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="flex-end" sx={{ maxWidth: 1000 }}>
             <TextField
-              label="继续追问"
               placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -739,8 +794,8 @@ export function ConversationPage() {
               minRows={1}
               maxRows={4}
               fullWidth
-              size="small"
               disabled={sending || !!streaming}
+              inputProps={{ "aria-label": "继续追问" }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -754,14 +809,26 @@ export function ConversationPage() {
                   color="primary"
                   onClick={() => void handleSend()}
                   disabled={!input.trim() || sending || !!streaming}
-                  sx={{ border: 1, borderColor: "divider", bgcolor: "background.paper" }}
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    color: "common.white",
+                    bgcolor: "primary.main",
+                    "&:hover": { bgcolor: "primary.dark" },
+                    "&.Mui-disabled": { bgcolor: "grey.200", color: "grey.400" },
+                  }}
                 >
                   {sending ? <CircularProgress size={20} /> : <SendIcon />}
                 </IconButton>
               </span>
             </Tooltip>
           </Stack>
-          <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            spacing={0.25}
+            sx={{ maxWidth: 1000, mt: 1 }}
+          >
             <Typography variant="caption" color="text.secondary">
               回答将优先给出答案，并附上引用来源供核对。
             </Typography>
@@ -770,7 +837,7 @@ export function ConversationPage() {
             </Typography>
           </Stack>
         </Box>
-      </Card>
+      </Box>
 
       <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>重命名会话</DialogTitle>

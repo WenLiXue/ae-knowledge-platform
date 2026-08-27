@@ -8,7 +8,7 @@
  * - GET /api/v1/knowledge-sources/{source_id}
  */
 
-export type FeishuResourceType = "wiki" | "docx";
+export type FeishuResourceType = "wiki" | "docx" | "sheet";
 
 /** 飞书文档发现列表项。 */
 export interface FeishuDocument {

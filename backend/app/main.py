@@ -20,6 +20,8 @@ from .knowledge_sources import router as knowledge_sources_router
 from .llm.api import router as llm_config_router
 from .llm.migration import ensure_llm_schema_v2
 from .system_logs.api import router as logs_router
+from .uploads import router as uploads_router
+from .worker.tasks_api import router as tasks_router
 
 logger = logging.getLogger("app.error")
 
@@ -111,6 +113,8 @@ app.include_router(logs_router)
 app.include_router(feishu_router)
 app.include_router(knowledge_sources_router)
 app.include_router(conversation_router)
+app.include_router(tasks_router)
+app.include_router(uploads_router)
 
 
 @app.get("/health", tags=["system"])

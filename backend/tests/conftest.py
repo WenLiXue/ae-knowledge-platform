@@ -25,6 +25,10 @@ os.environ["FEISHU_PROVIDER"] = "fake"
 os.environ["FEATURE_REAL_QA"] = "false"
 os.environ["FEATURE_REAL_CLASSIFICATION"] = "false"
 os.environ["FEATURE_REAL_INDEXING"] = "false"
+# 测试强制关闭 Agent 图（避免读取 dev .env 的 AGENT_GRAPH_ENABLED=true）：
+# 默认走旧问答编排；需要 Agent 路径的用例自行 monkeypatch 置 true。
+os.environ["AGENT_GRAPH_ENABLED"] = "false"
+os.environ["AGENT_LOG_PAYLOADS"] = "false"
 # 审计导出文件写入系统临时目录，避免污染仓库
 os.environ.setdefault(
     "AUDIT_EXPORT_DIR", os.path.join(tempfile.gettempdir(), "ae_audit_exports_test")

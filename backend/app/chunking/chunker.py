@@ -171,13 +171,22 @@ def _render_table(columns: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _table_spec(el: ParsedElement, render: str, snapshot: dict) -> ChunkSpec:
+def _table_spec(
+    el: ParsedElement,
+    render: str,
+    snapshot: dict,
+    *,
+    locator_extra: dict | None = None,
+) -> ChunkSpec:
+    locator = {"element_ids": [el.element_id], "locators": [dict(el.locator or {})]}
+    if locator_extra:
+        locator.update(locator_extra)
     return ChunkSpec(
         chunk_type="sheet_region" if el.type == "sheet_region" else "table",
         content=render,
         content_sha256=_sha256(render),
         heading_path=list(el.heading_path or []),
-        locator={"element_ids": [el.element_id], "locators": [dict(el.locator or {})]},
+        locator=locator,
         metadata_snapshot=snapshot,
         token_count=estimate_tokens(render),
         element_ids=[el.element_id],
@@ -200,11 +209,12 @@ def _emit_table(el: ParsedElement, config: ChunkingConfig, snapshot: dict, out: 
     budget = max(config.min_tokens, config.hard_max_tokens - header_tokens)
     group: list[list[str]] = []
     group_tokens = header_tokens
+    detail_specs: list[ChunkSpec] = []
 
     def flush_group() -> None:
         nonlocal group, group_tokens
         if group:
-            out.append(_table_spec(el, _render_table(columns, group), snapshot))
+            detail_specs.append(_table_spec(el, _render_table(columns, group), snapshot))
             group = []
             group_tokens = header_tokens
 
@@ -215,6 +225,53 @@ def _emit_table(el: ParsedElement, config: ChunkingConfig, snapshot: dict, out: 
         group.append(row)
         group_tokens += row_tokens
     flush_group()
+    # 宽表常因列多而拆成多个详情块。若用户问“全部/有哪些”，证据选择的单来源上限
+    # 可能只保留前几个详情块。为此生成一个轻量、完整的标识列索引，既保留全集，
+    # 又不让整张宽表挤占上下文。仅在确实拆分且索引能装进单块时生成。
+    if len(detail_specs) > 1:
+        index_spec = _table_index_spec(el, columns, rows, config, snapshot)
+        if index_spec is not None:
+            out.append(index_spec)
+    out.extend(detail_specs)
+
+
+def _table_index_spec(
+    el: ParsedElement,
+    columns: list[str],
+    rows: list[list[str]],
+    config: ChunkingConfig,
+    snapshot: dict,
+) -> ChunkSpec | None:
+    identity_markers = ("型号", "编号", "名称", "版本", "产品")
+    identity_index = next(
+        (i for i, column in enumerate(columns) if any(marker in column for marker in identity_markers)),
+        None,
+    )
+    if identity_index is None:
+        return None
+    values: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        value = row[identity_index].strip() if identity_index < len(row) else ""
+        if value and value not in seen:
+            seen.add(value)
+            values.append(value)
+    if len(values) < 2:
+        return None
+    label = columns[identity_index] or "条目"
+    # 合并单元格展开后，某些“型号”列可能实际落入供应商/分类文本。型号或编号列
+    # 至少应有一半值包含数字，否则不生成会误导检索的完整型号索引。
+    if ("型号" in label or "编号" in label) and sum(any(ch.isdigit() for ch in value) for value in values) * 2 < len(values):
+        return None
+    render = f"表格完整条目索引（共 {len(values)} 项）\n{label}: " + "、".join(values)
+    if estimate_tokens(render) > config.hard_max_tokens:
+        return None
+    return _table_spec(
+        el,
+        render,
+        snapshot,
+        locator_extra={"projection": "complete_item_index", "item_count": len(values)},
+    )
 
 
 # ---- 主入口 ----
