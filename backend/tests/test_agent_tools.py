@@ -6,6 +6,7 @@ from app.agent.contracts.tool import ToolDefinition, ToolResultEnvelope, ToolCal
 from app.agent.contracts.plan import AgentPlan, PlanStep
 from app.agent.planner import PlannerLimits, ready_steps, validate_plan
 from app.agent.tools import ToolContext, ToolExecutor, ToolPolicy, ToolRegistry
+from app.agent.approvals import arguments_hash
 
 
 class Input(BaseModel):
@@ -81,6 +82,33 @@ def test_policy_denies_missing_permission_and_invalid_input() -> None:
         ToolContext(user_id="user-1", permissions=frozenset({"test:read"})),
     )
     assert invalid.error_code == "TOOL_INPUT_INVALID"
+
+
+def test_confirmation_policy_and_argument_hash_are_stable() -> None:
+    registry = ToolRegistry()
+
+    class WriteTool(ReadTool):
+        definition = ToolDefinition(
+            name="test.write",
+            version="1.0",
+            description="test write tool",
+            input_schema=Input.model_json_schema(),
+            output_schema=Output.model_json_schema(),
+            risk="LOW_RISK_WRITE",
+            side_effect=True,
+            requires_confirmation=True,
+            idempotency="REQUIRED",
+            required_permissions=["test:write"],
+        )
+
+    registry.register(WriteTool())
+    executor = ToolExecutor(registry, policy=ToolPolicy(allow_write=True))
+    result = executor.execute(
+        ToolCallProposal(tool_name="test.write", arguments={"value": "ok"}),
+        ToolContext(user_id="user-1", permissions=frozenset({"test:write"})),
+    )
+    assert result.error_code == "APPROVAL_REQUIRED"
+    assert arguments_hash({"b": 2, "a": 1}) == arguments_hash({"a": 1, "b": 2})
 
 
 def test_plan_validation_enforces_tools_permissions_and_dependencies() -> None:

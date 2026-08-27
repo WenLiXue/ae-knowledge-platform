@@ -63,7 +63,9 @@ class ToolExecutor:
         return result.model_copy(update={"data": {"summary": result.summary, "data": data}, "truncated": True})
 
     @staticmethod
-    def _failure(proposal, version: str, code: str, message: str, retryable: bool, started) -> ToolResultEnvelope:
+    def _failure(proposal, version: str | Any, code: str, message: str, retryable: bool, started) -> ToolResultEnvelope:
+        if not isinstance(version, str):
+            version = getattr(version, "version", _unknown_version())
         return ToolResultEnvelope(
             call_id=proposal.call_id,
             tool_name=proposal.tool_name,
