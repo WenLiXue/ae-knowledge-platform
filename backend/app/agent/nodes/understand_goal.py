@@ -7,6 +7,7 @@ does not grant permissions. Existing route_intent remains the legacy fallback.
 from __future__ import annotations
 
 import json
+import re
 
 from pydantic import ValidationError
 
@@ -49,10 +50,23 @@ def conservative_goal(question: str) -> GoalUnderstanding:
             confidence=1.0,
         )
     if any(token in question.lower() for token in ("重试", "retry")):
+        task_id = re.search(
+            r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b",
+            question,
+        )
+        if task_id is None:
+            return GoalUnderstanding(
+                intent="CLARIFY",
+                operation="ANSWER",
+                goal=question,
+                ambiguity=["TASK_ID_REQUIRED"],
+                confidence=0.9,
+            )
         return GoalUnderstanding(
             intent="ACTION",
             operation="ANSWER",
             goal=question,
+            entities=[{"entity_type": "task_id", "value": task_id.group(0), "source": "USER"}],
             requires_enterprise_evidence=False,
             candidate_capabilities=["task.retry"],
             risk_hint="WRITE",

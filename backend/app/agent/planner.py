@@ -88,7 +88,18 @@ def plan_goal(
                     "id": "step_1",
                     "title": f"执行 {capability}",
                     "capability": capability,
-                    "input_bindings": {"query": goal.goal} if capability == "knowledge.search" else {},
+                    "input_bindings": (
+                        {"query": goal.goal}
+                        if capability == "knowledge.search"
+                        else {"task_id": next(
+                            entity.value for entity in goal.entities
+                            if entity.entity_type == "task_id"
+                        )}
+                        if capability == "task.retry" and any(
+                            entity.entity_type == "task_id" for entity in goal.entities
+                        )
+                        else {}
+                    ),
                     "expected_output": "工具返回可验证结果",
                     "risk": definition.risk,
                 }
