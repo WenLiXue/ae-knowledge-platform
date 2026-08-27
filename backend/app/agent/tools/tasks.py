@@ -58,7 +58,9 @@ class TaskRetryTool:
             elif task.status == "FAILED":
                 task.status = "PENDING"
                 task.scheduled_at = datetime.now(timezone.utc)
-                task.attempt_count = 0
+                # 保留历史 attempt_count，task_attempts.(task_id, attempt_no)
+                # 是不可重复的审计序列；手工重试允许下一次 attempt 超过
+                # 原 max_attempts，但不能复用旧 attempt_no。
                 task.last_error_category = None
                 task.last_error_code = None
                 task.last_error_summary = None
