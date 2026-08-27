@@ -14,7 +14,7 @@ from .conversation import (
 )
 from .knowledge import DocumentVersion, FeishuSourceDetail, KnowledgeSource
 from .log import LogEvent
-from .rag import ClassificationResult, DocumentChunk, DocumentMetadata
+from .rag import ClassificationResult, DocumentChunk, DocumentMetadata, VectorDocument
 from .task import ProcessingTask, TaskAttempt
 from .user import User
 
@@ -29,6 +29,7 @@ __all__ = [
     "Conversation",
     "DocumentChunk",
     "DocumentMetadata",
+    "VectorDocument",
     "DocumentType",
     "DocumentVersion",
     "ExternalCredential",

@@ -94,8 +94,8 @@ class Settings(BaseSettings):
     storage_root: str = "storage"
 
     # 检索引擎与向量化（DD-19 §11.2，Phase 4）
-    # search_engine=fake：内存实现（开发/测试默认）；opensearch：OpenSearch REST（生产首选）
-    search_engine: str = "fake"
+    # search_engine=fake：内存实现（开发/测试）；pgvector：PostgreSQL 向量检索（生产首选）
+    search_engine: str = "pgvector"
     search_index_name: str = "knowledge_chunks"
     opensearch_base_url: str = ""
     opensearch_username: str = ""

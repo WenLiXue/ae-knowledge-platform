@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, CHAR, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
 
 from ..base import Base
 from .mixins import TimestampMixin
@@ -129,3 +130,28 @@ class DocumentChunk(Base, TimestampMixin):
     embedding_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="PENDING", server_default="PENDING"
     )
+
+
+class VectorDocument(Base, TimestampMixin):
+    """knowledge.vector_documents —— PostgreSQL/pgvector 检索文档。"""
+
+    __tablename__ = "vector_documents"
+    __table_args__ = (
+        Index("ix_vector_documents_generation", "generation"),
+        Index("ix_vector_documents_version", "version_id"),
+        {"schema": "knowledge", "comment": "pgvector 检索文档"},
+    )
+
+    doc_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    chunk_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    generation: Mapped[str] = mapped_column(String(128), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
+    heading_path: Mapped[list | None] = mapped_column(ARRAY(Text), nullable=True)
+    locator: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    chunk_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(), nullable=True)

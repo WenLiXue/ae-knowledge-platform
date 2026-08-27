@@ -441,7 +441,7 @@ def _real_embed(
     session: Session, source: KnowledgeSource, version: DocumentVersion, task, *,
     store,
 ) -> str | None:
-    """真实向量化（DD-19 §11.1）：分批调用模型 → 校验 → 写 derived 向量对象（不落 PostgreSQL）。"""
+    """真实向量化：分批调用模型并将向量同步写入 pgvector 检索表。"""
     chunks = session.execute(
         select(DocumentChunk)
         .where(DocumentChunk.version_id == version.id)
@@ -470,6 +470,7 @@ def _real_embed(
     items = []
     for chunk in chunks:
         it = by_id[chunk.id]
+        chunk.embedding = it.embedding
         items.append(
             {
                 "chunk_id": str(it.chunk_id),

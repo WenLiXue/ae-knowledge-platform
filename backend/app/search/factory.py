@@ -6,6 +6,7 @@ from ..core.config import Settings, get_settings
 from .base import SearchAdapter
 from .fake import FakeSearchAdapter
 from .opensearch import OpenSearchSearchAdapter
+from .pgvector import PgVectorSearchAdapter
 
 
 def get_search_adapter(settings: Settings | None = None) -> SearchAdapter:
@@ -13,6 +14,8 @@ def get_search_adapter(settings: Settings | None = None) -> SearchAdapter:
     engine = (settings.search_engine or "fake").casefold()
     if engine == "fake":
         return FakeSearchAdapter()
+    if engine in {"pgvector", "postgres", "postgresql"}:
+        return PgVectorSearchAdapter()
     if engine == "opensearch":
         return OpenSearchSearchAdapter(
             base_url=settings.opensearch_base_url,

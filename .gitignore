@@ -31,3 +31,4 @@ logs/
 
 # Local object storage (Worker FETCH raw content, pre-object-store)
 backend/storage/
+/data/
