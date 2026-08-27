@@ -34,6 +34,9 @@ def core_execute_tool(state: dict, ctx):
         if value == "$goal":
             arguments[key] = state.get("normalized_question") or state.get("question") or ""
     proposal = ToolCallProposal(tool_name=step.capability, arguments=arguments)
+    permissions = {"knowledge:read"}
+    if ctx.settings.agent_write_tools_enabled:
+        permissions.add("task:write")
     tool_context = ToolContext(
         user_id=str(state.get("user_id") or ""),
         run_id=state.get("run_id"),
@@ -42,7 +45,7 @@ def core_execute_tool(state: dict, ctx):
         services={"retrieval_service_factory": ctx.retrieval_service_factory},
         # Knowledge access is the same read permission used by the existing
         # authenticated retrieval path. Admin/action permissions are not granted.
-        permissions=frozenset({"knowledge:read"}),
+        permissions=frozenset(permissions),
     )
     approval_id = state.get("pending_approval_id")
     confirmed = False

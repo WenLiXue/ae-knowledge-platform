@@ -48,6 +48,16 @@ def conservative_goal(question: str) -> GoalUnderstanding:
             requires_enterprise_evidence=False,
             confidence=1.0,
         )
+    if any(token in question.lower() for token in ("重试", "retry")):
+        return GoalUnderstanding(
+            intent="ACTION",
+            operation="ANSWER",
+            goal=question,
+            requires_enterprise_evidence=False,
+            candidate_capabilities=["task.retry"],
+            risk_hint="WRITE",
+            confidence=0.8,
+        )
     return GoalUnderstanding(
         intent="KNOWLEDGE_QUERY",
         operation="ANSWER",

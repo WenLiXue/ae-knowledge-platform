@@ -10,10 +10,13 @@ from ..tools.base import ToolError
 def core_create_plan(state: dict, ctx):
     try:
         goal = GoalUnderstanding.model_validate(state.get("goal") or {})
+        permissions = {"knowledge:read"}
+        if ctx.settings.agent_write_tools_enabled:
+            permissions.add("task:write")
         plan = plan_goal(
             goal,
             registry=ctx.tool_registry,
-            permissions=frozenset({"knowledge:read"}),
+            permissions=frozenset(permissions),
             chat=(ctx.models.chat if ctx.settings.feature_real_qa else None),
             limits=PlannerLimits(
                 max_steps=ctx.settings.agent_max_plan_steps,
