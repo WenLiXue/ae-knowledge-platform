@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from .context import AgentRuntimeContext
 from .nodes import (
     assess_evidence as assess_node,
+    answer_identity as identity_node,
     build_context as build_context_node,
     create_plan as create_plan_node,
     execute_tool as execute_tool_node,
@@ -51,6 +52,7 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     builder.add_node("load_state", wrap("load_state")(load_state_node.core_load_state))
     builder.add_node("build_context", wrap("build_context")(build_context_node.core_build_context))
     builder.add_node("understand_goal", wrap("understand_goal")(understand_goal_node.core_understand_goal))
+    builder.add_node("answer_identity", wrap("answer_identity")(identity_node.core_answer_identity))
     builder.add_node("create_plan", wrap("create_plan")(create_plan_node.core_create_plan))
     builder.add_node("execute_tool", wrap("execute_tool")(execute_tool_node.core_execute_tool))
     builder.add_node("route_intent", wrap("route_intent")(route_intent_node.core_route_intent))
@@ -74,13 +76,17 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     )
     builder.add_conditional_edges(
         "understand_goal", route_after_goal,
-        ["create_plan", "generate_general", "finalize_clarification", "persist_result"],
+        ["create_plan", "answer_identity", "generate_general", "finalize_clarification", "persist_result"],
     )
     builder.add_conditional_edges(
         "create_plan", _route_fixed("execute_tool"), ["execute_tool", "persist_result"]
     )
     builder.add_conditional_edges(
-        "execute_tool", route_after_tool, ["execute_tool", "assess_evidence", "persist_result"]
+        "execute_tool", route_after_tool,
+        ["execute_tool", "assess_evidence", "generate_general", "update_memory", "persist_result"],
+    )
+    builder.add_conditional_edges(
+        "answer_identity", _route_fixed("update_memory"), ["update_memory", "persist_result"]
     )
     builder.add_conditional_edges(
         "route_intent",

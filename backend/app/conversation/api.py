@@ -339,11 +339,12 @@ def _status_event(answer: Answer) -> str:
 
 def _final_events(session: Session, answer: Answer):
     """终结后按序输出：blocks → citations → done。序号从 3 起、确定性（可续传）。"""
+    answer_out = service.build_answer_out(session, answer)
     seq = 2
-    for block in answer.blocks_json or []:
+    for block in answer_out.blocks:
         seq += 1
-        yield seq, "answer.block", block
-    for citation in service.build_answer_out(session, answer).citations:
+        yield seq, "answer.block", block.model_dump(mode="json")
+    for citation in answer_out.citations:
         seq += 1
         yield seq, "answer.citation", citation.model_dump(mode="json")
     seq += 1

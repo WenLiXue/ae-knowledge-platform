@@ -50,7 +50,7 @@ from .schemas import GeneratedAnswer
 
 logger = logging.getLogger(__name__)
 
-_OPEN_STATUSES = ("PENDING", "RETRIEVING", "STREAMING")
+_OPEN_STATUSES = ("PENDING", "WAITING", "RETRIEVING", "STREAMING")
 
 
 def _now() -> datetime:
@@ -241,6 +241,7 @@ def _run_agent_flow(
         session_factory=SessionLocal,
         retrieval_service_factory=_svc_factory,
         models=models,
+        user_id=initial_state["user_id"],
     )
     checkpointer = create_checkpointer_or_none(settings)
     try:

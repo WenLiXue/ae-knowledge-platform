@@ -5,7 +5,13 @@ from pydantic import BaseModel
 from app.agent.contracts.tool import ToolDefinition, ToolResultEnvelope, ToolCallProposal
 from app.agent.contracts.plan import AgentPlan, PlanStep
 from app.agent.planner import PlannerLimits, ready_steps, validate_plan
-from app.agent.tools import ToolContext, ToolExecutor, ToolPolicy, ToolRegistry
+from app.agent.tools import (
+    ToolContext,
+    ToolExecutor,
+    ToolPolicy,
+    ToolRegistry,
+    build_default_tool_registry,
+)
 from app.agent.approvals import arguments_hash
 
 
@@ -64,6 +70,10 @@ def test_registry_executes_only_registered_tools() -> None:
         ToolContext(user_id="user-1", permissions=frozenset({"test:read"})),
     )
     assert unknown.error_code == "TOOL_NOT_REGISTERED"
+
+
+def test_authenticated_principal_is_not_registered_as_a_tool() -> None:
+    assert "identity.current_user" not in build_default_tool_registry().names()
 
 
 def test_policy_denies_missing_permission_and_invalid_input() -> None:

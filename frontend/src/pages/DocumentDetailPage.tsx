@@ -93,6 +93,23 @@ export function DocumentDetailPage() {
   const failed = source.status === "FAILED";
   const classification = source.classification;
   const classifiedOutput = classification?.output ?? {};
+  // 兼容历史数据/旧接口：数据库中的数组字段可能是 NULL。
+  const classificationMetadata = (
+    classification as {
+      metadata?: {
+        module_name?: string | null;
+        business_topic?: string | null;
+        summary?: string | null;
+        keywords?: string[] | null;
+      };
+    } | null
+  )?.metadata ?? {};
+  const classificationKeywords = Array.isArray(classificationMetadata.keywords)
+    ? classificationMetadata.keywords
+    : [];
+  const classificationMissingFields = Array.isArray(classification?.missing_fields)
+    ? classification.missing_fields
+    : [];
   const outputText = (key: string) => {
     const value = classifiedOutput[key];
     return value === null || value === undefined || value === "" ? "—" : String(value);
@@ -206,17 +223,17 @@ export function DocumentDetailPage() {
                 {outputText("document_type_code")} / {outputText("product_form_code")}
               </InfoRow>
               <InfoRow label="模块 / 业务主题">
-                {classification.metadata.module_name ?? "—"} / {classification.metadata.business_topic ?? "—"}
+                {classificationMetadata.module_name ?? "—"} / {classificationMetadata.business_topic ?? "—"}
               </InfoRow>
               <InfoRow label="摘要">
-                {classification.metadata.summary ?? outputText("summary")}
+                {classificationMetadata.summary ?? outputText("summary")}
               </InfoRow>
               <InfoRow label="关键词">
-                {classification.metadata.keywords.length > 0 ? classification.metadata.keywords.join("、") : "—"}
+                {classificationKeywords.length > 0 ? classificationKeywords.join("、") : "—"}
               </InfoRow>
               {classification.reason_summary && <InfoRow label="判定说明">{classification.reason_summary}</InfoRow>}
-              {classification.missing_fields.length > 0 && (
-                <InfoRow label="缺失字段">{classification.missing_fields.join("、")}</InfoRow>
+              {classificationMissingFields.length > 0 && (
+                <InfoRow label="缺失字段">{classificationMissingFields.join("、")}</InfoRow>
               )}
             </>
           )}

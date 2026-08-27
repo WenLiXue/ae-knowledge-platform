@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import datetime
+import json
+from types import SimpleNamespace
 
 import pytest
 
 from app.agent.citations import validate_citation_drafts
 from app.agent.context import AgentRuntimeContext, TokenEstimator, build_context
 from app.agent.memory import compute_context_budget, parse_memory_patch
-from app.agent.policies import local_requires_retrieval
+from app.agent.nodes.understand_goal import core_understand_goal
+from app.agent.policies import local_requires_retrieval, looks_like_knowledge_question, strip_greeting_prefix
 from app.core.config import get_settings
 
 
@@ -66,6 +69,51 @@ def test_chat_never_retrieves():
         memory_entities=[],
     )
     assert requires is False
+
+
+def test_greeting_prefixed_knowledge_question_is_not_treated_as_chat():
+    assert strip_greeting_prefix("hello,介绍一下2800版本吧") == "介绍一下2800版本吧"
+    assert looks_like_knowledge_question("hello,介绍一下2800版本吧") is True
+    assert looks_like_knowledge_question("你好") is False
+    assert looks_like_knowledge_question("你好，你是什么模型？") is False
+
+
+def test_goal_model_chat_with_knowledge_signal_forces_search(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "feature_real_qa", True)
+
+    def chat(_messages):
+        return json.dumps(
+            {
+                "intent": "CHAT",
+                "operation": "CHAT",
+                "goal": "hello,介绍一下2800版本吧",
+                "entities": [],
+                "constraints": [],
+                "completion_criteria": [],
+                "requires_enterprise_evidence": False,
+                "candidate_capabilities": [],
+                "ambiguity": [],
+                "risk_hint": "NONE",
+                "confidence": 0.99,
+            }
+        )
+
+    ctx = SimpleNamespace(
+        settings=settings,
+        models=SimpleNamespace(chat=chat),
+        tool_registry=SimpleNamespace(definitions=lambda _permissions: []),
+        skill_catalog=(),
+    )
+    result = core_understand_goal(
+        {"question": "hello,介绍一下2800版本吧", "recent_turns": []},
+        ctx,
+    )
+
+    assert result["execution_mode"] == "SINGLE_TOOL"
+    assert result["requires_retrieval"] is True
+    assert result["normalized_question"] == "介绍一下2800版本吧"
+    assert result["goal"]["candidate_capabilities"] == ["knowledge.search"]
 
 
 # ---- TC-LG-006：上下文预算 ----

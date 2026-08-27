@@ -6,9 +6,13 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi.testclient import TestClient
 
+from app.conversation.service import _group_citations
 from app.db.session import SessionLocal
+from app.db.models.conversation import AnswerCitation
 from app.main import app
 
 from _seed_retrieval import (
@@ -61,6 +65,53 @@ def _ask(cookies, conversation_id, content) -> dict:
     )
     assert resp.status_code == 202, resp.text
     return resp.json()["data"]
+
+
+def test_citations_group_by_source_and_version() -> None:
+    source_id = uuid.uuid4()
+    version_id = uuid.uuid4()
+    answer_id = uuid.uuid4()
+    rows = [
+        AnswerCitation(
+            answer_id=answer_id,
+            citation_no=1,
+            source_id=source_id,
+            version_id=version_id,
+            chunk_id=uuid.uuid4(),
+            document_title="同一文档",
+            excerpt="片段一",
+        ),
+        AnswerCitation(
+            answer_id=answer_id,
+            citation_no=2,
+            source_id=source_id,
+            version_id=version_id,
+            chunk_id=uuid.uuid4(),
+            document_title="同一文档",
+            excerpt="片段二",
+        ),
+        AnswerCitation(
+            answer_id=answer_id,
+            citation_no=3,
+            source_id=source_id,
+            version_id=uuid.uuid4(),
+            chunk_id=uuid.uuid4(),
+            document_title="同一文档",
+            excerpt="新版本片段",
+        ),
+    ]
+
+    grouped, citation_no_map = _group_citations(
+        rows,
+        availability_by_source={source_id: "AVAILABLE"},
+    )
+
+    assert len(grouped) == 2
+    assert grouped[0].citation_no == 1
+    assert grouped[0].support_count == 2
+    assert [item.excerpt for item in grouped[0].locations] == ["片段一", "片段二"]
+    assert grouped[1].support_count == 1
+    assert citation_no_map == {1: 1, 2: 1, 3: 2}
 
 
 def test_conversation_crud_and_ownership() -> None:
@@ -190,7 +241,7 @@ def test_answer_completes_with_evidence_and_citations() -> None:
         citations = list(s.execute(
             select(AnswerCitation).where(AnswerCitation.answer_id == answer_row.id)
         ).scalars())
-        assert len(citations) == len(answer["citations"])
+        assert sum(item["support_count"] for item in answer["citations"]) == len(citations)
 
 
 def test_feedback_idempotent_and_only_on_succeeded() -> None:

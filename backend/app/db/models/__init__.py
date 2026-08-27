@@ -1,5 +1,6 @@
 from .auth import ExternalCredential, ExternalIdentity, LoginSession, OAuthState
 from .catalog import DocumentType, Product, ProductForm, ProductVersion, SourcePriority
+from .capability import AgentMcpServer, AgentSkill, AgentToolConfig
 from .config import ConfigRevision, SecretValue
 from .conversation import (
     AgentRun,
@@ -24,6 +25,9 @@ from .user import User
 
 __all__ = [
     "AgentRun",
+    "AgentSkill",
+    "AgentMcpServer",
+    "AgentToolConfig",
     "AgentPlan",
     "AgentPlanStep",
     "AgentApproval",

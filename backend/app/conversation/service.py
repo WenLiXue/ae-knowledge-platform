@@ -35,6 +35,7 @@ from .schemas import (
     AnswerBlock,
     AnswerCitationOut,
     AnswerOut,
+    CitationLocationOut,
     CitationDetailOut,
     CreateMessageResult,
     FeedbackIn,
@@ -353,28 +354,18 @@ def _build_answer_out_from_citations(
     citations: list[AnswerCitation],
     availability_by_source: dict[uuid.UUID, str],
 ) -> AnswerOut:
-    blocks: list[AnswerBlock] = []
-    for block in answer.blocks_json or []:
-        if isinstance(block, dict):
-            blocks.append(AnswerBlock.model_validate(block))
+    grouped_citations, citation_no_map = _group_citations(
+        citations,
+        availability_by_source=availability_by_source,
+    )
     return AnswerOut(
         id=answer.id,
         status=answer.status,
         progress_stage=answer.progress_stage,
         answer_type=answer.answer_type,
         summary=answer.summary,
-        blocks=blocks,
-        citations=[
-            _citation_out(
-                None,
-                citation,
-                availability=availability_by_source.get(
-                    citation.source_id,
-                    "SOURCE_DELETED" if citation.source_id is None else "SOURCE_DELETED",
-                ),
-            )
-            for citation in citations
-        ],
+        blocks=_answer_blocks(answer, citation_no_map),
+        citations=grouped_citations,
         degradation_flags=list(answer.degradation_flags or []),
         error_code=answer.error_code,
         error_summary=answer.error_summary,
@@ -384,25 +375,21 @@ def _build_answer_out_from_citations(
 
 
 def build_answer_out(db: Session, answer: Answer) -> AnswerOut:
-    blocks: list[AnswerBlock] = []
-    for block in answer.blocks_json or []:
-        if isinstance(block, dict):
-            blocks.append(AnswerBlock.model_validate(block))
-    citations = [
-        _citation_out(db, row)
-        for row in db.execute(
+    raw_citations = list(
+        db.execute(
             select(AnswerCitation)
             .where(AnswerCitation.answer_id == answer.id)
             .order_by(AnswerCitation.citation_no)
         ).scalars()
-    ]
+    )
+    citations, citation_no_map = _group_citations(raw_citations, db=db)
     return AnswerOut(
         id=answer.id,
         status=answer.status,
         progress_stage=answer.progress_stage,
         answer_type=answer.answer_type,
         summary=answer.summary,
-        blocks=blocks,
+        blocks=_answer_blocks(answer, citation_no_map),
         citations=citations,
         degradation_flags=list(answer.degradation_flags or []),
         error_code=answer.error_code,
@@ -418,17 +405,118 @@ def _citation_out(
     *,
     availability: str | None = None,
 ) -> AnswerCitationOut:
+    location = CitationLocationOut(
+        chunk_id=citation.chunk_id,
+        heading_path=list(citation.heading_path or []),
+        locator=citation.locator_json or {},
+        excerpt=citation.excerpt,
+    )
     return AnswerCitationOut(
         citation_no=citation.citation_no,
+        source_id=citation.source_id,
+        version_id=citation.version_id,
         document_title=citation.document_title,
         document_type=citation.document_type_code,
-        heading_path=list(citation.heading_path or []),
+        heading_path=location.heading_path,
         version_label=citation.version_label,
         source_updated_at=citation.source_updated_at,
         excerpt=citation.excerpt,
         original_url=citation.original_url,
         availability=availability or _citation_availability(db, citation),
+        support_count=1,
+        locations=[location],
     )
+
+
+def _citation_group_key(citation: AnswerCitation) -> tuple[str, str, str]:
+    """按稳定的来源+版本聚合，不能按标题聚合。"""
+    if citation.source_id is not None or citation.version_id is not None:
+        return (
+            "document",
+            str(citation.source_id or ""),
+            str(citation.version_id or ""),
+        )
+    # 删除后的历史引用仍需保持独立，避免无来源引用被误合并。
+    return ("row", str(citation.id), "")
+
+
+def _group_citations(
+    citations: list[AnswerCitation],
+    *,
+    db: Session | None = None,
+    availability_by_source: dict[uuid.UUID, str] | None = None,
+) -> tuple[list[AnswerCitationOut], dict[int, int]]:
+    """保留 chunk 级证据，同时把接口输出聚合为文档版本级来源。"""
+    groups: list[list[AnswerCitation]] = []
+    group_by_key: dict[tuple[str, str, str], int] = {}
+    citation_no_map: dict[int, int] = {}
+    for citation in citations:
+        key = _citation_group_key(citation)
+        group_index = group_by_key.get(key)
+        if group_index is None:
+            group_index = len(groups)
+            group_by_key[key] = group_index
+            groups.append([])
+        groups[group_index].append(citation)
+        citation_no_map[citation.citation_no] = group_index + 1
+
+    output: list[AnswerCitationOut] = []
+    for group_no, rows in enumerate(groups, start=1):
+        first = rows[0]
+        if availability_by_source is not None:
+            availability = availability_by_source.get(
+                first.source_id,
+                "SOURCE_DELETED" if first.source_id is None else "SOURCE_DELETED",
+            )
+        else:
+            availability = _citation_availability(db, first) if db is not None else "SOURCE_DELETED"
+        locations = [
+            CitationLocationOut(
+                chunk_id=row.chunk_id,
+                heading_path=list(row.heading_path or []),
+                locator=row.locator_json or {},
+                excerpt=row.excerpt,
+            )
+            for row in rows
+        ]
+        output.append(
+            AnswerCitationOut(
+                citation_no=group_no,
+                source_id=first.source_id,
+                version_id=first.version_id,
+                document_title=first.document_title,
+                document_type=first.document_type_code,
+                heading_path=list(first.heading_path or []),
+                version_label=first.version_label,
+                source_updated_at=first.source_updated_at,
+                excerpt=first.excerpt,
+                original_url=first.original_url,
+                availability=availability,
+                support_count=len(rows),
+                locations=locations,
+            )
+        )
+    return output, citation_no_map
+
+
+def _answer_blocks(answer: Answer, citation_no_map: dict[int, int]) -> list[AnswerBlock]:
+    """将持久化的 chunk 引用编号映射为接口返回的来源组编号。"""
+    blocks: list[AnswerBlock] = []
+    for raw_block in answer.blocks_json or []:
+        if not isinstance(raw_block, dict):
+            continue
+        block = dict(raw_block)
+        mapped: list[int] = []
+        for raw_no in block.get("citation_nos") or []:
+            try:
+                group_no = citation_no_map.get(int(raw_no))
+            except (TypeError, ValueError):
+                continue
+            if group_no is not None and group_no not in mapped:
+                mapped.append(group_no)
+        block["citation_nos"] = mapped
+        blocks.append(AnswerBlock.model_validate(block))
+    return blocks
 
 
 def _citation_availability(db: Session, citation: AnswerCitation) -> str:
@@ -444,23 +532,32 @@ def _citation_availability(db: Session, citation: AnswerCitation) -> str:
 
 def citation_detail(db: Session, user: User, answer_id, citation_no) -> CitationDetailOut:
     answer = get_answer(db, user, answer_id)
-    citation = db.execute(
+    raw_citations = list(db.execute(
         select(AnswerCitation).where(
             AnswerCitation.answer_id == answer.id,
-            AnswerCitation.citation_no == citation_no,
-        )
-    ).scalars().first()
+        ).order_by(AnswerCitation.citation_no)
+    ).scalars())
+    grouped_citations, _ = _group_citations(raw_citations, db=db)
+    citation = next(
+        (item for item in grouped_citations if item.citation_no == citation_no),
+        None,
+    )
     if citation is None:
         raise ConversationError("CITATION_NOT_FOUND", "引用不存在", status=404)
+    first_location = citation.locations[0] if citation.locations else CitationLocationOut()
     return CitationDetailOut(
         citation_no=citation.citation_no,
+        source_id=citation.source_id,
+        version_id=citation.version_id,
         document_title=citation.document_title,
-        document_type=citation.document_type_code,
-        heading_path=list(citation.heading_path or []),
-        locator=citation.locator_json or {},
+        document_type=citation.document_type,
+        heading_path=list(first_location.heading_path),
+        locator=first_location.locator,
         excerpt=citation.excerpt,
         original_url=citation.original_url,
-        availability=_citation_availability(db, citation),
+        availability=citation.availability,
+        support_count=citation.support_count,
+        locations=citation.locations,
     )
 
 

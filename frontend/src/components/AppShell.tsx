@@ -44,8 +44,6 @@ interface NavItem {
   icon: React.ReactNode;
   /** 精确匹配（不匹配子路径）。 */
   exact?: boolean;
-  /** 仅管理员可见。 */
-  adminOnly?: boolean;
 }
 
 interface NavGroup {
@@ -68,11 +66,11 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/admin/tasks", label: "处理任务", icon: <AssignmentOutlinedIcon /> },
       { to: "/admin/pending-classification", label: "待分类确认", icon: <FactCheckOutlinedIcon /> },
-      { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon />, adminOnly: true },
-      { to: "/admin/llm-config", label: "LLM 配置", icon: <SmartToyOutlinedIcon />, adminOnly: true },
-      { to: "/admin/system-logs", label: "系统日志", icon: <ListAltOutlinedIcon />, adminOnly: true },
-      { to: "/admin/users", label: "用户管理", icon: <PeopleOutlinedIcon />, adminOnly: true },
-      { to: "/admin/audit-logs", label: "审计日志", icon: <ReceiptLongOutlinedIcon />, adminOnly: true },
+      { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon /> },
+      { to: "/admin/llm-config", label: "LLM 配置", icon: <SmartToyOutlinedIcon /> },
+      { to: "/admin/system-logs", label: "系统日志", icon: <ListAltOutlinedIcon /> },
+      { to: "/admin/users", label: "用户管理", icon: <PeopleOutlinedIcon /> },
+      { to: "/admin/audit-logs", label: "审计日志", icon: <ReceiptLongOutlinedIcon /> },
     ],
   },
   {
@@ -140,9 +138,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               {group.label}
             </Typography>
             <List disablePadding>
-              {group.items
-                .filter((item) => !item.adminOnly || user?.role === "admin")
-                .map((item) => {
+              {group.items.map((item) => {
                 const selected = isActive(pathname, item);
                 return (
                   <ListItemButton

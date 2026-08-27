@@ -23,6 +23,7 @@ NODE_PROGRESS: dict[str, str] = {
     "retrieve": "RETRIEVING",
     "rewrite_query": "ROUTING",
     "generate_general": "GENERATING",
+    "answer_identity": "GENERATING",
     "generate_grounded": "GENERATING",
     "finalize_clarification": "GENERATING",
     "finalize_insufficient": "GENERATING",

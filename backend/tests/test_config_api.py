@@ -116,13 +116,13 @@ def test_catalog_document_types_exclude_disabled(admin: dict) -> None:
     assert sorts == sorted(sorts)
 
 
-# ---- 管理员权限 ----
+# ---- 系统管理登录权限 ----
 
-def test_admin_endpoints_require_admin(user: dict) -> None:
-    assert client.get("/api/v1/admin/catalog/products", cookies=user).status_code == 403
-    assert client.get("/api/v1/admin/llm-config/models", cookies=user).status_code == 403
-    assert client.get("/api/v1/admin/llm-config/service-bindings", cookies=user).status_code == 403
-    assert client.get("/api/v1/admin/source-priorities", cookies=user).status_code == 403
+def test_admin_endpoints_require_login_but_not_admin(user: dict) -> None:
+    assert client.get("/api/v1/admin/catalog/products", cookies=user).status_code == 200
+    assert client.get("/api/v1/admin/llm-config/models", cookies=user).status_code == 200
+    assert client.get("/api/v1/admin/llm-config/service-bindings", cookies=user).status_code == 200
+    assert client.get("/api/v1/admin/source-priorities", cookies=user).status_code == 200
     assert client.get("/api/v1/admin/catalog/products").status_code == 401  # 未登录
 
 

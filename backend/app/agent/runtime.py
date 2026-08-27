@@ -176,6 +176,7 @@ def build_runtime_for_worker(
     models=None,
     clock=None,
     deadline=None,
+    user_id=None,
 ) -> AgentRuntimeContext:
     """Worker 适配器使用的便捷构建入口。"""
     from .context import AgentModels
@@ -189,4 +190,5 @@ def build_runtime_for_worker(
         models=models,
         clock=clock,
         deadline=deadline,
+        user_id=user_id,
     )

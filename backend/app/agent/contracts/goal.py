@@ -44,6 +44,7 @@ class GoalUnderstanding(BaseModel):
         "ANALYZE",
         "TASK",
         "ACTION",
+        "IDENTITY",
         "CLARIFY",
     ]
     operation: str | None = None

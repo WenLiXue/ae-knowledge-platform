@@ -1,5 +1,5 @@
 /**
- * 待分类确认（人工确认）API（DD-19 §9，仅管理员）。
+ * 待分类确认（人工确认）API（DD-19 §9，需要登录）。
  *
  * 对应后端 app/classify/api_admin.py：
  * - GET   /api/v1/admin/classification-pending

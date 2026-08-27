@@ -382,7 +382,7 @@ def get_knowledge_source(session: Session, source_id: uuid.UUID) -> dict[str, ob
                     "module_name": metadata.module_name if metadata else None,
                     "business_topic": metadata.business_topic if metadata else None,
                     "summary": metadata.summary if metadata else None,
-                    "keywords": metadata.keywords if metadata else [],
+                    "keywords": (metadata.keywords or []) if metadata else [],
                 },
             }
     return {

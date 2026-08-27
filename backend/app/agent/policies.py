@@ -6,6 +6,8 @@ EXPLAIN 带内部实体或过滤器时强制检索；解析失败时保守路由
 
 from __future__ import annotations
 
+import re
+
 from ..core.config import get_settings
 from .errors import AGENT_STEP_LIMIT_EXCEEDED, AGENT_TIMEOUT
 from .state import (
@@ -20,6 +22,43 @@ from .state import (
 ALWAYS_RETRIEVE = ("ANSWER", "SUMMARIZE", "RELATE")
 # EXPLAIN 触发检索的内部实体类型
 EXPLAIN_RETRIEVAL_ENTITY_TYPES = {"product", "model", "version", "产品", "型号", "版本"}
+
+_GREETING_PREFIX_RE = re.compile(
+    r"^\s*(?:hello|hi|hey|你好|您好|早上好|下午好|晚上好)"
+    r"\s*[,，、:：.!！?？;；\-—]*\s*",
+    re.IGNORECASE,
+)
+_NON_KNOWLEDGE_CHAT = {
+    "谢谢", "感谢", "多谢", "你是谁", "你是什么", "你是什么模型",
+    "介绍一下你", "怎么使用", "怎么用", "你能做什么", "你会什么", "你叫什么",
+    "你好吗", "你怎么了",
+}
+_KNOWLEDGE_QUERY_MARKERS = (
+    "介绍", "产品", "版本", "型号", "规格", "参数", "配置", "部署", "安装",
+    "功能", "内存", "磁盘", "吞吐", "接口", "策略", "漏洞", "文档", "案例",
+    "故障", "问题", "告警", "修复", "支持", "区别", "对比", "资料", "说明",
+    "哪些", "多少", "如何", "怎么",
+)
+
+
+def strip_greeting_prefix(question: str) -> str:
+    """移除问题开头的礼貌问候，保留后续可检索内容。"""
+    return _GREETING_PREFIX_RE.sub("", question or "", count=1).strip()
+
+
+def looks_like_knowledge_question(question: str) -> bool:
+    """识别被问候前缀或模型 CHAT 误判掩盖的知识查询。
+
+    这是路由兜底，不替代模型意图理解：只在文本包含明确知识/企业资料信号时
+    触发，避免把纯问候、感谢和询问助手身份送入 RAG。
+    """
+    text = strip_greeting_prefix(question)
+    if not text:
+        return False
+    normalized = re.sub(r"[？?。！!]+$", "", text).strip().lower()
+    if normalized in {item.lower() for item in _NON_KNOWLEDGE_CHAT}:
+        return False
+    return any(marker in text for marker in _KNOWLEDGE_QUERY_MARKERS)
 
 
 def local_requires_retrieval(
@@ -135,6 +174,8 @@ def route_after_goal(state: AgentState) -> str:
         return "finalize_clarification"
     if mode == "DIRECT":
         return "generate_general"
+    if (state.get("goal") or {}).get("intent") == "IDENTITY":
+        return "answer_identity"
     return "create_plan"
 
 
@@ -146,6 +187,9 @@ def route_after_tool(state: AgentState) -> str:
         done = {step.get("id") for step in state.get("plan_steps", []) if step.get("status") == "SUCCEEDED"}
         if any(set(step.get("depends_on") or []).issubset(done) for step in pending):
             return "execute_tool"
+    observations = state.get("observations") or []
+    if observations and observations[-1].get("tool_name") == "skill.load":
+        return "generate_general"
     return "assess_evidence"
 
 

@@ -284,7 +284,7 @@ def test_admin_system_logs_auth_and_filters(admin: dict, user: dict) -> None:
         session.commit()
 
     assert client.get("/api/v1/admin/system-logs").status_code == 401
-    assert client.get("/api/v1/admin/system-logs", cookies=user).status_code == 403
+    assert client.get("/api/v1/admin/system-logs", cookies=user).status_code == 200
 
     resp = client.get("/api/v1/admin/system-logs", cookies=admin)
     assert resp.status_code == 200

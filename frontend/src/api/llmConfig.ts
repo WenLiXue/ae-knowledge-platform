@@ -1,7 +1,7 @@
 /**
  * LLM 模型管理与服务配置 API（DD-20 §9）。
  *
- * 对应后端（仅管理员）：
+ * 对应后端（需要登录）：
  * -      /api/v1/admin/llm-config/models（GET/POST/PATCH/{id}/enable|disable/test）
  * -      /api/v1/admin/llm-config/service-bindings（GET/PUT）
  */

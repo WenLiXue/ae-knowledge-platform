@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
+import ExtensionOutlinedIcon from "@mui/icons-material/ExtensionOutlined";
 import BiotechOutlinedIcon from "@mui/icons-material/BiotechOutlined";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -38,8 +39,6 @@ interface NavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
-  /** 仅管理员可见。 */
-  adminOnly?: boolean;
 }
 
 const PRIMARY_ITEMS: NavItem[] = [
@@ -54,12 +53,13 @@ const KNOWLEDGE_ITEMS: NavItem[] = [
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
+  { to: "/admin/agent-capabilities", label: "Agent 能力", icon: <ExtensionOutlinedIcon fontSize="small" /> },
   { to: "/admin/tasks", label: "处理任务", icon: <AssignmentOutlinedIcon fontSize="small" /> },
-  { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon fontSize="small" />, adminOnly: true },
-  { to: "/admin/llm-config", label: "LLM 配置", icon: <SmartToyOutlinedIcon fontSize="small" />, adminOnly: true },
-  { to: "/admin/system-logs", label: "系统日志", icon: <ListAltOutlinedIcon fontSize="small" />, adminOnly: true },
-  { to: "/admin/users", label: "用户管理", icon: <PeopleOutlinedIcon fontSize="small" />, adminOnly: true },
-  { to: "/admin/audit-logs", label: "审计日志", icon: <ReceiptLongOutlinedIcon fontSize="small" />, adminOnly: true },
+  { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon fontSize="small" /> },
+  { to: "/admin/llm-config", label: "LLM 配置", icon: <SmartToyOutlinedIcon fontSize="small" /> },
+  { to: "/admin/system-logs", label: "系统日志", icon: <ListAltOutlinedIcon fontSize="small" /> },
+  { to: "/admin/users", label: "用户管理", icon: <PeopleOutlinedIcon fontSize="small" /> },
+  { to: "/admin/audit-logs", label: "审计日志", icon: <ReceiptLongOutlinedIcon fontSize="small" /> },
 ];
 
 function isNavActive(pathname: string, item: NavItem): boolean {
@@ -257,8 +257,7 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
             </Stack>
           </Collapse>
 
-          {user?.role === "admin" ? (
-            <>
+          <>
               <Button
                 onClick={() => setAdminOpen((open) => !open)}
                 aria-expanded={adminOpen}
@@ -308,8 +307,7 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
                   })}
                 </Stack>
               </Collapse>
-            </>
-          ) : null}
+          </>
         </Stack>
       </Box>
 

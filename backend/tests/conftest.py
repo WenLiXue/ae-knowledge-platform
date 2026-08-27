@@ -15,8 +15,10 @@ import tempfile
 _DEFAULT_TEST_URL = (
     "postgresql+psycopg://ae_knowledge:ae_knowledge_dev@localhost:5432/ae_knowledge_test"
 )
-# 必须在导入任何 app 模块之前设置，让 app.db.session 引擎指向测试库
-os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_URL))
+# 必须在导入任何 app 模块之前设置，让 app.db.session 引擎指向测试库。
+# 不能使用 setdefault：容器服务会注入开发库 DATABASE_URL，setdefault 会
+# 让测试意外连接并重建开发库。
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_URL)
 # 测试环境强制使用 Fake 飞书实现（真实环境变量优先于 .env，隔离开发者本机的 real 配置）
 os.environ["FEISHU_PROVIDER"] = "fake"
 # 测试环境强制真实能力开关为 false（优先级高于 .env），避免 dev .env 的
@@ -86,6 +88,7 @@ def clean_tables(setup_test_database) -> None:
                 "platform.secret_values, platform.config_revisions, "
                 "platform.audit_exports, platform.audit_logs, "
                 "platform.log_events, "
+                "agent.agent_skills, agent.agent_mcp_servers, "
                 "conversation.answer_feedback, conversation.answer_citations, "
                 "conversation.answers, conversation.messages, conversation.conversations, "
                 "conversation.conversation_memories, conversation.agent_runs, "

@@ -522,9 +522,9 @@ def test_pending_list_and_detail(real_classification, admin) -> None:
     assert detail.json()["data"]["classification"]["relevance"] == "UNCERTAIN"
 
 
-def test_pending_list_requires_admin(real_classification, user) -> None:
+def test_pending_list_requires_login(real_classification, user) -> None:
     resp = client.get("/api/v1/admin/classification-pending", cookies=user)
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_confirm_relevant_creates_chunk_task_and_metadata(real_classification, admin) -> None:
@@ -657,10 +657,10 @@ def test_reclassify_after_config_change_creates_task(real_classification, admin)
     )
 
 
-def test_confirm_requires_admin(real_classification, user) -> None:
+def test_confirm_requires_login(real_classification, user) -> None:
     resp = client.post(
         "/api/v1/admin/classification-pending/some-uuid/confirm-relevant",
         json={"expected_row_version": 1},
         cookies=user,
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 422

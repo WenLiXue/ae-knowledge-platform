@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
+import uuid
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,17 @@ from ..qa.llm import chat_with_retry
 from ..retrieval.service import RetrievalService, build_retrieval_service
 from .tools import ToolExecutor, ToolRegistry, build_default_tool_registry
 from .tools.policy import ToolPolicy
+
+
+@dataclass(frozen=True)
+class PrincipalContext:
+    """Authenticated principal resolved outside the tool planner."""
+
+    user_id: str
+    username: str | None
+    display_name: str
+    is_admin: bool
+    status: str
 
 
 class TokenEstimator:
@@ -128,6 +140,8 @@ class AgentRuntimeContext:
     deadline: float
     tool_registry: ToolRegistry
     tool_executor: ToolExecutor
+    skill_catalog: tuple[dict, ...] = ()
+    principal: PrincipalContext | None = None
 
 
 def build_context(
@@ -138,6 +152,7 @@ def build_context(
     models: AgentModels | None = None,
     clock: Callable[[], datetime] | None = None,
     deadline: float | None = None,
+    user_id: str | None = None,
 ) -> AgentRuntimeContext:
     """构造运行上下文。默认复用业务 session 工厂与检索服务工厂。"""
     from ..db.session import SessionLocal
@@ -150,6 +165,38 @@ def build_context(
     if deadline is None:
         deadline = clock().timestamp() + settings.agent_timeout_seconds
     tool_registry = build_default_tool_registry()
+    skill_catalog: tuple[dict, ...] = ()
+    principal: PrincipalContext | None = None
+    # Admin toggles are read at run construction time, so changes take effect
+    # without restarting workers. If the capability schema is unavailable
+    # during an upgrade, retain the code-owned safe defaults.
+    try:
+        from ..agent.capabilities import enabled_skills, enabled_tool_names
+
+        with session_factory() as db:
+            if user_id:
+                from ..db.models.user import User
+
+                user = db.get(User, uuid.UUID(str(user_id)))
+                if user is not None:
+                    principal = PrincipalContext(
+                        user_id=str(user.id),
+                        username=user.username,
+                        display_name=user.display_name,
+                        is_admin=bool(user.is_admin),
+                        status=user.status,
+                    )
+            configured = enabled_tool_names(db)
+            if configured:
+                for name in tuple(tool_registry.names()):
+                    if name not in configured:
+                        tool_registry.remove(name)
+            skill_catalog = tuple(
+                {"name": item.name, "description": item.description, "version": item.version}
+                for item in enabled_skills(db)
+            )
+    except Exception:  # noqa: BLE001 — startup/upgrade fallback is safe
+        pass
     tool_executor = ToolExecutor(
         tool_registry,
         policy=ToolPolicy(allow_write=settings.agent_write_tools_enabled),
@@ -164,4 +211,6 @@ def build_context(
         deadline=deadline,
         tool_registry=tool_registry,
         tool_executor=tool_executor,
+        skill_catalog=skill_catalog,
+        principal=principal,
     )

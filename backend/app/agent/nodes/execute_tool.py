@@ -34,7 +34,7 @@ def core_execute_tool(state: dict, ctx):
         if value == "$goal":
             arguments[key] = state.get("normalized_question") or state.get("question") or ""
     proposal = ToolCallProposal(tool_name=step.capability, arguments=arguments)
-    permissions = {"knowledge:read"}
+    permissions = {"knowledge:read", "skill:read"}
     if ctx.settings.agent_write_tools_enabled:
         permissions.add("task:write")
     tool_context = ToolContext(
@@ -149,4 +149,7 @@ def core_execute_tool(state: dict, ctx):
         update["retrieval_run_id"] = data.get("retrieval_run_id")
         update["retrieval_queries"] = [state.get("normalized_question") or state.get("question") or ""]
         update["degradation_flags"] = list(state.get("degradation_flags") or []) + list(data.get("degradation_flags") or [])
+    elif result.tool_name == "skill.load":
+        update["answer_type"] = "ANSWER"
+        update["final_status"] = "SUCCEEDED"
     return update

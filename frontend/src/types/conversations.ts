@@ -67,9 +67,19 @@ export type CitationAvailability =
   | "SOURCE_DELETED"
   | "EXTERNAL_UNAVAILABLE";
 
+/** 同一文档版本下的一个精确证据片段。 */
+export interface CitationLocation {
+  chunk_id: string | null;
+  heading_path: string[];
+  locator: Record<string, unknown>;
+  excerpt: string | null;
+}
+
 /** 回答引用。 */
 export interface Citation {
   citation_no: number;
+  source_id: string | null;
+  version_id: string | null;
   document_title: string;
   document_type: string | null;
   heading_path: string[];
@@ -78,6 +88,9 @@ export interface Citation {
   excerpt: string | null;
   original_url: string | null;
   availability: CitationAvailability;
+  /** 同一文档版本被多少个 chunk 支撑。 */
+  support_count: number;
+  locations: CitationLocation[];
 }
 
 /** 回答内容块。 */

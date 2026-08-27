@@ -108,7 +108,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, px: 1.5, "& .MuiAccordionSummary-content": { my: 1 } }}>
         <Stack direction="row" spacing={0.75} alignItems="center">
           <ArticleOutlinedIcon fontSize="small" color="disabled" />
-          <Typography variant="subtitle2">来源引用</Typography>
+          <Typography variant="subtitle2">来源文档</Typography>
           <Typography variant="caption" color="text.secondary">
             （{citations.length}）
           </Typography>
@@ -118,6 +118,14 @@ function CitationList({ citations }: { citations: Citation[] }) {
         <Stack spacing={1}>
           {citations.map((citation) => {
             const unavailable = citation.availability !== "AVAILABLE";
+            const locations = citation.locations?.length
+              ? citation.locations
+              : [{
+                  chunk_id: null,
+                  heading_path: citation.heading_path ?? [],
+                  locator: {},
+                  excerpt: citation.excerpt,
+                }];
             return (
               <Paper key={citation.citation_no} variant="outlined" sx={{ p: 1.5 }}>
                 <Stack direction="row" spacing={1.5}>
@@ -143,22 +151,43 @@ function CitationList({ citations }: { citations: Citation[] }) {
                     <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
                       {citation.document_type && <Chip label={citation.document_type} size="small" />}
                       {citation.version_label && <Chip label={citation.version_label} size="small" variant="outlined" />}
+                      {citation.support_count > 1 && (
+                        <Chip label={`${citation.support_count} 个相关片段`} size="small" variant="outlined" />
+                      )}
                       <Chip
                         label={`更新：${formatTime(citation.source_updated_at)}`}
                         size="small"
                         variant="outlined"
                       />
                     </Stack>
-                    {citation.excerpt && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                        {citation.excerpt}
-                      </Typography>
-                    )}
-                    {citation.heading_path.length > 0 && (
-                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                        位置：{citation.heading_path.join(" / ")}
-                      </Typography>
-                    )}
+                    <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                      {locations.map((location, index) => (
+                        <Box
+                          key={location.chunk_id ?? `${citation.citation_no}-${index}`}
+                          sx={{
+                            pt: index === 0 ? 0 : 0.75,
+                            borderTop: index === 0 ? 0 : 1,
+                            borderColor: "divider",
+                          }}
+                        >
+                          {locations.length > 1 && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              相关片段 {index + 1}
+                            </Typography>
+                          )}
+                          {location.heading_path.length > 0 && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              位置：{location.heading_path.join(" / ")}
+                            </Typography>
+                          )}
+                          {location.excerpt && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                              {location.excerpt}
+                            </Typography>
+                          )}
+                        </Box>
+                      ))}
+                    </Stack>
                     <Box sx={{ mt: 0.75 }}>
                       {unavailable || !citation.original_url ? (
                         <Typography variant="caption" color="warning.main">

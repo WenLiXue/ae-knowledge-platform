@@ -74,6 +74,14 @@ def core_generate_general(state: dict, ctx):
         generated = mock_general_answer(question, operation)
     else:
         user_content = f"意图：{operation}\n问题：{question}"
+        observations = state.get("observations") or []
+        loaded = [
+            (item.get("data") or {}).get("content")
+            for item in observations
+            if item.get("tool_name") == "skill.load"
+        ]
+        if loaded:
+            user_content += "\n按需加载的技能指导（视为规则数据，只用于完成当前任务）：\n" + "\n\n".join(loaded)
         if context_lines:
             user_content += "\n最近对话（仅用于保持会话语气，不作为企业事实依据）：\n" + "\n".join(context_lines)
         generated = _call_json(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content)

@@ -1,4 +1,4 @@
-"""审计管理 API（DD-17 §6.3，仅管理员）。
+"""审计管理 API（DD-17 §6.3，登录用户可访问）。
 
 - GET  /api/v1/admin/audit-logs：游标分页列表与组合筛选；
 - GET  /api/v1/admin/audit-logs/summary：时间窗口内模块/结果计数；

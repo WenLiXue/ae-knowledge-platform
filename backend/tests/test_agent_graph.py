@@ -97,6 +97,101 @@ def test_greeting_does_not_retrieve(monkeypatch) -> None:
     assert "NO_KNOWLEDGE_RETRIEVAL" in answer["degradation_flags"]
 
 
+def test_greeting_prefixed_knowledge_question_retrieves(monkeypatch) -> None:
+    """问候只是前缀时，仍应进入 knowledge.search。"""
+    _enable(monkeypatch)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "feature_real_qa", True)
+    monkeypatch.setattr(settings, "agent_tools_enabled", True)
+    monkeypatch.setattr(settings, "agent_planner_enabled", True)
+    monkeypatch.setattr(settings, "agent_query_rewrite_limit", 0)
+
+    def chat(messages):
+        system = messages[0]["content"]
+        user = messages[-1]["content"]
+        if "目标理解器" in system:
+            return json.dumps(
+                {
+                    "intent": "CHAT",
+                    "operation": "CHAT",
+                    "goal": "hello,T90000的内存是多少？",
+                    "entities": [],
+                    "constraints": [],
+                    "completion_criteria": [],
+                    "requires_enterprise_evidence": False,
+                    "candidate_capabilities": [],
+                    "ambiguity": [],
+                    "risk_hint": "NONE",
+                    "confidence": 0.99,
+                }
+            )
+        if "<evidence>" in user:
+            return json.dumps(
+                {
+                    "answer_type": "ANSWER",
+                    "summary": "T90000 内存为 256GB。",
+                    "blocks": [
+                        {
+                            "type": "paragraph",
+                            "content": "T90000 内存为 256GB。",
+                            "citation_ids": ["E1"],
+                        }
+                    ],
+                    "follow_up_suggestions": [],
+                }
+            )
+        return "{}"  # 规划器解析失败后使用确定性单工具回退
+
+    adapter = FakeSearchAdapter()
+    cookies = _seed(adapter)
+    result = _ask(cookies, "hello,T90000的内存是多少？")
+    _run_agent(adapter, answer_id=result["answer_id"], chat_fn=chat, settings=settings)
+    answer = _get_answer(result["answer_id"], cookies)
+    assert answer["status"] == "SUCCEEDED"
+    assert answer["citations"]
+
+
+def test_identity_uses_authenticated_context_without_retrieval(monkeypatch) -> None:
+    """身份问题走运行时主体上下文，不进入 RAG 或工具计划。"""
+    _enable(monkeypatch)
+    monkeypatch.setattr(get_settings(), "feature_real_qa", True)
+
+    class NoSearchAdapter(FakeSearchAdapter):
+        def search(self, **kwargs):
+            raise AssertionError("身份问题不应触发检索")
+
+    def chat(messages):
+        return json.dumps({
+            "intent": "IDENTITY",
+            "operation": "ANSWER",
+            "goal": "查看当前登录主体身份",
+            "entities": [],
+            "constraints": [],
+            "completion_criteria": [],
+            "requires_enterprise_evidence": True,
+            "candidate_capabilities": ["knowledge.search"],
+            "ambiguity": [],
+            "risk_hint": "READ_ONLY",
+            "confidence": 0.99,
+        })
+
+    adapter = NoSearchAdapter()
+    cookies = _seed(adapter)
+    result = _ask(cookies, "我是谁？")
+    _run_agent(adapter, answer_id=result["answer_id"], chat_fn=chat)
+    answer = _get_answer(result["answer_id"], cookies)
+    assert answer["status"] == "SUCCEEDED"
+    assert answer["answer_type"] == "ANSWER"
+    assert "Agent 用户" in (answer["summary"] or "")
+    assert answer["citations"] == []
+
+    with SessionLocal() as s:
+        run = s.execute(
+            select(AgentRun).where(AgentRun.answer_id == uuid.UUID(result["answer_id"]))
+        ).scalars().first()
+        assert run is not None and run.operation == "IDENTITY"
+
+
 # ---- TC-LG-102 内部产品问题：检索 + 生成 + 引用 + 持久化 ----
 
 def test_internal_question_retrieves_with_citations(monkeypatch) -> None:

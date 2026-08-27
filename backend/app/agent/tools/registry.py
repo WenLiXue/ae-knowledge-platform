@@ -20,6 +20,10 @@ class ToolRegistry:
     def replace(self, tool: AgentTool) -> None:
         self._tools[tool.definition.name] = tool
 
+    def remove(self, name: str) -> None:
+        """Remove a capability from the runtime-visible registry."""
+        self._tools.pop(name, None)
+
     def get(self, name: str) -> AgentTool:
         try:
             return self._tools[name]

@@ -254,16 +254,14 @@ def test_unbind_records_audit() -> None:
     assert rows[0]["target_type"] == "USER"
 
 
-# ---- 管理员权限与查询 ----
+# ---- 系统管理登录权限与查询 ----
 
-def test_ordinary_user_denied_records_denied() -> None:
+def test_ordinary_user_can_query_without_denied_audit() -> None:
     cookies = _make_user(False, "普通用户")
     resp = client.get("/api/v1/admin/audit-logs", cookies=cookies)
-    assert resp.status_code == 403
+    assert resp.status_code == 200
     rows = _audit_rows("audit.query", "DENIED")
-    assert len(rows) == 1
-    assert rows[0]["error_code"] == "FORBIDDEN"
-    assert rows[0]["actor_name"] == "普通用户"
+    assert rows == []
 
 
 def test_admin_can_list_summary_and_detail() -> None:

@@ -1,4 +1,4 @@
-"""系统日志查询 API（仅管理员）。"""
+"""系统日志查询 API（登录用户可访问）。"""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import { RequireAdmin, RequireAuth } from "../auth/AuthContext";
+import { RequireAuth } from "../auth/AuthContext";
 import { PlaceholderPage } from "../components/PlaceholderPage";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { MainLayout } from "../layouts/MainLayout";
@@ -8,6 +8,7 @@ import { DocumentDetailPage } from "../pages/DocumentDetailPage";
 import { DocumentImportPage } from "../pages/DocumentImportPage";
 import { DocumentsPage } from "../pages/DocumentsPage";
 import { AuditLogsPage } from "../pages/admin/AuditLogsPage";
+import { AgentCapabilitiesPage } from "../pages/admin/AgentCapabilitiesPage";
 import { KnowledgeConfigPage } from "../pages/admin/KnowledgeConfigPage";
 import { LlmConfigPage } from "../pages/admin/LlmConfigPage";
 import { PendingClassificationPage } from "../pages/admin/PendingClassificationPage";
@@ -54,60 +55,36 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: "admin/agent-capabilities",
+        element: <AgentCapabilitiesPage />,
+      },
+      {
         path: "admin/tasks",
-        element: (
-          <RequireAdmin>
-            <TasksPage />
-          </RequireAdmin>
-        ),
+        element: <TasksPage />,
       },
       {
         path: "admin/pending-classification",
-        element: (
-          <RequireAdmin>
-            <PendingClassificationPage />
-          </RequireAdmin>
-        ),
+        element: <PendingClassificationPage />,
       },
       {
         path: "admin/knowledge-config",
-        element: (
-          <RequireAdmin>
-            <KnowledgeConfigPage />
-          </RequireAdmin>
-        ),
+        element: <KnowledgeConfigPage />,
       },
       {
         path: "admin/llm-config",
-        element: (
-          <RequireAdmin>
-            <LlmConfigPage />
-          </RequireAdmin>
-        ),
+        element: <LlmConfigPage />,
       },
       {
         path: "admin/system-logs",
-        element: (
-          <RequireAdmin>
-            <SystemLogsPage />
-          </RequireAdmin>
-        ),
+        element: <SystemLogsPage />,
       },
       {
         path: "admin/users",
-        element: (
-          <RequireAdmin>
-            <PlaceholderPage title="用户管理" description="管理系统用户、角色与飞书绑定。" />
-          </RequireAdmin>
-        ),
+        element: <PlaceholderPage title="用户管理" description="管理系统用户、角色与飞书绑定。" />,
       },
       {
         path: "admin/audit-logs",
-        element: (
-          <RequireAdmin>
-            <AuditLogsPage />
-          </RequireAdmin>
-        ),
+        element: <AuditLogsPage />,
       },
       {
         path: "settings/profile",

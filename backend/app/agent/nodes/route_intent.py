@@ -135,13 +135,22 @@ def core_route_intent(state: dict, ctx):
 
     operation = understanding.get("operation") or "ANSWER"
     entities = understanding.get("detected_entities") or []
+    if operation in ("CHAT", "EXPLAIN") and policies.looks_like_knowledge_question(question):
+        operation = "ANSWER"
+        normalized = policies.strip_greeting_prefix(question)
+        forced_reason = "KNOWLEDGE_SIGNAL_OVERRIDE"
+    else:
+        normalized = (understanding.get("standalone_query") or question).strip() or question
+        forced_reason = None
     requires, reason = policies.local_requires_retrieval(
         operation,
         query_entities=entities,
         filters_snapshot=filters_snapshot,
         memory_entities=state.get("memory_entities") or [],
     )
-    normalized = (understanding.get("standalone_query") or question).strip() or question
+    if forced_reason is not None:
+        requires = True
+        reason = forced_reason
 
     update = {
         "operation": operation,

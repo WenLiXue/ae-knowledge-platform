@@ -59,8 +59,19 @@ class AnswerBlock(BaseModel):
     citation_nos: list[int] = Field(default_factory=list)
 
 
+class CitationLocationOut(BaseModel):
+    """同一文档来源下的一个精确证据片段。"""
+
+    chunk_id: uuid.UUID | None = None
+    heading_path: list[str] = Field(default_factory=list)
+    locator: dict = Field(default_factory=dict)
+    excerpt: str | None = None
+
+
 class AnswerCitationOut(BaseModel):
     citation_no: int
+    source_id: uuid.UUID | None = None
+    version_id: uuid.UUID | None = None
     document_title: str
     document_type: str | None = None
     heading_path: list[str] = Field(default_factory=list)
@@ -69,6 +80,8 @@ class AnswerCitationOut(BaseModel):
     excerpt: str | None = None
     original_url: str | None = None
     availability: str = "AVAILABLE"
+    support_count: int = 1
+    locations: list[CitationLocationOut] = Field(default_factory=list)
 
 
 class AnswerOut(BaseModel):
@@ -104,6 +117,8 @@ class FeedbackIn(BaseModel):
 class CitationDetailOut(BaseModel):
     citation_no: int
     supported_claim: str | None = None
+    source_id: uuid.UUID | None = None
+    version_id: uuid.UUID | None = None
     document_title: str
     document_type: str | None = None
     heading_path: list[str] = Field(default_factory=list)
@@ -111,3 +126,5 @@ class CitationDetailOut(BaseModel):
     excerpt: str | None = None
     original_url: str | None = None
     availability: str = "AVAILABLE"
+    support_count: int = 1
+    locations: list[CitationLocationOut] = Field(default_factory=list)

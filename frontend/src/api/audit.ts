@@ -1,5 +1,5 @@
 /**
- * 操作审计管理 API（后端 /api/v1/admin/audit-*，仅管理员）。
+ * 操作审计管理 API（后端 /api/v1/admin/audit-*，需要登录）。
  */
 import { apiGet, apiPost, API_BASE_URL } from "./client";
 import type { ApiList } from "../types/api";

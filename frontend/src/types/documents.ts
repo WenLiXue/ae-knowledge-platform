@@ -106,7 +106,7 @@ export interface ClassificationSummary {
   is_domestic?: boolean | null;
   module_name?: string | null;
   business_topic?: string | null;
-  keywords?: string[];
+  keywords?: string[] | null;
   summary?: string | null;
 }
 
@@ -124,7 +124,7 @@ export interface ClassificationDetail {
   relevance: string | null;
   relevance_confidence: number | null;
   reason_summary: string | null;
-  missing_fields: string[];
+  missing_fields: string[] | null;
   evidence: Array<Record<string, unknown>>;
   output: Record<string, unknown>;
   model_key: string | null;
@@ -140,7 +140,7 @@ export interface ClassificationDetail {
     module_name: string | null;
     business_topic: string | null;
     summary: string | null;
-    keywords: string[];
+    keywords: string[] | null;
   };
 }
 
