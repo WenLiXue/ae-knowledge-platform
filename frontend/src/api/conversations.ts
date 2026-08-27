@@ -9,6 +9,7 @@ import { apiGet, apiPost, apiPatch, apiPut, apiDelete, API_BASE_URL } from "./cl
 import type { ApiList } from "../types/api";
 import type {
   Answer,
+  AgentApproval,
   AnswerBlock,
   AnswerType,
   Citation,
@@ -101,6 +102,18 @@ export function cancelAnswer(answerId: string): Promise<Answer> {
   return apiPost<Answer>(`/api/v1/answers/${answerId}/cancel`);
 }
 
+export function listAnswerApprovals(answerId: string): Promise<{ items: AgentApproval[] }> {
+  return apiGet<{ items: AgentApproval[] }>(`/api/v1/answers/${answerId}/approvals`);
+}
+
+export function decideAnswerApproval(
+  answerId: string,
+  approvalId: string,
+  decision: "APPROVED" | "REJECTED",
+): Promise<{ approval_id: string; status: string; answer_id: string }> {
+  return apiPost(`/api/v1/answers/${answerId}/approvals/${approvalId}/decision`, { decision });
+}
+
 export interface AnswerEventsHandlers {
   onSnapshot?: (answer: Answer) => void;
   onStatus?: (payload: { answer_id: string; status: string; progress_stage: string | null }) => void;
@@ -169,5 +182,5 @@ export function subscribeAnswerEvents(
 }
 
 export function isInProgress(status: string): boolean {
-  return status === "PENDING" || status === "RETRIEVING" || status === "STREAMING";
+  return status === "PENDING" || status === "WAITING" || status === "RETRIEVING" || status === "STREAMING";
 }

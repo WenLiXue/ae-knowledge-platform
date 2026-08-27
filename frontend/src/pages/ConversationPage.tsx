@@ -41,6 +41,8 @@ import {
   deleteConversation,
   getConversation,
   getMessages,
+  listAnswerApprovals,
+  decideAnswerApproval,
   isInProgress,
   submitFeedback,
   subscribeAnswerEvents,
@@ -51,7 +53,7 @@ import { useConversationWorkspace } from "../conversations/ConversationWorkspace
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { FullPageLoading } from "../components/LoadingState";
-import type { Answer, AnswerBlock, Citation, Conversation, FeedbackRating, Message } from "../types/conversations";
+import type { AgentApproval, Answer, AnswerBlock, Citation, Conversation, FeedbackRating, Message } from "../types/conversations";
 
 const FEEDBACK_REASONS = ["答案不准确", "缺少细节", "来源不可信", "未回答问题"];
 
@@ -238,6 +240,30 @@ function AnswerView({ answer }: { answer: Answer }) {
   const [reasonCodes, setReasonCodes] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [approvals, setApprovals] = useState<AgentApproval[]>([]);
+  const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (answer.status !== "WAITING") {
+      setApprovals([]);
+      return;
+    }
+    void listAnswerApprovals(answer.id)
+      .then((result) => setApprovals(result.items))
+      .catch(() => undefined);
+  }, [answer.id, answer.status]);
+
+  const decideApproval = async (approval: AgentApproval, decision: "APPROVED" | "REJECTED") => {
+    if (approvalBusy) return;
+    setApprovalBusy(approval.id);
+    try {
+      await decideAnswerApproval(answer.id, approval.id, decision);
+      const result = await listAnswerApprovals(answer.id);
+      setApprovals(result.items);
+    } finally {
+      setApprovalBusy(null);
+    }
+  };
 
   // 仅对已完成的回答判断证据充分性；进行中（answer_type 为 null）不提前提示依据不足
   const lowEvidence =
@@ -285,6 +311,19 @@ function AnswerView({ answer }: { answer: Answer }) {
           本次回答未完成，可以保留当前问题并重新发送。
         </Alert>
       )}
+
+      {answer.status === "WAITING" && approvals.filter((item) => item.status === "PENDING").map((approval) => (
+        <Alert key={approval.id} severity="warning" sx={{ mt: 1.5 }}>
+          <Typography variant="body2" fontWeight={600}>需要确认后执行操作</Typography>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            {approval.impact_summary.step_title || approval.tool_name}：{approval.impact_summary.summary || "该操作会修改任务状态"}
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <Button size="small" variant="contained" disabled={approvalBusy !== null} onClick={() => void decideApproval(approval, "APPROVED")}>确认执行</Button>
+            <Button size="small" variant="outlined" color="inherit" disabled={approvalBusy !== null} onClick={() => void decideApproval(approval, "REJECTED")}>拒绝</Button>
+          </Stack>
+        </Alert>
+      ))}
 
       {answer.blocks.length > 0 && (
         <Stack spacing={1} sx={{ mt: 1.5 }}>

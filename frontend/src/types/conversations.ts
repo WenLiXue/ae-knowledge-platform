@@ -28,6 +28,7 @@ export interface Conversation {
 /** 答案主状态（DD-08 §11.2）。细阶段走 progress_stage，不扩散为不稳定业务状态。 */
 export type AnswerStatus =
   | "PENDING"
+  | "WAITING"
   | "RETRIEVING"
   | "STREAMING"
   | "SUCCEEDED"
@@ -41,6 +42,15 @@ export type AnswerStage =
   | "RERANKING"
   | "GENERATING"
   | "VALIDATING";
+
+export interface AgentApproval {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  tool_name: string;
+  impact_summary: { tool?: string; step_title?: string; risk?: string; summary?: string };
+  expires_at: string;
+  decided_at: string | null;
+}
 
 /** 最终结果类型（DD-10 §4）。 */
 export type AnswerType =
