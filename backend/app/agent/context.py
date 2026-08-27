@@ -16,9 +16,11 @@ from ..chunking.tokens import estimate_tokens
 from ..core.config import Settings, get_settings
 from ..llm.runtime import resolve_service_model
 from ..model_gateway import create_gateway
-from ..model_gateway.base import ModelGateway
+from ..model_gateway.base import ChatResponse, GatewayTool, ModelGateway
 from ..qa.llm import chat_with_retry
 from ..retrieval.service import RetrievalService, build_retrieval_service
+from .tools import ToolExecutor, ToolRegistry, build_default_tool_registry
+from .tools.policy import ToolPolicy
 
 
 class TokenEstimator:
@@ -76,6 +78,37 @@ class AgentModels:
             db.commit()
         return chat_with_retry(gateway, model_name, messages, max_tokens=max_tokens)
 
+    def chat_with_tools(
+        self,
+        messages: list[dict],
+        *,
+        tools: list[GatewayTool],
+        tool_choice: str = "auto",
+        max_tokens: int = 4096,
+    ) -> ChatResponse:
+        """Structured model response for planning; preserves the text-only API."""
+        if self._chat_fn is not None:
+            raise ValueError("注入式 chat_fn 不支持工具调用响应，请注入结构化 gateway")
+        if self._session_factory is None:
+            raise ValueError("AgentModels 未配置 session_factory，无法解析 QA 模型")
+        from ..model_gateway.base import ChatRequest
+
+        with self._session_factory() as db:
+            resolved = self._resolve_model(db, "QA")
+            self._last_model_key = resolved.model_config_id
+            gateway = self._gateway_factory(resolved)
+            model_name = resolved.model_name
+            db.commit()
+        return gateway.chat(
+            ChatRequest(
+                model=model_name,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                max_tokens=max_tokens,
+            )
+        )
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -93,6 +126,8 @@ class AgentRuntimeContext:
     clock: Callable[[], datetime]
     # 单次 run 截止时刻（epoch 秒）；每次 Worker 重试重新起算
     deadline: float
+    tool_registry: ToolRegistry
+    tool_executor: ToolExecutor
 
 
 def build_context(
@@ -114,6 +149,11 @@ def build_context(
     models = models or AgentModels(session_factory=session_factory)
     if deadline is None:
         deadline = clock().timestamp() + settings.agent_timeout_seconds
+    tool_registry = build_default_tool_registry()
+    tool_executor = ToolExecutor(
+        tool_registry,
+        policy=ToolPolicy(allow_write=settings.agent_write_tools_enabled),
+    )
     return AgentRuntimeContext(
         session_factory=session_factory,
         retrieval_service_factory=retrieval_service_factory,
@@ -122,4 +162,6 @@ def build_context(
         tokenizer=TokenEstimator(),
         clock=clock,
         deadline=deadline,
+        tool_registry=tool_registry,
+        tool_executor=tool_executor,
     )

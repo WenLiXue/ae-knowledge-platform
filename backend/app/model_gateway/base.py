@@ -9,9 +9,23 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
+
+
+class GatewayTool(BaseModel):
+    """Provider-neutral tool description; model output is not authorization."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+class GatewayToolCall(BaseModel):
+    id: str
+    name: str
+    arguments: dict[str, Any]
 
 
 class ChatRequest(BaseModel):
@@ -20,6 +34,8 @@ class ChatRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     top_p: float | None = None
+    tools: list[GatewayTool] = Field(default_factory=list)
+    tool_choice: Literal["none", "auto", "required"] | str = "none"
 
 
 class ChatUsage(BaseModel):
@@ -30,7 +46,8 @@ class ChatUsage(BaseModel):
 
 class ChatResponse(BaseModel):
     model: str
-    content: str
+    content: str = ""
+    tool_calls: list[GatewayToolCall] = Field(default_factory=list)
     usage: ChatUsage = Field(default_factory=ChatUsage)
     raw: dict | None = None
 

@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     # 初始关闭：新任务走旧 qa.worker 编排；灰度和验收通过后再开启（DD-21 §19 阶段 D）。
     agent_graph_enabled: bool = False
     agent_graph_version: str = "knowledge-assistant-v1"
+    # Tool-Agent rollout flags. Disabled by default so DD-21 remains the
+    # production fallback until the new execution path passes its gates.
+    agent_tools_enabled: bool = False
+    agent_planner_enabled: bool = False
+    agent_write_tools_enabled: bool = False
+    agent_max_plan_steps: int = 8
+    agent_max_tool_calls: int = 10
+    agent_max_replans: int = 2
+    agent_parallel_read_limit: int = 3
+    agent_task_timeout_seconds: int = 180
+    agent_tool_result_max_bytes: int = 65536
+    agent_approval_ttl_minutes: int = 30
     # 单次 answer run 图总步数（节点执行数）硬限制。
     # 最坏合法流程（一次 query rewrite + 一次 citation repair）约 14 个节点，
     # 默认 16 为实施起点，可经黄金问题集调优（DD-21 §13）。

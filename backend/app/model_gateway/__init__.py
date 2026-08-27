@@ -3,6 +3,8 @@
 from .base import (
     ChatRequest,
     ChatResponse,
+    GatewayTool,
+    GatewayToolCall,
     EmbeddingRequest,
     EmbeddingResponse,
     RerankRequest,
@@ -15,6 +17,8 @@ from .openai_compatible import OpenAICompatibleGateway
 __all__ = [
     "ChatRequest",
     "ChatResponse",
+    "GatewayTool",
+    "GatewayToolCall",
     "EmbeddingRequest",
     "EmbeddingResponse",
     "GatewayError",

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 import uuid
 
@@ -18,6 +19,7 @@ from .base import (
     ChatRequest,
     ChatResponse,
     ChatUsage,
+    GatewayToolCall,
     EmbeddingRequest,
     EmbeddingResponse,
     EmbeddingUsage,
@@ -121,17 +123,54 @@ class OpenAICompatibleGateway:
             payload["max_tokens"] = request.max_tokens
         if request.top_p is not None:
             payload["top_p"] = request.top_p
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    },
+                }
+                for tool in request.tools
+            ]
+            payload["tool_choice"] = request.tool_choice
         data = self._post(_ENDPOINTS["chat"], payload, request_id=request_id)
         try:
             validated = OpenAIChatResponse.model_validate(data)
         except ValidationError as exc:
             raise GatewayError("SCHEMA", "CHAT_SCHEMA_INVALID", "模型响应不符合对话协议", retryable=False) from exc
-        if not validated.choices or not validated.choices[0].message.get("content"):
+        if not validated.choices:
+            raise GatewayError("SCHEMA", "CHAT_EMPTY", "模型返回空内容", retryable=False)
+        message = validated.choices[0].message
+        content = str(message.get("content") or "")
+        tool_calls: list[GatewayToolCall] = []
+        for raw_call in message.get("tool_calls") or []:
+            try:
+                function = raw_call.get("function") or {}
+                raw_arguments = function.get("arguments") or {}
+                arguments = (
+                    json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+                )
+                if not isinstance(arguments, dict):
+                    raise ValueError("tool arguments must be object")
+                tool_calls.append(
+                    GatewayToolCall(
+                        id=str(raw_call.get("id") or _request_id()),
+                        name=str(function["name"]),
+                        arguments=arguments,
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise GatewayError("SCHEMA", "TOOL_CALL_SCHEMA_INVALID", "模型工具调用格式无效", retryable=False) from exc
+        if not content and not tool_calls:
             raise GatewayError("SCHEMA", "CHAT_EMPTY", "模型返回空内容", retryable=False)
         usage = validated.usage
         response = ChatResponse(
             model=validated.model,
-            content=str(validated.choices[0].message["content"]),
+            content=content,
+            tool_calls=tool_calls,
             usage=ChatUsage(
                 prompt_tokens=usage.prompt_tokens if usage else 0,
                 completion_tokens=usage.completion_tokens if usage else 0,

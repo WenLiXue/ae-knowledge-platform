@@ -59,12 +59,27 @@ class AgentState(TypedDict, total=False):
     context_token_estimate: int
 
     # 查询理解与路由
+    goal: dict
+    execution_mode: str
+    completion_criteria: list[dict]
     operation: str
     normalized_question: str
     requires_retrieval: bool
     clarification_question: str | None
     query_entities: list[str]
     route_reason_code: str
+
+    # 工具型 Agent 计划与观察（全部为可 JSON 序列化 DTO）
+    plan_id: str | None
+    plan_revision: int
+    plan_steps: list[dict]
+    active_step_id: str | None
+    observations: list[dict]
+    pending_approval_id: str | None
+    suspended_reason: str | None
+    tool_call_count: int
+    replan_count: int
+    verification_result: dict | None
 
     # 检索
     retrieval_run_id: str | None
@@ -125,11 +140,24 @@ def build_initial_state(
         "filters_snapshot": filters_snapshot or {},
         "cancel_requested": bool(cancel_requested),
         "operation": "",
+        "goal": {},
+        "execution_mode": "LEGACY_RAG",
+        "completion_criteria": [],
         "requires_retrieval": False,
         "evidence": [],
         "degradation_flags": [],
         "retrieval_queries": [],
         "query_entities": [],
+        "plan_id": None,
+        "plan_revision": 0,
+        "plan_steps": [],
+        "active_step_id": None,
+        "observations": [],
+        "pending_approval_id": None,
+        "suspended_reason": None,
+        "tool_call_count": 0,
+        "replan_count": 0,
+        "verification_result": None,
         "validation_errors": [],
         "citation_drafts": [],
         "node_trace": [],
