@@ -37,15 +37,25 @@ class ToolExecutor:
             args = tool.input_model.model_validate(proposal.arguments)
             # Tool code is synchronous today; elapsed time is still bounded at the
             # executor contract so async/isolated execution can be added later.
-            begin = time.monotonic()
             tool_context = replace(
                 context,
                 metadata={**context.metadata, "call_id": proposal.call_id},
             )
-            result = tool.execute(args, tool_context)
-            if time.monotonic() - begin > definition.timeout_seconds:
-                raise ToolError("TOOL_TIMEOUT", "工具执行超过时间限制", retryable=True)
-            return self._bounded(result, definition.max_result_bytes)
+            last_error: ToolError | None = None
+            for attempt in range(definition.max_retries + 1):
+                begin = time.monotonic()
+                try:
+                    result = tool.execute(args, tool_context)
+                    if time.monotonic() - begin > definition.timeout_seconds:
+                        raise ToolError("TOOL_TIMEOUT", "工具执行超过时间限制", retryable=True)
+                    return self._bounded(result, definition.max_result_bytes)
+                except ToolError as exc:
+                    last_error = exc
+                    if not exc.retryable or attempt >= definition.max_retries:
+                        raise
+            if last_error is not None:
+                raise last_error
+            raise ToolError("TOOL_EXECUTION_FAILED", "工具执行失败")
         except ValidationError as exc:
             return self._failure(proposal, locals().get("definition", _unknown_version()), "TOOL_INPUT_INVALID", "工具参数校验失败", False, started)
         except ToolError as exc:

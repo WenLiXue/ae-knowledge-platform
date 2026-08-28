@@ -401,7 +401,18 @@ def _entity_to_document(entity: dict[str, Any]) -> FeishuDocument:
 
 
 def _obj_type_to_resource_type(obj_type: str | None) -> str:
-    mapping = {"docx": "docx", "wiki": "wiki", "sheet": "sheet", "file": "file", "mindnote": "mindnote"}
+    # Wiki 节点接口在不同租户/版本可能返回 doc、docx、sheet 或 spreadsheet；
+    # 统一映射到提交接口支持的资源类型。
+    mapping = {
+        "doc": "docx",
+        "docx": "docx",
+        "document": "docx",
+        "wiki": "wiki",
+        "sheet": "sheet",
+        "spreadsheet": "sheet",
+        "file": "file",
+        "mindnote": "mindnote",
+    }
     return mapping.get((obj_type or "").casefold(), (obj_type or "docx").casefold())
 
 

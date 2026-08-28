@@ -14,7 +14,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..db.models.conversation import (
@@ -273,6 +273,63 @@ def get_answer(db: Session, user: User, answer_id) -> Answer:
     return answer
 
 
+def retry_answer(db: Session, user: User, answer_id) -> Answer:
+    """重新排队同一个回答，避免为同一问题创建重复的用户消息。"""
+    answer = get_answer(db, user, answer_id)
+    if answer.status not in ("FAILED", "CANCELED"):
+        raise ConversationError("ANSWER_NOT_RETRYABLE", "当前回答无需重新生成", status=409)
+    conversation = db.execute(
+        select(Conversation).where(Conversation.id == answer.conversation_id).with_for_update()
+    ).scalar_one_or_none()
+    if conversation is None or conversation.status != "ACTIVE":
+        raise ConversationError("CONVERSATION_NOT_ACTIVE", "会话已归档或删除，不能重新生成", status=409)
+    recover_stale_answers(db, conversation.id)
+    open_answer = db.execute(
+        select(Answer).where(
+            Answer.conversation_id == conversation.id,
+            Answer.status.in_(_OPEN_STATUSES),
+            Answer.id != answer.id,
+        ).limit(1)
+    ).scalars().first()
+    if open_answer is not None:
+        raise ConversationError("ANSWER_ALREADY_IN_PROGRESS", "该会话已有回答正在生成，请稍候", status=409)
+
+    answer.status = "PENDING"
+    answer.progress_stage = None
+    answer.summary = None
+    answer.blocks_json = None
+    answer.degradation_flags = []
+    answer.error_code = None
+    answer.error_summary = None
+    answer.cancel_requested = False
+    answer.completed_at = None
+    db.execute(delete(AnswerCitation).where(AnswerCitation.answer_id == answer.id))
+    now = _now()
+    db.add(
+        ProcessingTask(
+            task_type="GENERATE_ANSWER",
+            status="PENDING",
+            idempotency_key=f"answer:{answer.id}:retry:{uuid.uuid4()}",
+            scheduled_at=now,
+            payload={"answer_id": str(answer.id)},
+            priority=50,
+            max_attempts=3,
+            created_by_user_id=user.id,
+        )
+    )
+    # 失败的 Agent 可能留下终态 checkpoint；清掉后由本次任务全新执行。
+    try:
+        from ..agent.runtime import get_checkpointer
+
+        checkpointer = get_checkpointer()
+        if checkpointer is not None:
+            checkpointer.delete_thread(str(answer.id))
+    except Exception:  # noqa: BLE001
+        pass
+    db.commit()
+    return answer
+
+
 def list_messages(db: Session, user: User, conversation_id) -> list[MessageOut]:
     conversation = _get_owned_conversation(db, user, conversation_id)
     if conversation.status == "DELETED":
@@ -368,7 +425,7 @@ def _build_answer_out_from_citations(
         citations=grouped_citations,
         degradation_flags=list(answer.degradation_flags or []),
         error_code=answer.error_code,
-        error_summary=answer.error_summary,
+        error_summary=_safe_error_summary(answer),
         created_at=answer.created_at,
         completed_at=answer.completed_at,
     )
@@ -393,10 +450,21 @@ def build_answer_out(db: Session, answer: Answer) -> AnswerOut:
         citations=citations,
         degradation_flags=list(answer.degradation_flags or []),
         error_code=answer.error_code,
-        error_summary=answer.error_summary,
+        error_summary=_safe_error_summary(answer),
         created_at=answer.created_at,
         completed_at=answer.completed_at,
     )
+
+
+def _safe_error_summary(answer: Answer) -> str | None:
+    if answer.status != "FAILED":
+        return answer.error_summary
+    # 内部异常（例如云厂商 SDK 的 InvalidTag）不应直接暴露给终端用户。
+    safe = {
+        "ANSWER_STALE": "回答处理超时，请重试。",
+        "CANCELED": "回答生成已停止。",
+    }
+    return safe.get(answer.error_code or "", "回答生成失败，请重试。")
 
 
 def _citation_out(

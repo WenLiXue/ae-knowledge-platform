@@ -20,7 +20,6 @@ from .nodes import (
     persist_result as persist_node,
     retrieve as retrieve_node,
     rewrite_query as rewrite_node,
-    route_intent as route_intent_node,
     understand_goal as understand_goal_node,
     update_memory as update_memory_node,
     validate as validate_node,
@@ -28,7 +27,6 @@ from .nodes import (
 from .nodes import node as wrap
 from .policies import (
     route_after_evidence,
-    route_after_intent,
     route_after_goal,
     route_after_tool,
     route_after_load,
@@ -55,7 +53,6 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     builder.add_node("answer_identity", wrap("answer_identity")(identity_node.core_answer_identity))
     builder.add_node("create_plan", wrap("create_plan")(create_plan_node.core_create_plan))
     builder.add_node("execute_tool", wrap("execute_tool")(execute_tool_node.core_execute_tool))
-    builder.add_node("route_intent", wrap("route_intent")(route_intent_node.core_route_intent))
     builder.add_node("generate_general", wrap("generate_general")(generate_node.core_generate_general))
     builder.add_node("generate_grounded", wrap("generate_grounded")(generate_node.core_generate_grounded))
     builder.add_node("finalize_clarification", wrap("finalize_clarification")(generate_node.core_finalize_clarification))
@@ -71,8 +68,8 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     builder.add_conditional_edges("load_state", route_after_load, ["build_context", "persist_result"])
     builder.add_conditional_edges(
         "build_context",
-        lambda state: "understand_goal" if state.get("tool_agent_enabled") else "route_intent",
-        ["understand_goal", "route_intent"],
+        lambda state: "understand_goal",
+        ["understand_goal"],
     )
     builder.add_conditional_edges(
         "understand_goal", route_after_goal,
@@ -83,15 +80,10 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     )
     builder.add_conditional_edges(
         "execute_tool", route_after_tool,
-        ["execute_tool", "assess_evidence", "generate_general", "update_memory", "persist_result"],
+        ["execute_tool", "create_plan", "assess_evidence", "generate_general", "update_memory", "persist_result"],
     )
     builder.add_conditional_edges(
         "answer_identity", _route_fixed("update_memory"), ["update_memory", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "route_intent",
-        lambda state: route_after_intent(state),
-        ["retrieve", "generate_general", "finalize_clarification", "persist_result"],
     )
     builder.add_conditional_edges(
         "retrieve", _route_fixed("assess_evidence"), ["assess_evidence", "persist_result"]

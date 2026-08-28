@@ -37,16 +37,7 @@ class CompletionCriterion(BaseModel):
 
 
 class GoalUnderstanding(BaseModel):
-    intent: Literal[
-        "CHAT",
-        "EXPLAIN",
-        "KNOWLEDGE_QUERY",
-        "ANALYZE",
-        "TASK",
-        "ACTION",
-        "IDENTITY",
-        "CLARIFY",
-    ]
+    decision: Literal["RESPOND", "CALL_TOOL", "CLARIFY", "CONFIRM"] = "CALL_TOOL"
     operation: str | None = None
     goal: str = Field(min_length=1, max_length=2000)
     entities: list[EntityRef] = Field(default_factory=list)

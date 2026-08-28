@@ -1,6 +1,13 @@
+x-default-logging: &default-logging
+  driver: local
+  options:
+    max-size: "100m"
+    max-file: "14"
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    logging: *default-logging
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ae_knowledge}
@@ -15,22 +22,44 @@ services:
       retries: 20
 
   backend:
+    image: ${BACKEND_IMAGE:-ae-knowledge/backend}:${IMAGE_TAG:-local}
+    logging: *default-logging
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - path: ${APP_ENV_FILE:-./.env}
+        required: false
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ae_knowledge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ae_knowledge}
       ENVIRONMENT: production
+      # 当前通过 HTTP 访问内网 IP；启用 HTTPS 后应改回 true。
+      SESSION_COOKIE_SECURE: "false"
+      FEISHU_PROVIDER: real
+      SEARCH_ENGINE: pgvector
+      SEARCH_INDEX_NAME: knowledge_chunks
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:?TOKEN_ENC_KEY must be set}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:?AUDIT_HMAC_KEY must be set}
       STORAGE_ROOT: /app/backend/storage
       AUDIT_EXPORT_DIR: /app/backend/exports
       AUDIT_TRUSTED_PROXY_HEADER: x-forwarded-for
+      # Production uses the tool-agent path; these are deployment policy, not
+      # operator-tuned environment switches.
+      FEATURE_REAL_QA: "true"
+      FEATURE_REAL_CLASSIFICATION: "true"
+      FEATURE_REAL_INDEXING: "true"
+      AGENT_GRAPH_ENABLED: "true"
+      AGENT_TOOLS_ENABLED: "true"
+      AGENT_PLANNER_ENABLED: "true"
+      AGENT_WRITE_TOOLS_ENABLED: "true"
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./data/storage:/app/backend/storage
       - ./data/exports:/app/backend/exports
+      - ./data/logs/backend:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,20 +67,39 @@ services:
       - "8000"
 
   worker:
+    image: ${BACKEND_IMAGE:-ae-knowledge/backend}:${IMAGE_TAG:-local}
+    logging: *default-logging
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - path: ${APP_ENV_FILE:-./.env}
+        required: false
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ae_knowledge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ae_knowledge}
       ENVIRONMENT: production
+      SESSION_COOKIE_SECURE: "false"
+      FEISHU_PROVIDER: real
+      SEARCH_ENGINE: pgvector
+      SEARCH_INDEX_NAME: knowledge_chunks
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:?TOKEN_ENC_KEY must be set}
       STORAGE_ROOT: /app/backend/storage
-      WORKER_ID: ${WORKER_ID:-ae-worker-1}
+      # 留空时由容器 hostname 自动生成唯一 Worker ID；扩容时不要设置固定 WORKER_ID。
+      WORKER_ID: ${WORKER_ID:-}
+      FEATURE_REAL_QA: "true"
+      FEATURE_REAL_CLASSIFICATION: "true"
+      FEATURE_REAL_INDEXING: "true"
+      AGENT_GRAPH_ENABLED: "true"
+      AGENT_TOOLS_ENABLED: "true"
+      AGENT_PLANNER_ENABLED: "true"
+      AGENT_WRITE_TOOLS_ENABLED: "true"
     command: python -m app.worker
     volumes:
       - ./data/storage:/app/backend/storage
+      - ./data/logs/worker:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,6 +107,8 @@ services:
         condition: service_started
 
   frontend:
+    image: ${FRONTEND_IMAGE:-ae-knowledge/frontend}:${IMAGE_TAG:-local}
+    logging: *default-logging
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -68,5 +118,7 @@ services:
     depends_on:
       backend:
         condition: service_started
+    volumes:
+      - ./data/logs/frontend:/var/log/nginx
     ports:
       - "${HTTP_PORT:-80}:80"

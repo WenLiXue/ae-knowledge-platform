@@ -52,7 +52,7 @@ def _catalog_dict(obj) -> dict:
 def _version_dict(v) -> dict:
     return ProductVersionOut(
         id=str(v.id), product_id=str(v.product_id), version_code=v.version_code,
-        major_version=v.major_version, minor_version=v.minor_version,
+        big_version=v.big_version,
         release_date=v.release_date, status=v.status, sort_order=v.sort_order,
     )
 
@@ -251,8 +251,7 @@ def admin_create_version(
         db, admin, request, "config.catalog.version.create", target_type="PRODUCT_VERSION",
         target_id=str(v.id), target_name=v.version_code,
         changes=audit_service.build_changes({
-            "version_code": (None, v.version_code), "major_version": (None, v.major_version),
-            "minor_version": (None, v.minor_version), "release_date": (None, v.release_date),
+            "version_code": (None, v.version_code), "big_version": (None, v.big_version), "release_date": (None, v.release_date),
             "status": (None, v.status), "sort_order": (None, v.sort_order),
         }),
     )
@@ -279,8 +278,7 @@ def admin_update_version(
         target_id=str(v.id), target_name=v.version_code,
         changes=audit_service.build_changes({
             "version_code": (before.version_code if before else None, v.version_code),
-            "major_version": (before.major_version if before else None, v.major_version),
-            "minor_version": (before.minor_version if before else None, v.minor_version),
+            "big_version": (before.big_version if before else None, v.big_version),
             "release_date": (before.release_date if before else None, v.release_date),
             "status": (before.status if before else None, v.status),
             "sort_order": (before.sort_order if before else None, v.sort_order),

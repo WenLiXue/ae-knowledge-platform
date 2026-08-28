@@ -37,6 +37,8 @@ class SkillLoadTool:
         description="按需加载一个已启用技能的详细 SKILL.md 指导；只在任务与技能描述匹配时调用。",
         input_schema=SkillLoadInput.model_json_schema(),
         output_schema=SkillLoadOutput.model_json_schema(),
+        layer="RESOURCE",
+        owner="platform",
         risk="READ_ONLY",
         side_effect=False,
         requires_confirmation=False,

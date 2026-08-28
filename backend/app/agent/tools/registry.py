@@ -30,16 +30,31 @@ class ToolRegistry:
         except KeyError as exc:
             raise ToolError("TOOL_NOT_REGISTERED", "请求的工具未注册") from exc
 
-    def available(self, permissions: Iterable[str] = ()) -> list[AgentTool]:
+    def available(
+        self,
+        permissions: Iterable[str] = (),
+        *,
+        layers: Iterable[str] | None = None,
+    ) -> list[AgentTool]:
         allowed = frozenset(permissions)
+        allowed_layers = frozenset(layers) if layers is not None else None
         return [
             tool
             for tool in self._tools.values()
             if set(tool.definition.required_permissions).issubset(allowed)
+            and (allowed_layers is None or tool.definition.layer in allowed_layers)
         ]
 
-    def definitions(self, permissions: Iterable[str] = ()) -> list[dict]:
-        return [tool.definition.model_dump(mode="json") for tool in self.available(permissions)]
+    def definitions(
+        self,
+        permissions: Iterable[str] = (),
+        *,
+        layers: Iterable[str] | None = None,
+    ) -> list[dict]:
+        return [
+            tool.definition.model_dump(mode="json")
+            for tool in self.available(permissions, layers=layers)
+        ]
 
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._tools))

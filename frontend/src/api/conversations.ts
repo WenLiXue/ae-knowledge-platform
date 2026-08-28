@@ -91,6 +91,10 @@ export function getAnswer(answerId: string): Promise<Answer> {
   return apiGet<Answer>(`/api/v1/answers/${answerId}`);
 }
 
+export function retryAnswer(answerId: string): Promise<CreateMessageResult> {
+  return apiPost<CreateMessageResult>(`/api/v1/answers/${answerId}/retry`, {});
+}
+
 export function submitFeedback(
   answerId: string,
   input: FeedbackInput,

@@ -253,7 +253,7 @@ function VersionsSection({ product }: { product: CatalogItem }) {
   const [rows, setRows] = useState<ProductVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; row: ProductVersion }>(null);
-  const [form, setForm] = useState({ version_code: "", major_version: "", minor_version: "", sort_order: 0 });
+  const [form, setForm] = useState({ version_code: "", big_version: "", sort_order: 0 });
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const load = useCallback(async () => {
@@ -274,8 +274,7 @@ function VersionsSection({ product }: { product: CatalogItem }) {
     try {
       const payload = {
         version_code: form.version_code,
-        major_version: form.major_version === "" ? null : Number(form.major_version),
-        minor_version: form.minor_version === "" ? null : Number(form.minor_version),
+        big_version: form.big_version.trim(),
         sort_order: Number(form.sort_order),
       };
       if (dialog.mode === "create") await adminCreateVersion(product.id, payload);
@@ -303,7 +302,7 @@ function VersionsSection({ product }: { product: CatalogItem }) {
     <Stack spacing={1.5}>
       <Stack direction="row" spacing={1} alignItems="center">
         <Typography variant="subtitle2">{product.name} 的版本</Typography>
-        <Button size="small" variant="outlined" onClick={() => { setForm({ version_code: "", major_version: "", minor_version: "", sort_order: 0 }); setDialog({ mode: "create" }); }}>
+        <Button size="small" variant="outlined" onClick={() => { setForm({ version_code: "", big_version: "", sort_order: 0 }); setDialog({ mode: "create" }); }}>
           新增版本
         </Button>
       </Stack>
@@ -316,8 +315,8 @@ function VersionsSection({ product }: { product: CatalogItem }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>版本号</TableCell>
-              <TableCell>大/小版本</TableCell>
+              <TableCell>大版本</TableCell>
+              <TableCell>版本</TableCell>
               <TableCell>状态</TableCell>
               <TableCell align="right">操作</TableCell>
             </TableRow>
@@ -325,8 +324,8 @@ function VersionsSection({ product }: { product: CatalogItem }) {
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.id}>
+                <TableCell>{row.big_version ?? "-"}</TableCell>
                 <TableCell>{row.version_code}</TableCell>
-                <TableCell>{row.major_version ?? "-"} / {row.minor_version ?? "-"}</TableCell>
                 <TableCell>
                   {row.status === "ENABLED" ? (
                     <Typography variant="body2" color="text.secondary">启用</Typography>
@@ -335,7 +334,7 @@ function VersionsSection({ product }: { product: CatalogItem }) {
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  <Button size="small" onClick={() => { setForm({ version_code: row.version_code, major_version: String(row.major_version ?? ""), minor_version: String(row.minor_version ?? ""), sort_order: row.sort_order }); setDialog({ mode: "edit", row }); }}>编辑</Button>
+                  <Button size="small" onClick={() => { setForm({ version_code: row.version_code, big_version: row.big_version ?? "", sort_order: row.sort_order }); setDialog({ mode: "edit", row }); }}>编辑</Button>
                   <Button size="small" color={row.status === "ENABLED" ? "error" : "primary"} onClick={async () => { await adminSetVersionStatus(row.id, row.status === "ENABLED" ? "DISABLED" : "ENABLED"); await load(); }}>
                     {row.status === "ENABLED" ? "停用" : "启用"}
                   </Button>
@@ -353,11 +352,14 @@ function VersionsSection({ product }: { product: CatalogItem }) {
         <DialogTitle>{dialog?.mode === "create" ? "新增版本" : "编辑版本"}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField size="small" label="版本号（如 1.0）" value={form.version_code} onChange={(e) => setForm({ ...form, version_code: e.target.value })} />
-            <Stack direction="row" spacing={2}>
-              <TextField size="small" label="大版本" type="number" value={form.major_version} onChange={(e) => setForm({ ...form, major_version: e.target.value })} />
-              <TextField size="small" label="小版本" type="number" value={form.minor_version} onChange={(e) => setForm({ ...form, minor_version: e.target.value })} />
-            </Stack>
+            <TextField size="small" label="大版本" value={form.big_version} onChange={(e) => setForm({ ...form, big_version: e.target.value })} helperText="例如 7.0.0.1、7.0.0.2" />
+            <TextField
+              size="small"
+              label="版本"
+              value={form.version_code}
+              onChange={(e) => setForm({ ...form, version_code: e.target.value })}
+              helperText="例如 2233、2273、2360-cupid"
+            />
           </Stack>
         </DialogContent>
         <DialogActions>

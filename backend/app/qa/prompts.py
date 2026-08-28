@@ -23,7 +23,7 @@ UNDERSTANDING_SYSTEM_PROMPT = (
     "   - EXPLAIN：解释通用概念、行业术语或缩写（例如单独询问某缩写是什么意思），默认不检索；"
     "即使该术语承接上一轮产品问题，也优先按通用含义解释。只有询问本企业的具体定义、日期、"
     "支持范围或产品政策时才改为 ANSWER；\n"
-    "   - CHAT：问候、感谢、身份或使用方式等闲聊，不检索；\n"
+    "   - CHAT：问候、感谢、助手能力/可用工具/使用方式等元问题，不检索；\n"
     "   - CLARIFY：缺少关键条件，先澄清，不检索。\n"
     "5. detected_entities 仅列出能从问题/上下文确认的产品、型号、版本等实体，不确定的不要猜测。\n"
     'JSON 结构：{"operation": "ANSWER"|"SUMMARIZE"|"RELATE"|"EXPLAIN"|"CHAT"|"CLARIFY", '

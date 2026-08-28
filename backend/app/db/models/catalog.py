@@ -41,6 +41,8 @@ class ProductVersion(Base, TimestampMixin, RowVersionMixin):
         UUID(as_uuid=True), ForeignKey("knowledge.products.id"), nullable=False
     )
     version_code: Mapped[str] = mapped_column(String(128), nullable=False)
+    big_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # legacy columns retained for database compatibility; no longer exposed by API
     major_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minor_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     release_date: Mapped[date | None] = mapped_column(Date, nullable=True)

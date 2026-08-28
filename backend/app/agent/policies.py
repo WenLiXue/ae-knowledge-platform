@@ -152,29 +152,21 @@ def route_after_load(state: AgentState) -> str:
     return "build_context"
 
 
-def route_after_intent(state: AgentState) -> str:
-    if state.get("_terminate"):
-        return "persist_result"
-    operation = state.get("operation", "")
-    if operation == "CLARIFY":
-        return "finalize_clarification"
-    if operation == "CHAT":
-        return "generate_general"
-    if operation == "EXPLAIN" and not state.get("requires_retrieval"):
-        return "generate_general"
-    return "retrieve"
-
-
 def route_after_goal(state: AgentState) -> str:
     """Select direct, clarification or bounded tool planning path."""
     if state.get("_terminate"):
         return "persist_result"
+    decision = (state.get("goal") or {}).get("decision")
+    if decision == "CLARIFY":
+        return "finalize_clarification"
+    if decision == "RESPOND":
+        return "generate_general"
     mode = state.get("execution_mode")
     if mode == "CLARIFY":
         return "finalize_clarification"
     if mode == "DIRECT":
         return "generate_general"
-    if (state.get("goal") or {}).get("intent") == "IDENTITY":
+    if (state.get("goal") or {}).get("operation") == "IDENTITY":
         return "answer_identity"
     return "create_plan"
 
@@ -182,6 +174,21 @@ def route_after_goal(state: AgentState) -> str:
 def route_after_tool(state: AgentState) -> str:
     if state.get("_terminate"):
         return "persist_result"
+    verification = state.get("verification_result") or {}
+    if verification.get("needs_replan") and state.get("replan_count", 0) < get_settings().agent_max_replans:
+        return "create_plan"
+    # For non-RAG tools, let the LLM choose the next action after every
+    # observation. Knowledge retrieval keeps its dedicated evidence pipeline.
+    observations = state.get("observations") or []
+    last_tool = observations[-1].get("tool_name") if observations else None
+    if (
+        state.get("tool_agent_enabled")
+        and observations
+        and last_tool not in ("knowledge.search", "skill.load")
+        and observations[-1].get("status") == "SUCCEEDED"
+        and state.get("replan_count", 0) < get_settings().agent_max_replans
+    ):
+        return "create_plan"
     pending = [step for step in state.get("plan_steps", []) if step.get("status") in ("PENDING", "READY")]
     if pending:
         done = {step.get("id") for step in state.get("plan_steps", []) if step.get("status") == "SUCCEEDED"}

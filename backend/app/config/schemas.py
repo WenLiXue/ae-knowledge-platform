@@ -25,8 +25,7 @@ class ProductVersionOut(BaseModel):
     id: str
     product_id: str
     version_code: str
-    major_version: int | None = None
-    minor_version: int | None = None
+    big_version: str | None = None
     release_date: date | None = None
     status: str
     sort_order: int
@@ -65,16 +64,14 @@ class ProductUpdate(BaseModel):
 
 class ProductVersionCreate(BaseModel):
     version_code: str = Field(min_length=1, max_length=128)
-    major_version: int | None = None
-    minor_version: int | None = None
+    big_version: str = Field(min_length=1, max_length=128)
     release_date: date | None = None
     sort_order: int = 0
 
 
 class ProductVersionUpdate(BaseModel):
     version_code: str | None = Field(default=None, min_length=1, max_length=128)
-    major_version: int | None = None
-    minor_version: int | None = None
+    big_version: str | None = Field(default=None, min_length=1, max_length=128)
     release_date: date | None = None
     status: str | None = None
     sort_order: int | None = None

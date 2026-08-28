@@ -12,8 +12,7 @@ export interface ProductVersion {
   id: string;
   product_id: string;
   version_code: string;
-  major_version: number | null;
-  minor_version: number | null;
+  big_version: string | null;
   release_date: string | null;
   status: string;
   sort_order: number;

@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     feature_real_qa: bool = False
 
     # 任务 Worker 配置
-    worker_id: str = "worker-local"
+    # 留空时由 Worker 使用容器 hostname 生成唯一实例 ID；多副本部署不能共享固定 ID。
+    worker_id: str = ""
     worker_batch_size: int = 5
     worker_poll_interval_seconds: float = 2.0
     # 租约秒数：超过未心跳/未完成的任务可被其他 Worker 回收
@@ -125,6 +126,8 @@ class Settings(BaseSettings):
     # 会话 Cookie 名与有效期（小时）
     session_cookie_name: str = "ae_session"
     session_ttl_hours: int = 24
+    # Production defaults to Secure; set false for an internal HTTP deployment.
+    session_cookie_secure: bool | None = None
     # 凭据信封加密密钥（base64 编码 32 字节；生产必须用密钥管理/部署环境变量覆盖）
     token_enc_key: str = "ZGV2LW9ubHktdG9rZW4tZW5jLWtleS0zMi1ieXRlcyE="
 

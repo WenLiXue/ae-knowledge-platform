@@ -7,14 +7,19 @@ import {
   Collapse,
   Divider,
   IconButton,
+  Menu,
+  MenuItem,
   List,
   ListItemButton,
   ListItemText,
   Stack,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import ExtensionOutlinedIcon from "@mui/icons-material/ExtensionOutlined";
 import BiotechOutlinedIcon from "@mui/icons-material/BiotechOutlined";
@@ -23,6 +28,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
@@ -32,6 +38,7 @@ import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import TuneOutlinedIcon from "@mui/icons-material/TuneOutlined";
 import UploadFileOutlinedIcon from "@mui/icons-material/UploadFileOutlined";
 import { getErrorMessage } from "../../api/client";
+import { deleteConversation, updateConversation } from "../../api/conversations";
 import { useAuth } from "../../auth/AuthContext";
 import { useConversationWorkspace } from "../../conversations/ConversationWorkspaceContext";
 
@@ -104,6 +111,10 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
     pathname === "/search" || pathname.startsWith("/conversations/");
   const [knowledgeOpen, setKnowledgeOpen] = useState(inKnowledgeSection);
   const [adminOpen, setAdminOpen] = useState(inAdminSection);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuConversationId, setMenuConversationId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   useEffect(() => {
     if (inKnowledgeSection) setKnowledgeOpen(true);
@@ -117,6 +128,43 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
   const handleNewQuery = () => {
     navigate("/search");
     onNavigate?.();
+  };
+
+  const closeMenu = () => {
+    setMenuAnchor(null);
+    setMenuConversationId(null);
+  };
+
+  const startRename = () => {
+    const conversation = conversations.find((item) => item.id === menuConversationId);
+    if (!conversation) return;
+    setEditingId(conversation.id);
+    setEditingValue(conversation.title);
+    closeMenu();
+  };
+
+  const saveRename = async () => {
+    const title = editingValue.trim();
+    if (!editingId || !title) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      await updateConversation(editingId, { title });
+      await refreshConversations();
+    } finally {
+      setEditingId(null);
+    }
+  };
+
+  const removeConversation = async () => {
+    const id = menuConversationId;
+    const conversation = conversations.find((item) => item.id === id);
+    closeMenu();
+    if (!id || !conversation || !window.confirm(`删除会话“${conversation.title}”？删除后将无法恢复。`)) return;
+    await deleteConversation(id);
+    await refreshConversations();
+    if (currentConversationId === id) navigate("/search");
   };
 
   return (
@@ -142,10 +190,10 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
         </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ lineHeight: 1.2, fontWeight: 700 }}>
-            知识智能平台
+            智能工作台
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap display="block">
-            AE Knowledge Platform
+            AE Intelligent Workbench
           </Typography>
         </Box>
       </Box>
@@ -367,19 +415,58 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
                       color: "inherit",
                       "&:hover": { bgcolor: "#e2e2df" },
                     },
+                    "&:hover .conversation-actions": { opacity: 1 },
                   }}
                 >
-                  <ListItemText
-                    primary={conversation.title}
-                    secondary={formatTime(conversation.last_message_at)}
-                    primaryTypographyProps={{ noWrap: true, fontSize: 13, fontWeight: 560 }}
-                    secondaryTypographyProps={{ fontSize: 11, color: "text.secondary", mt: 0.25 }}
-                  />
+                  {editingId === conversation.id ? (
+                    <TextField
+                      autoFocus
+                      fullWidth
+                      size="small"
+                      value={editingValue}
+                      onChange={(event) => setEditingValue(event.target.value)}
+                      onClick={(event) => event.preventDefault()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") { event.preventDefault(); void saveRename(); }
+                        if (event.key === "Escape") setEditingId(null);
+                      }}
+                      inputProps={{ "aria-label": "会话名称" }}
+                    />
+                  ) : (
+                    <ListItemText
+                      primary={conversation.title}
+                      secondary={formatTime(conversation.last_message_at)}
+                      primaryTypographyProps={{ noWrap: true, fontSize: 13, fontWeight: 560 }}
+                      secondaryTypographyProps={{ fontSize: 11, color: "text.secondary", mt: 0.25 }}
+                    />
+                  )}
+                  {editingId !== conversation.id && (
+                    <IconButton
+                      className="conversation-actions"
+                      size="small"
+                      aria-label={`管理会话 ${conversation.title}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMenuAnchor(event.currentTarget);
+                        setMenuConversationId(conversation.id);
+                      }}
+                      sx={{ opacity: 0, transition: "opacity 120ms", ml: 0.5 }}
+                    >
+                      <MoreHorizIcon fontSize="small" />
+                    </IconButton>
+                  )}
                 </ListItemButton>
               );
             })}
           </List>
         )}
+        <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu}>
+          <MenuItem onClick={startRename}><EditOutlinedIcon fontSize="small" sx={{ mr: 1 }} />重命名</MenuItem>
+          <MenuItem onClick={() => void removeConversation()} sx={{ color: "error.main" }}>
+            <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />删除会话
+          </MenuItem>
+        </Menu>
           </>
         ) : null}
       </Box>

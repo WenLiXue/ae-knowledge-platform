@@ -43,6 +43,8 @@ class KnowledgeSearchTool:
         description="在当前用户可见的企业知识库中检索产品、版本和配置资料。",
         input_schema=KnowledgeSearchInput.model_json_schema(),
         output_schema=KnowledgeSearchOutput.model_json_schema(),
+        layer="RESOURCE",
+        owner="knowledge",
         risk="READ_ONLY",
         side_effect=False,
         requires_confirmation=False,

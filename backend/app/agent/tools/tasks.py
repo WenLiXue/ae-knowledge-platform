@@ -32,6 +32,8 @@ class TaskRetryTool:
         description="重新排队一个失败的后台处理任务。",
         input_schema=TaskRetryInput.model_json_schema(),
         output_schema=TaskRetryOutput.model_json_schema(),
+        layer="WORKFLOW",
+        owner="tasking",
         risk="LOW_RISK_WRITE",
         side_effect=True,
         requires_confirmation=True,

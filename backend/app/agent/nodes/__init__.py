@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 # 节点名 → SSE progress_stage（DD-21 §16）
 NODE_PROGRESS: dict[str, str] = {
     "build_context": "BUILDING_CONTEXT",
-    "route_intent": "ROUTING",
     "retrieve": "RETRIEVING",
     "rewrite_query": "ROUTING",
     "generate_general": "GENERATING",

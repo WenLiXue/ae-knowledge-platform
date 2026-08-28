@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -59,7 +60,9 @@ class WorkerRunner:
     ):
         settings = get_settings()
         self.session_factory = session_factory or SessionLocal
-        self.worker_id = worker_id or settings.worker_id
+        # 显式传入的 ID 主要用于测试/运维；生产多副本默认使用容器 hostname，
+        # 避免多个 Worker 互相覆盖任务租约。
+        self.worker_id = worker_id or settings.worker_id or f"worker-{socket.gethostname()}"
         self.lease_seconds = (
             lease_seconds if lease_seconds is not None else settings.lease_seconds
         )

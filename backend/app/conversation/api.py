@@ -277,6 +277,24 @@ def cancel_answer(
     return {"data": service.build_answer_out(db, answer).model_dump(mode="json")}
 
 
+@router.post("/answers/{answer_id}/retry")
+def retry_answer(
+    answer_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    try:
+        answer = service.retry_answer(db, user, answer_id)
+    except ConversationError as exc:
+        _raise(exc)
+    return {"data": {
+        "message_id": str(answer.message_id),
+        "answer_id": str(answer.id),
+        "status": answer.status,
+        "events_url": f"/api/v1/answers/{answer.id}/events",
+    }}
+
+
 @router.put("/answers/{answer_id}/feedback")
 def put_feedback(
     answer_id: uuid.UUID,

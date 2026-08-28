@@ -69,13 +69,13 @@ export function LoginPage() {
               mb: 1,
             }}
           >
-            Product Knowledge
+            Intelligent Workbench
           </Box>
           <Typography
             component="h1"
             sx={{ color: "#fff", fontSize: { xs: 24, sm: 30 }, fontWeight: 700, lineHeight: 1.35 }}
           >
-            AE 内部知识平台
+            AE 智能工作台
           </Typography>
           <Typography sx={{ color: "#e6efff", fontSize: 14, lineHeight: 1.8, mt: 1.5, maxWidth: 420 }}>
             统一查询产品知识，沉淀文档经验，为问题分析提供可靠依据。

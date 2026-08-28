@@ -9,10 +9,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   Link,
   Paper,
@@ -28,8 +24,6 @@ import {
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import SendIcon from "@mui/icons-material/Send";
 import ThumbUpOffAltIcon from "@mui/icons-material/ThumbUpOffAlt";
 import ThumbDownOffAltIcon from "@mui/icons-material/ThumbDownOffAlt";
@@ -38,15 +32,14 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
   cancelAnswer,
   createMessage,
-  deleteConversation,
   getConversation,
   getMessages,
   listAnswerApprovals,
   decideAnswerApproval,
   isInProgress,
+  retryAnswer,
   submitFeedback,
   subscribeAnswerEvents,
-  updateConversation,
   type StreamingAnswer,
 } from "../api/conversations";
 import { useConversationWorkspace } from "../conversations/ConversationWorkspaceContext";
@@ -264,7 +257,7 @@ function AnswerBlockView({ block }: { block: AnswerBlock }) {
   );
 }
 
-function AnswerView({ answer }: { answer: Answer }) {
+function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void }) {
   const [panel, setPanel] = useState<FeedbackRating | null>(null);
   const [reasonCodes, setReasonCodes] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -301,6 +294,18 @@ function AnswerView({ answer }: { answer: Answer }) {
       answer.degradation_flags.includes("LOW_EVIDENCE") ||
       answer.degradation_flags.includes("NO_EVIDENCE"));
 
+  // 模型可能同时把完整回答写入 summary 和 blocks；展示时避免重复输出。
+  const visibleBlocks = answer.blocks.filter((block, index, all) => {
+    const value = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+    return all.findIndex((candidate) => {
+      const other = typeof candidate.content === "string" ? candidate.content : JSON.stringify(candidate.content);
+      return other.trim() === value.trim();
+    }) === index;
+  });
+  // blocks 是生成答案的正文；summary 仅用于没有正文块的澄清/降级回答。
+  // 不尝试用字符串相似度判断，避免模型换一种措辞时仍出现两段重复问候。
+  const showSummary = visibleBlocks.length === 0 && Boolean(answer.summary?.trim());
+
   const handleRate = (rating: FeedbackRating) => {
     if (submitted) return;
     setPanel(rating);
@@ -329,15 +334,18 @@ function AnswerView({ answer }: { answer: Answer }) {
   return (
     <Box>
       {/* 综合答案标题对齐原型 .answer-title */}
-      <Typography sx={{ fontSize: 20, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
-        {answer.status === "FAILED"
-          ? answer.error_summary ?? "回答生成失败，请重新提问。"
-          : answer.summary}
-      </Typography>
+      {(answer.status === "FAILED" || showSummary) && (
+        <Typography sx={{ fontSize: 20, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+          {answer.status === "FAILED" ? "回答生成失败，请重试。" : answer.summary}
+        </Typography>
+      )}
 
       {answer.status === "FAILED" && (
-        <Alert severity="error" sx={{ mt: 1.5 }}>
-          本次回答未完成，可以保留当前问题并重新发送。
+        <Alert severity="error" sx={{ mt: 1.5 }} action={onRetry ? (
+          <Button color="inherit" size="small" onClick={onRetry}>重新生成</Button>
+        ) : undefined}>
+          网络或服务暂时异常，本次回答未完成。
+          {answer.error_code && <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>错误编号：{answer.error_code}</Typography>}
         </Alert>
       )}
 
@@ -354,9 +362,9 @@ function AnswerView({ answer }: { answer: Answer }) {
         </Alert>
       ))}
 
-      {answer.blocks.length > 0 && (
+      {visibleBlocks.length > 0 && (
         <Stack spacing={1} sx={{ mt: 1.5 }}>
-          {answer.blocks.map((block) => (
+          {visibleBlocks.map((block) => (
             <AnswerBlockView key={block.block_id} block={block} />
           ))}
         </Stack>
@@ -431,7 +439,7 @@ function AnswerView({ answer }: { answer: Answer }) {
   );
 }
 
-function MessageRow({ message }: { message: Message }) {
+function MessageRow({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   const isUser = message.role === "user";
   return (
     <Stack
@@ -473,7 +481,7 @@ function MessageRow({ message }: { message: Message }) {
             知识助手
           </Typography>
           {message.answer ? (
-            <AnswerView answer={message.answer} />
+            <AnswerView answer={message.answer} onRetry={onRetry} />
           ) : (
             <Typography variant="body2" color="text.secondary">
               {message.content || "（答案生成中）"}
@@ -499,8 +507,6 @@ export function ConversationPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingAnswer | null>(null);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -529,6 +535,8 @@ export function ConversationPage() {
 
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!conversationId) return;
+    // 先清空上一会话的进行中状态，避免切换会话时短暂展示旧答案的阶段。
+    setStreaming(null);
     setLoading(true);
     setError(null);
     try {
@@ -551,6 +559,8 @@ export function ConversationPage() {
           citations: a.citations,
           degradation_flags: a.degradation_flags,
         });
+      } else {
+        setStreaming(null);
       }
     } catch (err) {
       if (signal?.aborted) return;
@@ -651,31 +661,17 @@ export function ConversationPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!conversationId || !conversation) return;
-    if (!window.confirm(`确定删除会话“${conversation.title}”吗？删除后不再显示，可在恢复入口找回。`)) return;
+  const handleRetry = async (answerId: string) => {
+    if (sending || streaming) return;
+    setSending(true);
+    setError(null);
     try {
-      await deleteConversation(conversationId);
-      await refreshConversations();
-      navigate("/search");
+      await retryAnswer(answerId);
+      await refreshMessages();
     } catch (err) {
       setError(err);
-    }
-  };
-
-  const handleRenameSave = async () => {
-    const title = renameValue.trim();
-    if (!conversationId || !conversation || !title || title === conversation.title) {
-      setRenameOpen(false);
-      return;
-    }
-    try {
-      const updated = await updateConversation(conversationId, { title });
-      setConversation(updated);
-      await refreshConversations();
-      setRenameOpen(false);
-    } catch (err) {
-      setError(err);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -731,19 +727,6 @@ export function ConversationPage() {
           </Stack>
         </Box>
         <Box sx={{ flexGrow: 1 }} />
-        <IconButton
-          size="small"
-          aria-label="重命名会话"
-          onClick={() => {
-            setRenameValue(conversation.title);
-            setRenameOpen(true);
-          }}
-        >
-          <EditOutlinedIcon fontSize="small" />
-        </IconButton>
-        <Button size="small" color="error" startIcon={<DeleteOutlineIcon fontSize="small" />} onClick={() => void handleDelete()}>
-          删除
-        </Button>
       </Stack>
 
       {error ? <ErrorAlert error={error} onRetry={() => void load()} title="操作失败" /> : null}
@@ -784,7 +767,13 @@ export function ConversationPage() {
               />
             </Box>
           ) : (
-            messages.map((message) => <MessageRow key={message.id} message={message} />)
+            messages.map((message) => (
+              <MessageRow
+                key={message.id}
+                message={message}
+                onRetry={message.answer ? () => void handleRetry(message.answer!.id) : undefined}
+              />
+            ))
           )}
 
           {streaming && (
@@ -907,31 +896,6 @@ export function ConversationPage() {
         </Box>
       </Box>
 
-      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>重命名会话</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            size="small"
-            label="会话名称"
-            fullWidth
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void handleRenameSave();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRenameOpen(false)}>取消</Button>
-          <Button variant="contained" disabled={!renameValue.trim()} onClick={() => void handleRenameSave()}>
-            保存
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

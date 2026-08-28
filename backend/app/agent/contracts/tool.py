@@ -20,6 +20,10 @@ class ToolDefinition(BaseModel):
     description: str = Field(min_length=1, max_length=1000)
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
+    # Tool taxonomy is metadata for routing/observability; execution remains
+    # protected by the same runtime policy regardless of layer.
+    layer: Literal["PRIMITIVE", "RESOURCE", "DOMAIN", "WORKFLOW"] = "DOMAIN"
+    owner: str = Field(default="platform", min_length=1, max_length=128)
     risk: Literal["READ_ONLY", "LOW_RISK_WRITE", "HIGH_RISK"]
     side_effect: bool
     requires_confirmation: bool

@@ -13,6 +13,17 @@ def core_create_plan(state: dict, ctx):
         permissions = {"knowledge:read", "skill:read"}
         if ctx.settings.agent_write_tools_enabled:
             permissions.add("task:write")
+        existing_plan = None
+        if state.get("plan_steps"):
+            from ..contracts.plan import AgentPlan
+
+            existing_plan = AgentPlan(
+                id=state.get("plan_id") or "runtime-plan",
+                goal=goal.goal,
+                revision=state.get("plan_revision") or 1,
+                completion_criteria=state.get("completion_criteria") or [],
+                steps=state.get("plan_steps") or [],
+            )
         plan = plan_goal(
             goal,
             registry=ctx.tool_registry,
@@ -24,6 +35,8 @@ def core_create_plan(state: dict, ctx):
                 max_replans=ctx.settings.agent_max_replans,
                 parallel_read_limit=ctx.settings.agent_parallel_read_limit,
             ),
+            observations=state.get("observations") or [],
+            existing_plan=existing_plan,
         )
     except ToolError as exc:
         return {
@@ -56,5 +69,6 @@ def core_create_plan(state: dict, ctx):
         "plan_steps": [step.model_dump(mode="json") for step in plan.steps],
         "completion_criteria": [item.model_dump(mode="json") for item in plan.completion_criteria],
         "active_step_id": None,
-        "route_reason_code": "PLAN_CREATED",
+        "replan_count": state.get("replan_count", 0) + (1 if existing_plan else 0),
+        "route_reason_code": "PLAN_REPLANNED" if existing_plan else "PLAN_CREATED",
     }

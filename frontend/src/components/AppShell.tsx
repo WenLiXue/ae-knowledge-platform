@@ -119,10 +119,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ lineHeight: 1.2, fontWeight: 700 }}>
-            知识智能平台
+            智能工作台
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap display="block">
-            AE Knowledge Platform
+            AE Intelligent Workbench
           </Typography>
         </Box>
       </Box>
@@ -262,7 +262,7 @@ export function AppShell() {
             <MenuIcon />
           </IconButton>
           <Typography variant="subtitle1" fontWeight={700}>
-            AE 知识智能平台
+            AE 智能工作台
           </Typography>
         </Toolbar>
       </AppBar>

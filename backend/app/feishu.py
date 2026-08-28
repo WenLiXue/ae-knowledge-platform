@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Annotated
@@ -17,6 +18,7 @@ from .feishu_provider.factory import get_feishu_provider
 from .knowledge import service
 
 router = APIRouter(prefix="/api/v1/feishu", tags=["feishu"])
+logger = logging.getLogger(__name__)
 
 
 class ResourceType(StrEnum):
@@ -228,9 +230,21 @@ def submit_document_links(
             ResourceType.DOCX.value,
             ResourceType.SHEET.value,
         }:
+            logger.warning(
+                "unsupported_feishu_resource",
+                extra={
+                    "url": url,
+                    "resource_type": meta.resource_type,
+                    "resource_token": meta.resource_token,
+                    "node_token": meta.node_token,
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail={"code": "UNSUPPORTED_FEISHU_RESOURCE", "message": "目前仅支持飞书 Wiki、文档和电子表格链接。"},
+                detail={
+                    "code": "UNSUPPORTED_FEISHU_RESOURCE",
+                    "message": f"该 Wiki 节点实际类型为 {meta.resource_type}，目前仅支持 Wiki、文档和电子表格。",
+                },
             )
         token = meta.canonical_token or meta.resource_token
         if token in seen:

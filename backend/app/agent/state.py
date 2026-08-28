@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import TypedDict
 
-# 意图操作（DD-21 §6.1）
+# Agent operation metadata (not used as the primary route)
 OPERATIONS = ("CHAT", "CLARIFY", "ANSWER", "SUMMARIZE", "RELATE", "EXPLAIN")
 
 # 证据质量（DD-21 §10.1）
@@ -104,7 +104,6 @@ class AgentState(TypedDict, total=False):
 
     # 有界循环计数器（恢复后不得重置）
     step_count: int
-    intent_repair_count: int
     query_rewrite_count: int
     citation_repair_count: int
     memory_repair_count: int
@@ -172,7 +171,6 @@ def build_initial_state(
         "memory_constraints": [],
         "unresolved_topics": [],
         "step_count": 0,
-        "intent_repair_count": 0,
         "query_rewrite_count": 0,
         "citation_repair_count": 0,
         "memory_repair_count": 0,

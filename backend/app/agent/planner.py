@@ -53,6 +53,8 @@ def plan_goal(
     permissions: frozenset[str],
     chat=None,
     limits: PlannerLimits | None = None,
+    observations: list[dict] | None = None,
+    existing_plan: AgentPlan | None = None,
 ) -> AgentPlan:
     """Generate and validate a plan; a deterministic single-tool fallback is provided."""
     limits = limits or PlannerLimits()
@@ -64,6 +66,8 @@ def plan_goal(
         prompt = {
             "goal": goal.model_dump(mode="json"),
             "available_tools": available,
+            "observations": observations or [],
+            "existing_plan": existing_plan.model_dump(mode="json") if existing_plan else None,
         }
         try:
             plan = parse_plan(chat([
@@ -83,9 +87,9 @@ def plan_goal(
             id=str(uuid.uuid4()),
             goal=goal.goal,
             completion_criteria=goal.completion_criteria,
-            steps=[
+                steps=[
                 {
-                    "id": "step_1",
+                    "id": f"step_{uuid.uuid4().hex[:8]}" if existing_plan else "step_1",
                     "title": f"执行 {capability}",
                     "capability": capability,
                     "input_bindings": (
@@ -105,6 +109,18 @@ def plan_goal(
                 }
             ],
         )
+    if existing_plan is not None and plan is not None:
+        # Completed steps are facts, not suggestions. Preserve them across a
+        # replan so a new model decision cannot execute the same side effect twice.
+        completed = {step.id: step for step in existing_plan.steps if step.status == "SUCCEEDED"}
+        merged = []
+        for step in plan.steps:
+            old = completed.get(step.id)
+            merged.append(old if old is not None else step)
+        for step in existing_plan.steps:
+            if step.status == "SUCCEEDED" and step.id not in {item.id for item in merged}:
+                merged.insert(0, step)
+        plan = plan.model_copy(update={"steps": merged, "revision": existing_plan.revision + 1})
     return validate_plan(plan, registry, permissions=permissions, limits=limits)
 
 

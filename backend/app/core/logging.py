@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 import sys
 import traceback
 import uuid
@@ -141,6 +143,27 @@ def setup_logging() -> None:
         stream.setFormatter(HumanFormatter(fmt=fmt))
     stream.addFilter(context_filter)
     root.addHandler(stream)
+
+    # Keep daily operational logs in the deployment-mounted /app/logs path so
+    # operators do not need to inspect Docker's internal storage directory.
+    log_dir = Path("/app/logs")
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = TimedRotatingFileHandler(
+            log_dir / "application.log",
+            when="midnight",
+            interval=1,
+            backupCount=14,
+            encoding="utf-8",
+            utc=True,
+        )
+        file_handler.setFormatter(JsonFormatter())
+        file_handler.addFilter(context_filter)
+        root.addHandler(file_handler)
+    except OSError:
+        # stdout remains the authoritative fallback if a deployment does not
+        # provide a writable log mount.
+        logging.getLogger(__name__).warning("file_logging_unavailable path=%s", log_dir)
 
     if settings.log_persist_errors:
         db_handler = DbLogHandler(level=logging.ERROR)

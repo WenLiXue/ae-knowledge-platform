@@ -42,7 +42,11 @@ def _set_session_cookie(response: Response, raw_token: str) -> None:
         value=raw_token,
         httponly=True,
         samesite="lax",
-        secure=s.environment == "production",
+        secure=(
+            s.session_cookie_secure
+            if s.session_cookie_secure is not None
+            else s.environment == "production"
+        ),
         max_age=s.session_ttl_hours * 3600,
         path="/",
     )

@@ -78,7 +78,15 @@ def admin_list_product_forms(db: Session) -> list[ProductForm]:
 
 # ---- 通用 CRUD 辅助 ----
 
-def _unique_error() -> ConfigError:
+def _unique_error(*, field: str = "code", value: str | None = None) -> ConfigError:
+    """把数据库唯一约束转换成可操作的配置错误。
+
+    版本号不是数字序列，而是产品范围内的业务标识（例如 ``7.0.0``、
+    ``2273``、``2360-cupid``）。因此不能把补丁号当成 major/minor，
+    也不能用笼统的“code 已存在”掩盖真正冲突的值。
+    """
+    if field == "version_code" and value:
+        return ConfigError("DUPLICATE_VERSION_CODE", f"版本号“{value}”已存在，请使用不同的版本号", status=409)
     return ConfigError("DUPLICATE_CODE", "code 已存在", status=409)
 
 
@@ -146,11 +154,13 @@ def create_product_version(db: Session, product_id, data) -> ProductVersion:
         raise ConfigError("NOT_FOUND", "产品不存在", status=404)
     if product.status != "ENABLED":
         raise ConfigError("PRODUCT_DISABLED", "产品已停用，不能新增版本", status=409)
+    version_code = data.version_code.strip()
+    if not version_code:
+        raise ConfigError("INVALID_VERSION_CODE", "版本号不能为空", status=400)
     version = ProductVersion(
         product_id=product_id,
-        version_code=data.version_code.strip(),
-        major_version=data.major_version,
-        minor_version=data.minor_version,
+        version_code=version_code,
+        big_version=data.big_version.strip(),
         release_date=data.release_date,
         sort_order=data.sort_order,
     )
@@ -159,7 +169,7 @@ def create_product_version(db: Session, product_id, data) -> ProductVersion:
         db.flush()
     except IntegrityError:
         db.rollback()
-        raise _unique_error()
+        raise _unique_error(field="version_code", value=version_code)
     db.refresh(version)
     return version
 
@@ -170,8 +180,7 @@ def update_product_version(db: Session, version_id, data) -> ProductVersion:
         raise ConfigError("NOT_FOUND", "版本不存在", status=404)
     _update_with_version(db, version, {
         "version_code": data.version_code,
-        "major_version": data.major_version,
-        "minor_version": data.minor_version,
+        "big_version": data.big_version.strip() if data.big_version else data.big_version,
         "release_date": data.release_date,
         "status": data.status,
         "sort_order": data.sort_order,
