@@ -25,7 +25,8 @@ pipeline {
         string(name: 'IMAGE_TAG', defaultValue: '', description: '留空时使用 Git commit short SHA')
         booleanParam(name: 'PUSH_IMAGES', defaultValue: false, description: '是否推送镜像到仓库')
         booleanParam(name: 'DEPLOY', defaultValue: true, description: '构建成功后在本机用生产 Compose 更新服务')
-        string(name: 'DEPLOY_ENV_FILE', defaultValue: '', description: '可选：生产 .env 的绝对路径；留空时使用 Jenkins 工作区的 .env')
+        string(name: 'DEPLOY_ENV_FILE', defaultValue: '', description: '可选：生产 .env 的绝对路径；留空时使用 DEPLOY_DIR/.env')
+        string(name: 'DEPLOY_DIR', defaultValue: '/opt/ae-knowledge-platform', description: '生产 Compose 项目目录；用于持久化数据和固定服务项目名')
     }
 
     environment {
@@ -99,23 +100,30 @@ pipeline {
                 sh '''
                     set -eu
 
-                    # 生产密钥可以放在工作区外；通过 Compose --env-file 读取，不复制到工作区。
-                    export APP_ENV_FILE="${DEPLOY_ENV_FILE:-$PWD/.env}"
+                    # 生产密钥和持久化数据放在固定部署目录，不使用 Jenkins workspace。
+                    export DEPLOY_DIR_VALUE="${DEPLOY_DIR:-/opt/ae-knowledge-platform}"
+                    export APP_ENV_FILE="${DEPLOY_ENV_FILE:-$DEPLOY_DIR_VALUE/.env}"
+                    test -d "$DEPLOY_DIR_VALUE" || {
+                        echo "生产 Compose 目录不存在：$DEPLOY_DIR_VALUE" >&2
+                        exit 1
+                    }
                     test -r "$APP_ENV_FILE" || {
-                        echo '缺少生产 .env：请配置 DEPLOY_ENV_FILE，或在工作区放置 .env' >&2
+                        echo '缺少生产 .env：请配置 DEPLOY_ENV_FILE，或放在 DEPLOY_DIR 下' >&2
                         exit 1
                     }
 
-                    mkdir -p data/postgres data/storage data/exports
+                    mkdir -p "$DEPLOY_DIR_VALUE"/data/postgres "$DEPLOY_DIR_VALUE"/data/storage "$DEPLOY_DIR_VALUE"/data/exports
                     export IMAGE_TAG="$BUILD_TAG_VALUE"
                     export BACKEND_IMAGE="$BACKEND_IMAGE"
                     export FRONTEND_IMAGE="$FRONTEND_IMAGE"
-                    docker compose --env-file "$APP_ENV_FILE" -f docker-compose.prod.yml up -d --build --remove-orphans
+                    export COMPOSE_PROJECT_NAME=ae-knowledge-platform
+                    COMPOSE_ARGS="--project-directory $DEPLOY_DIR_VALUE --env-file $APP_ENV_FILE -f $WORKSPACE/docker-compose.prod.yml"
+                    docker compose $COMPOSE_ARGS up -d --remove-orphans
 
                     # 等待迁移和 FastAPI 启动完成；失败时打印服务日志方便定位。
                     ready=0
                     for attempt in $(seq 1 30); do
-                        if docker compose --env-file "$APP_ENV_FILE" -f docker-compose.prod.yml exec -T backend \\
+                        if docker compose $COMPOSE_ARGS exec -T backend \\
                             python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"; then
                             ready=1
                             break
@@ -123,11 +131,11 @@ pipeline {
                         sleep 2
                     done
                     if [ "$ready" -ne 1 ]; then
-                        docker compose --env-file "$APP_ENV_FILE" -f docker-compose.prod.yml ps
-                        docker compose --env-file "$APP_ENV_FILE" -f docker-compose.prod.yml logs --tail=120 backend worker
+                        docker compose $COMPOSE_ARGS ps
+                        docker compose $COMPOSE_ARGS logs --tail=120 backend worker
                         exit 1
                     fi
-                    docker compose --env-file "$APP_ENV_FILE" -f docker-compose.prod.yml ps
+                    docker compose $COMPOSE_ARGS ps
                 '''
             }
         }

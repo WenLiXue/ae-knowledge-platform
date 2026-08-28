@@ -70,7 +70,7 @@ docker compose -f docker-compose.prod.yml down
 
 仓库根目录的 `Jenkinsfile` 已配置为：GitLab push webhook 触发 → 检查 Compose 配置 → 构建前后端镜像 →（可选）推送镜像 → 在这台部署机执行 `docker compose up -d` → 等待后端 `/health` 通过。流水线使用 commit short SHA 作为镜像标签，并禁止并发部署。GitLab、Jenkins 和部署服务都可以只放在内网，不需要 GitHub 或公网入口。
 
-部署机需要安装 Git、Docker Engine（Jenkins 用户能访问 `/var/run/docker.sock`）和 Docker Compose v2。将当前机器注册为 Jenkins 节点，并设置节点 label 为 `ae-deploy-host`；Jenkinsfile 已固定使用这个 label，保证构建和部署使用本机 Docker。Jenkins 运行在容器中时，需要把 Docker socket 和 Docker CLI/Compose 一并提供给 Jenkins 容器。
+部署机需要安装 Git、Docker Engine（Jenkins 用户能访问 `/var/run/docker.sock`）和 Docker Compose v2。流水线使用 Jenkins 当前可用节点执行构建和部署；如果有多台节点，应通过节点标签或专用 agent 约束到具备 Docker 的部署机。Jenkins 运行在容器中时，需要把 Docker socket 和 Docker CLI/Compose 一并提供给 Jenkins 容器。
 
 Ubuntu 主机上若 Jenkins 以系统服务运行，通常需要将它加入 Docker 用户组，并让它能够读取外置密钥文件：
 
@@ -89,7 +89,7 @@ sudo bash deploy/install-jenkins-ubuntu.sh
 
 1. Jenkins 安装并启用 `GitLab Plugin`、`Git Plugin` 和 Pipeline 相关插件。在 Jenkins 新建 Pipeline 任务，选择“Pipeline script from SCM”，SCM 选择 Git，仓库填你的内网 GitLab 地址（例如 `http://gitlab.intra/group/ae-knowledge-platform.git`），分支填 `*/main`，脚本路径填 `Jenkinsfile`。私有仓库需要配置 GitLab SSH key 或 PAT 凭据。
 2. 在任务的 Build Triggers 中启用 `Build when a change is pushed to GitLab`，勾选 Push Events，分支过滤设为 `main`，生成或填写一个 webhook Secret Token（不要写入仓库）。在 GitLab 项目 `Settings → Webhooks` 新建 webhook：URL 填 `http://<Jenkins内网地址>/project/<Jenkins任务名>`，Secret Token 填同一个值，触发事件选择 `Push events`，分支过滤可填 `main`。点击 GitLab 的 `Test` 验证返回 200。
-3. 在 Jenkins 节点准备生产 `.env`，权限设为 `600`。推荐将它放在工作区外，例如 `/opt/ae-knowledge-platform/.env`，并将需要注入容器的后端配置（包括真实飞书凭据）一并写入；首次手工构建时把 `DEPLOY_ENV_FILE` 参数设为该绝对路径。流水线会通过 Compose 直接读取，不会把密钥复制到工作区。留空时使用工作区内的 `.env`。不要把生产密钥提交到 Git。
+3. 在 Jenkins 节点准备生产部署目录和 `.env`，权限设为 `600`。推荐目录为 `/opt/ae-knowledge-platform`，并将需要注入容器的后端配置（包括真实飞书凭据）写入 `/opt/ae-knowledge-platform/.env`；首次手工构建时把 `DEPLOY_DIR` 和 `DEPLOY_ENV_FILE` 参数设为实际绝对路径。流水线会从该固定目录启动 Compose，持久化数据不会落到 Jenkins 工作区，也不会把密钥复制到工作区。不要把生产密钥提交到 Git。
 4. 手工构建一次确认 Docker 权限、端口和密钥配置均正常；之后每次 `git push origin main` 都会自动部署。
 
 内网连通性要求：GitLab 服务器必须能访问 Jenkins 的 webhook 地址，Jenkins 节点必须能访问 GitLab 仓库和所需的镜像/Python/Node 基础镜像源。若 Jenkins 只监听 `127.0.0.1`，GitLab 无法回调；应监听内网网卡或通过内网反向代理暴露。
@@ -100,7 +100,8 @@ sudo bash deploy/install-jenkins-ubuntu.sh
 - `IMAGE_TAG`：镜像标签，留空则使用 Git commit short SHA。
 - `PUSH_IMAGES`：是否推送镜像，默认关闭；打开前先在 Jenkins 节点执行目标仓库 `docker login`。
 - `DEPLOY`：是否更新本机服务，默认开启；只构建/验证时可关闭。
-- `DEPLOY_ENV_FILE`：生产 `.env` 的绝对路径，留空使用工作区 `.env`。
+- `DEPLOY_ENV_FILE`：生产 `.env` 的绝对路径，留空使用 `DEPLOY_DIR/.env`。
+- `DEPLOY_DIR`：生产 Compose 项目目录，默认 `/opt/ae-knowledge-platform`；必须是 Jenkins 用户可访问且包含生产数据的目录。
 
 查看部署状态和日志：
 
