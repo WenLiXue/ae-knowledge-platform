@@ -72,6 +72,11 @@ pipeline {
                     env.FRONTEND_IMAGE = "${registry}/frontend"
                 }
                 sh '''
+                    # Compose 在构建阶段也会解析 postgres 的必填变量；这里仅使用 CI 占位值，
+                    # 不读取或覆盖生产密钥。部署阶段再通过 DEPLOY_ENV_FILE 注入真实配置。
+                    export POSTGRES_PASSWORD=ci-password
+                    export TOKEN_ENC_KEY=ZGV2LW9ubHktdG9rZW4tZW5jLWtleS0zMi1ieXRlcyE=
+                    export AUDIT_HMAC_KEY=ci-audit
                     export IMAGE_TAG="$BUILD_TAG_VALUE"
                     export BACKEND_IMAGE="$BACKEND_IMAGE"
                     export FRONTEND_IMAGE="$FRONTEND_IMAGE"
