@@ -1,6 +1,6 @@
 pipeline {
-    // 给当前部署机的 Jenkins 节点配置同名 label，确保 Docker 操作发生在本机。
-    agent { label 'ae-deploy-host' }
+    // 当前 Jenkins 仅配置一台可执行节点，使用该节点运行构建和部署。
+    agent any
 
     options {
         skipDefaultCheckout(true)

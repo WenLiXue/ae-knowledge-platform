@@ -5,6 +5,11 @@ import {
   Button,
   CircularProgress,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   IconButton,
   Menu,
@@ -115,6 +120,8 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
   const [menuConversationId, setMenuConversationId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (inKnowledgeSection) setKnowledgeOpen(true);
@@ -161,10 +168,20 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
     const id = menuConversationId;
     const conversation = conversations.find((item) => item.id === id);
     closeMenu();
-    if (!id || !conversation || !window.confirm(`删除会话“${conversation.title}”？删除后将无法恢复。`)) return;
-    await deleteConversation(id);
-    await refreshConversations();
-    if (currentConversationId === id) navigate("/search");
+    if (id && conversation) setPendingDelete({ id, title: conversation.title });
+  };
+
+  const confirmDeleteConversation = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteConversation(pendingDelete.id);
+      await refreshConversations();
+      if (currentConversationId === pendingDelete.id) navigate("/search");
+      setPendingDelete(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -467,6 +484,25 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
             <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />删除会话
           </MenuItem>
         </Menu>
+        <Dialog
+          open={Boolean(pendingDelete)}
+          onClose={() => !deleting && setPendingDelete(null)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>删除会话？</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              确定删除“{pendingDelete?.title}”吗？删除后将无法恢复。
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPendingDelete(null)} disabled={deleting}>取消</Button>
+            <Button color="error" variant="contained" onClick={() => void confirmDeleteConversation()} disabled={deleting}>
+              {deleting ? <CircularProgress size={18} color="inherit" /> : "删除"}
+            </Button>
+          </DialogActions>
+        </Dialog>
           </>
         ) : null}
       </Box>
