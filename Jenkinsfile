@@ -112,7 +112,8 @@ pipeline {
                         exit 1
                     }
 
-                    mkdir -p "$DEPLOY_DIR_VALUE"/data/postgres "$DEPLOY_DIR_VALUE"/data/storage "$DEPLOY_DIR_VALUE"/data/exports
+                    mkdir -p "$DEPLOY_DIR_VALUE"/data/postgres "$DEPLOY_DIR_VALUE"/data/storage "$DEPLOY_DIR_VALUE"/data/exports \
+                        "$DEPLOY_DIR_VALUE"/data/logs/backend "$DEPLOY_DIR_VALUE"/data/logs/worker "$DEPLOY_DIR_VALUE"/data/logs/frontend
                     export IMAGE_TAG="$BUILD_TAG_VALUE"
                     export BACKEND_IMAGE="$BACKEND_IMAGE"
                     export FRONTEND_IMAGE="$FRONTEND_IMAGE"
@@ -133,6 +134,14 @@ pipeline {
                     if [ "$ready" -ne 1 ]; then
                         docker compose $COMPOSE_ARGS ps
                         docker compose $COMPOSE_ARGS logs --tail=120 backend worker
+                        exit 1
+                    fi
+                    worker_total=$(docker compose $COMPOSE_ARGS ps -a -q worker | wc -l)
+                    worker_running=$(docker compose $COMPOSE_ARGS ps -q worker | wc -l)
+                    if [ "$worker_total" -eq 0 ] || [ "$worker_running" -ne "$worker_total" ]; then
+                        echo "worker 服务未全部运行：$worker_running/$worker_total" >&2
+                        docker compose $COMPOSE_ARGS ps
+                        docker compose $COMPOSE_ARGS logs --tail=120 worker
                         exit 1
                     fi
                     docker compose $COMPOSE_ARGS ps
