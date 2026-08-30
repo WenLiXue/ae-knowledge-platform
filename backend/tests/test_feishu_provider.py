@@ -17,7 +17,7 @@ from sqlalchemy import text
 from app.db.session import SessionLocal
 from app.feishu_provider.base import AUTH, NOT_FOUND, PERMISSION, RATE_LIMIT, TIMEOUT, FeishuError
 from app.feishu_provider.fake import FakeFeishuProvider
-from app.feishu_provider.real import RealFeishuProvider
+from app.feishu_provider.feishu_document_provider import RealFeishuProvider
 from app.main import app
 from app.storage.local import LocalObjectStore
 from app.worker.runner import WorkerRunner

@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..core.config import Settings, get_settings
 from .base import FeishuDocumentProvider
 from .fake import FakeFeishuProvider
-from .real import RealFeishuProvider
+from .feishu_document_provider import RealFeishuProvider
 
 
 def get_feishu_provider(settings: Settings | None = None) -> FeishuDocumentProvider:

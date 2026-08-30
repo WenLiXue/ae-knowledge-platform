@@ -28,7 +28,7 @@ from app.core.context import (
 from app.core.logging import JsonFormatter
 from app.db.models.user import User
 from app.db.session import SessionLocal
-from app.feishu_provider.real import RealFeishuProvider
+from app.feishu_provider.feishu_document_provider import RealFeishuProvider
 from app.main import app
 from app.storage.local import LocalObjectStore
 from app.worker.runner import WorkerRunner
