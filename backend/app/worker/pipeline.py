@@ -159,6 +159,11 @@ def _fetch(
         return _bump_version(session, source, version, content)
 
     raw_key = f"raw/{source.id}/{version.id}/original.json"
+    if content.raw_bytes is not None:
+        suffix = (content.filename or "attachment").rsplit(".", 1)[-1].casefold()
+        original_key = f"raw/{source.id}/{version.id}/original.{suffix}"
+        store.put(original_key, content.raw_bytes)
+        content.raw_payload["original_object_key"] = original_key
     store.put(raw_key, json.dumps(content.raw_payload, ensure_ascii=False).encode("utf-8"))
     version.raw_object_key = raw_key
     version.external_revision = content.revision

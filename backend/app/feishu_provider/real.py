@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import httpx
 
 from ..core.logging import log_external_call
+from ..parsing.files import extract_file_text
 from .base import (
     AUTH,
     NOT_FOUND,
@@ -230,6 +231,21 @@ class RealFeishuProvider(FeishuDocumentProvider):
                 owner_name=spreadsheet.get("owner_id"),
                 url=spreadsheet.get("url"),
             )
+        if resource_type == "file":
+            body = self._request(
+                "GET", f"/open-apis/drive/v1/files/{resource_token}", token=user_access_token,
+            )
+            file_meta = body.get("data", {}).get("file", {}) or body.get("data", {})
+            return FeishuDocument(
+                resource_token=resource_token,
+                canonical_token=resource_token,
+                title=file_meta.get("name", resource_token),
+                resource_type="file",
+                modified_at=_parse_timestamp(file_meta.get("modified_time") or file_meta.get("modify_time")),
+                owner_name=file_meta.get("owner_id"),
+                url=file_meta.get("url"),
+                extra={"file_type": file_meta.get("type"), "size": file_meta.get("size")},
+            )
         body = self._request(
             "GET", f"/open-apis/docx/v1/documents/{resource_token}", token=user_access_token,
         )
@@ -263,6 +279,25 @@ class RealFeishuProvider(FeishuDocumentProvider):
                 meta,
                 source_url=source_url,
             )
+        if meta.resource_type == "file":
+            data = self._download_file(user_access_token, obj_token)
+            filename = meta.title or obj_token
+            try:
+                text = extract_file_text(filename, data)
+            except ValueError as exc:
+                raise FeishuError(VALIDATION, "UNSUPPORTED_FILE_TYPE", "飞书附件仅支持 PDF、DOCX 和 XLSX", retryable=False) from exc
+            except Exception as exc:
+                raise FeishuError(VALIDATION, "FILE_PARSE_FAILED", "无法解析飞书附件", retryable=False) from exc
+            return FeishuContent(
+                title=meta.title,
+                text=text,
+                content_type="file",
+                revision=meta.revision,
+                modified_at=meta.modified_at,
+                raw_payload={"type": "file", "filename": filename, "raw_content": text},
+                raw_bytes=data,
+                filename=filename,
+            )
         body = self._request(
             "GET", f"/open-apis/docx/v1/documents/{obj_token}/raw_content",
             token=user_access_token,
@@ -276,6 +311,30 @@ class RealFeishuProvider(FeishuDocumentProvider):
             modified_at=meta.modified_at,
             raw_payload={"document_id": obj_token, "raw_content": text},
         )
+
+    def _download_file(self, user_access_token: str, file_token: str) -> bytes:
+        """下载云空间附件；该接口返回二进制流，不经过 JSON _request。"""
+        path = f"/open-apis/drive/v1/files/{file_token}/download"
+        headers = {"Authorization": f"Bearer {user_access_token}"}
+        try:
+            resp = self._http.get(f"{self._base_url}{path}", headers=headers)
+        except httpx.TimeoutException as exc:
+            raise FeishuError(TIMEOUT, "FEISHU_TIMEOUT", "飞书附件下载超时", retryable=True) from exc
+        except httpx.HTTPError as exc:
+            raise FeishuError(TRANSIENT, "FEISHU_NETWORK", "飞书附件下载失败", retryable=True) from exc
+        if resp.status_code == 401:
+            raise FeishuError(AUTH, "FEISHU_AUTH_EXPIRED", "飞书授权失效", retryable=False)
+        if resp.status_code == 403:
+            raise FeishuError(PERMISSION, "FEISHU_PERMISSION_DENIED", "无权下载该飞书附件", retryable=False)
+        if resp.status_code == 404:
+            raise FeishuError(NOT_FOUND, "DOC_NOT_FOUND", "飞书附件不存在", retryable=False)
+        if resp.status_code == 429:
+            raise FeishuError(RATE_LIMIT, "FEISHU_RATE_LIMITED", "飞书接口限流", retryable=True)
+        if resp.status_code >= 500:
+            raise FeishuError(TRANSIENT, "FEISHU_DOWNLOAD_FAILED", "飞书附件服务暂时不可用", retryable=True)
+        if resp.status_code != 200:
+            raise FeishuError(VALIDATION, "FEISHU_DOWNLOAD_FAILED", "飞书附件下载失败", retryable=False)
+        return resp.content
 
     def _fetch_sheet(
         self,

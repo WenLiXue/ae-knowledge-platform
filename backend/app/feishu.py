@@ -25,6 +25,7 @@ class ResourceType(StrEnum):
     WIKI = "wiki"
     DOCX = "docx"
     SHEET = "sheet"
+    FILE = "file"
 
 
 class FeishuDocument(BaseModel):
@@ -229,6 +230,7 @@ def submit_document_links(
             ResourceType.WIKI.value,
             ResourceType.DOCX.value,
             ResourceType.SHEET.value,
+            ResourceType.FILE.value,
         }:
             logger.warning(
                 "unsupported_feishu_resource",
@@ -243,7 +245,7 @@ def submit_document_links(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                 detail={
                     "code": "UNSUPPORTED_FEISHU_RESOURCE",
-                    "message": f"该 Wiki 节点实际类型为 {meta.resource_type}，目前仅支持 Wiki、文档和电子表格。",
+                    "message": f"该 Wiki 节点实际类型为 {meta.resource_type}，目前支持 Wiki、文档、电子表格及 PDF/DOCX/XLSX 附件。",
                 },
             )
         token = meta.canonical_token or meta.resource_token

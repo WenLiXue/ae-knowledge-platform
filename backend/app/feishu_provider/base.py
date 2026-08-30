@@ -60,6 +60,9 @@ class FeishuContent:
     revision: str | None = None
     modified_at: datetime | None = None
     raw_payload: dict = field(default_factory=dict)  # 完整原始 JSON，写入 raw 对象
+    # 二进制附件原文（如 Wiki 节点指向的 DOCX/PDF）；普通云文档为空。
+    raw_bytes: bytes | None = None
+    filename: str | None = None
 
 
 @dataclass
