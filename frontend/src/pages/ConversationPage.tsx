@@ -73,18 +73,31 @@ function formatFullTime(value: string): string {
 function streamStageText(streaming: StreamingAnswer): string {
   const stage = streaming.progress_stage ?? streaming.status;
   const labels: Record<string, string> = {
-    PENDING: "问题已提交，等待处理",
-    UNDERSTANDING: "正在理解问题",
-    RETRIEVING: "正在检索知识库",
-    RERANKING: "正在重排候选资料",
-    GENERATING: "正在生成答案",
-    VALIDATING: "正在校验引用",
-    STREAMING: "正在生成答案",
-    SUCCEEDED: "回答完成",
-    FAILED: "回答失败",
-    CANCELED: "已停止生成",
+    PENDING: "正在准备回答…",
+    UNDERSTANDING: "正在理解你的问题…",
+    ROUTING: "正在确定查询范围…",
+    BUILDING_CONTEXT: "正在整理相关信息…",
+    RETRIEVING: "正在查找知识库资料…",
+    RERANKING: "正在筛选最相关的资料…",
+    GENERATING: "正在整理答案…",
+    VALIDATING: "正在核对来源…",
+    STREAMING: "正在输出答案…",
+    UPDATING_MEMORY: "正在保存本次对话…",
+    PERSISTING: "正在完成回答…",
   };
-  return labels[stage] ?? `处理中（${stage}）`;
+  return labels[stage] ?? "正在处理你的问题…";
+}
+
+const THINKING_STEPS = [
+  { key: "understand", label: "理解问题", stages: ["PENDING", "UNDERSTANDING", "ROUTING"] },
+  { key: "retrieve", label: "查找相关资料", stages: ["BUILDING_CONTEXT", "RETRIEVING", "RERANKING"] },
+  { key: "answer", label: "整理并核对答案", stages: ["GENERATING", "STREAMING", "VALIDATING", "UPDATING_MEMORY", "PERSISTING"] },
+];
+
+function thinkingStepIndex(streaming: StreamingAnswer): number {
+  const stage = streaming.progress_stage ?? streaming.status;
+  const index = THINKING_STEPS.findIndex((step) => step.stages.includes(stage));
+  return index >= 0 ? index : 0;
 }
 
 function CitationList({ citations }: { citations: Citation[] }) {
@@ -305,6 +318,7 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
   // blocks 是生成答案的正文；summary 仅用于没有正文块的澄清/降级回答。
   // 不尝试用字符串相似度判断，避免模型换一种措辞时仍出现两段重复问候。
   const showSummary = visibleBlocks.length === 0 && Boolean(answer.summary?.trim());
+  const processEvents = answer.progress_events ?? [];
 
   const handleRate = (rating: FeedbackRating) => {
     if (submitted) return;
@@ -377,6 +391,23 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
       )}
 
       {answer.citations.length > 0 && <CitationList citations={answer.citations} />}
+
+      {processEvents.length > 0 && (
+        <Accordion disableGutters elevation={0} sx={{ mt: 1.5, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 38, px: 1.5, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
+            <Typography variant="caption" color="text.secondary">查看处理过程</Typography>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0, px: 1.5, pb: 1.25 }}>
+            <Stack spacing={0.5}>
+              {processEvents.filter((event) => event.message).map((event, index) => (
+                <Typography key={`${event.type}-${index}`} variant="caption" color="text.secondary">
+                  {event.message}{event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}
+                </Typography>
+              ))}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+      )}
 
       {/* 反馈 */}
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }}>
@@ -507,6 +538,7 @@ export function ConversationPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingAnswer | null>(null);
+  const [progressEvents, setProgressEvents] = useState<Array<{ type: string; tool?: string; message?: string; duration_ms?: number; evidence_count?: number }>>([]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -522,6 +554,7 @@ export function ConversationPage() {
         answer_id: a.id,
         status: a.status,
         progress_stage: a.progress_stage ?? null,
+        progress_message: a.progress_message ?? null,
         answer_type: a.answer_type,
         summary: a.summary,
         blocks: a.blocks,
@@ -537,6 +570,7 @@ export function ConversationPage() {
     if (!conversationId) return;
     // 先清空上一会话的进行中状态，避免切换会话时短暂展示旧答案的阶段。
     setStreaming(null);
+    setProgressEvents([]);
     setLoading(true);
     setError(null);
     try {
@@ -553,6 +587,7 @@ export function ConversationPage() {
           answer_id: a.id,
           status: a.status,
           progress_stage: a.progress_stage ?? null,
+          progress_message: a.progress_message ?? null,
           answer_type: a.answer_type,
           summary: a.summary,
           blocks: a.blocks,
@@ -560,7 +595,8 @@ export function ConversationPage() {
           degradation_flags: a.degradation_flags,
         });
       } else {
-        setStreaming(null);
+    setStreaming(null);
+    setProgressEvents([]);
       }
     } catch (err) {
       if (signal?.aborted) return;
@@ -587,6 +623,7 @@ export function ConversationPage() {
           answer_id: answer.id,
           status: answer.status,
           progress_stage: answer.progress_stage ?? null,
+          progress_message: answer.progress_message ?? null,
           answer_type: answer.answer_type,
           summary: answer.summary,
           draft_text: answer.draft_text,
@@ -602,12 +639,16 @@ export function ConversationPage() {
       onStatus: (payload) => {
         if (cancelled) return;
         setStreaming((prev) =>
-          prev ? { ...prev, status: payload.status, progress_stage: payload.progress_stage } : prev,
+          prev ? { ...prev, status: payload.status, progress_stage: payload.progress_stage, progress_message: payload.progress_message ?? prev.progress_message } : prev,
         );
       },
       onDelta: (payload) => {
         if (cancelled) return;
         setStreaming((prev) => (prev ? { ...prev, draft_text: payload.text } : prev));
+      },
+      onProgress: (payload) => {
+        if (cancelled) return;
+        setProgressEvents((prev) => [...prev, payload].slice(-20));
       },
       onBlock: (block) => {
         if (cancelled) return;
@@ -783,10 +824,34 @@ export function ConversationPage() {
 
           {streaming && (
             <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(255,255,255,0.62)" }}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
                 <CircularProgress size={18} />
                 <Box minWidth={0}>
-                  <Typography variant="subtitle2">{streamStageText(streaming)}</Typography>
+                  <Typography variant="subtitle2">{streaming.progress_message || streamStageText(streaming)}</Typography>
+                  <Stack direction="row" spacing={1.5} sx={{ mt: 1, mb: streaming.draft_text ? 1 : 0 }}>
+                    {THINKING_STEPS.map((step, index) => {
+                      const current = thinkingStepIndex(streaming);
+                      const done = index < current;
+                      const active = index === current;
+                      return (
+                        <Stack key={step.key} direction="row" spacing={0.5} alignItems="center">
+                          <Box
+                            component="span"
+                            sx={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: "50%",
+                              bgcolor: done || active ? "primary.main" : "divider",
+                              opacity: done || active ? 1 : 0.7,
+                            }}
+                          />
+                          <Typography variant="caption" color={active ? "primary.main" : "text.secondary"}>
+                            {step.label}
+                          </Typography>
+                        </Stack>
+                      );
+                    })}
+                  </Stack>
                   {streaming.draft_text && (
                     <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 1 }}>
                       {streaming.draft_text}
@@ -794,9 +859,14 @@ export function ConversationPage() {
                   )}
                   <Typography variant="caption" color="text.secondary">
                     {streaming.degradation_flags.length > 0
-                      ? "（降级模式：部分能力暂不可用）"
-                      : "检索结果和来源引用会显示在这里。"}
+                      ? "部分资料服务不可用，已使用可用结果继续回答。"
+                      : "答案和来源会在生成过程中逐步显示。"}
                   </Typography>
+                  {progressEvents.filter((event) => event.type.startsWith("tool.")).slice(-3).map((event, index) => (
+                    <Typography key={`${event.type}-${index}`} variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {event.message}{event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}
+                    </Typography>
+                  ))}
                 </Box>
                 <Box sx={{ flexGrow: 1 }} />
                 <Button size="small" color="inherit" onClick={() => void handleCancel()}>

@@ -109,6 +109,7 @@ def decide_approval(session_factory, *, approval_id: str, user_id: str, decision
         else:
             answer.status = "PENDING"
             answer.progress_stage = "RESUMING"
+            answer.progress_message = "正在继续处理你的请求…"
             run.status = "RUNNING"
             if plan:
                 plan.status = "RUNNING"

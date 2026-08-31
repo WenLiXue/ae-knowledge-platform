@@ -243,6 +243,9 @@ def answer_events(
             yield _sse_event("e1:snapshot", "answer.snapshot", payload)
             last_signal = (answer.status, answer.progress_stage)
             yield _status_event(answer)
+            for index, progress in enumerate(answer.progress_events or [], start=1):
+                yield _sse_event(f"p{index}", "answer.progress", progress)
+            progress_seen = len(answer.progress_events or [])
         while time.monotonic() < deadline:
             with SessionLocal() as session:
                 answer = session.get(Answer, answer_id)
@@ -252,6 +255,11 @@ def answer_events(
                 if signal != last_signal:
                     last_signal = signal
                     yield _status_event(answer)
+                events = answer.progress_events or []
+                if len(events) > progress_seen:
+                    for index, progress in enumerate(events[progress_seen:], start=progress_seen + 1):
+                        yield _sse_event(f"p{index}", "answer.progress", progress)
+                    progress_seen = len(events)
                 if answer.draft_text and answer.draft_text != last_draft:
                     last_draft = answer.draft_text
                     yield _sse_event(
@@ -359,6 +367,7 @@ def _status_event(answer: Answer) -> str:
             "answer_id": str(answer.id),
             "status": answer.status,
             "progress_stage": answer.progress_stage,
+            "progress_message": answer.progress_message,
         },
     )
 

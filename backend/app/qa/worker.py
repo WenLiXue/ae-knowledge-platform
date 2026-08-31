@@ -316,6 +316,7 @@ def _run_generate_answer(
 
     answer.status = "RETRIEVING"
     answer.progress_stage = "UNDERSTANDING"
+    answer.progress_message = "正在理解你的问题…"
     session.commit()
 
     flags: list[str] = []
@@ -392,6 +393,7 @@ def _run_generate_answer(
             return None
         answer.status = "STREAMING"
         answer.progress_stage = "GENERATING"
+        answer.progress_message = "正在组织回答…"
         answer.degradation_flags = list(dict.fromkeys(flags + ["NO_KNOWLEDGE_RETRIEVAL"]))
         session.commit()
         answer = session.get(Answer, answer.id)
@@ -438,6 +440,7 @@ def _run_generate_answer(
 
     answer.status = "STREAMING"
     answer.progress_stage = "GENERATING"
+    answer.progress_message = "正在依据资料整理答案…"
     answer.retrieval_run_id = retrieval.run_id
     answer.degradation_flags = list(dict.fromkeys(flags + retrieval.degradation_flags))
     session.commit()

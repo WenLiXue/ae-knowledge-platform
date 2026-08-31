@@ -106,6 +106,8 @@ export interface Answer {
   id: string;
   status: AnswerStatus;
   progress_stage?: AnswerStage | null;
+  progress_message?: string | null;
+  progress_events?: Array<{ type: string; tool?: string; message?: string; duration_ms?: number; evidence_count?: number }>;
   answer_type: AnswerType | null;
   summary: string | null;
   /** 流式生成期间的未校验草稿，终态后由正式答案替代。 */

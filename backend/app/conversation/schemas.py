@@ -88,6 +88,8 @@ class AnswerOut(BaseModel):
     id: uuid.UUID
     status: str
     progress_stage: str | None = None
+    progress_message: str | None = None
+    progress_events: list[dict] = Field(default_factory=list)
     answer_type: str | None = None
     summary: str | None = None
     draft_text: str | None = None

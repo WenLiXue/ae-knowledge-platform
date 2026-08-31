@@ -186,6 +186,9 @@ class Answer(Base, TimestampMixin):
         String(32), nullable=False, default="PENDING", server_default="PENDING"
     )
     progress_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 面向用户的安全过程摘要；不保存或暴露模型隐藏思维链。
+    progress_message: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    progress_events: Mapped[list | None] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     answer_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     draft_text: Mapped[str | None] = mapped_column(Text, nullable=True)

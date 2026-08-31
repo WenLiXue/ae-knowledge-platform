@@ -296,6 +296,7 @@ def retry_answer(db: Session, user: User, answer_id) -> Answer:
 
     answer.status = "PENDING"
     answer.progress_stage = None
+    answer.progress_message = "正在准备重新生成…"
     answer.summary = None
     answer.blocks_json = None
     answer.degradation_flags = []
@@ -419,6 +420,8 @@ def _build_answer_out_from_citations(
         id=answer.id,
         status=answer.status,
         progress_stage=answer.progress_stage,
+        progress_message=answer.progress_message,
+        progress_events=list(answer.progress_events or []),
         answer_type=answer.answer_type,
         summary=answer.summary,
         draft_text=answer.draft_text,
@@ -445,6 +448,8 @@ def build_answer_out(db: Session, answer: Answer) -> AnswerOut:
         id=answer.id,
         status=answer.status,
         progress_stage=answer.progress_stage,
+        progress_message=answer.progress_message,
+        progress_events=list(answer.progress_events or []),
         answer_type=answer.answer_type,
         summary=answer.summary,
         draft_text=answer.draft_text,

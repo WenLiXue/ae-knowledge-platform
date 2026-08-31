@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 
 from .. import policies
 from ..context import AgentRuntimeContext
@@ -31,8 +32,36 @@ NODE_PROGRESS: dict[str, str] = {
     "persist_result": "PERSISTING",
 }
 
+NODE_PROGRESS_MESSAGE: dict[str, str] = {
+    "build_context": "正在整理对话上下文…",
+    "retrieve": "正在查找知识库中的相关资料…",
+    "rewrite_query": "正在确定最合适的查询范围…",
+    "generate_general": "正在组织回答…",
+    "answer_identity": "正在核对可用的身份信息…",
+    "generate_grounded": "正在依据资料整理答案…",
+    "finalize_clarification": "正在整理需要补充的信息…",
+    "finalize_insufficient": "正在确认资料覆盖范围…",
+    "validate_citations": "正在核对答案来源…",
+    "update_memory": "正在保存本次对话…",
+    "persist_result": "正在完成回答…",
+}
 
-def _set_progress(ctx: AgentRuntimeContext, answer_id, stage: str) -> None:
+
+def _append_event(ctx: AgentRuntimeContext, answer_id, event: dict) -> None:
+    from ...db.models.conversation import Answer
+    try:
+        with ctx.session_factory() as db:
+            answer = db.get(Answer, answer_id)
+            if answer is not None and answer.status not in ("SUCCEEDED", "FAILED", "CANCELED"):
+                events = list(answer.progress_events or [])
+                events.append({**event, "at": datetime.now(timezone.utc).isoformat()})
+                answer.progress_events = events[-100:]
+                db.commit()
+    except Exception:
+        return
+
+
+def _set_progress(ctx: AgentRuntimeContext, answer_id, stage: str, message: str | None = None) -> None:
     """短事务更新 Answer.progress_stage（仅观测，不用于业务恢复）。"""
     from ...db.models.conversation import Answer
 
@@ -41,6 +70,10 @@ def _set_progress(ctx: AgentRuntimeContext, answer_id, stage: str) -> None:
             answer = db.get(Answer, answer_id)
             if answer is not None and answer.status not in ("SUCCEEDED", "FAILED", "CANCELED"):
                 answer.progress_stage = stage
+                answer.progress_message = message or "正在处理你的问题…"
+                events = list(answer.progress_events or [])
+                events.append({"type": "thought.summary", "stage": stage, "message": answer.progress_message, "at": datetime.now(timezone.utc).isoformat()})
+                answer.progress_events = events[-100:]
                 db.commit()
     except Exception:  # noqa: BLE001 进度记录失败不阻断节点
         return
@@ -95,6 +128,8 @@ def node(name: str, *, check_limits: bool = True):
                     _log(state, limit, 0.0, ctx, terminated=True)
                     return limit
             start = time.monotonic()
+            if name == "retrieve":
+                _append_event(ctx, state["answer_id"], {"type": "tool.started", "tool": "knowledge_search", "message": "开始查找知识库资料"})
             result = core_fn(state, ctx) or {}
             result = dict(result)
             result["step_count"] = state.get("step_count", 0) + 1
@@ -107,10 +142,12 @@ def node(name: str, *, check_limits: bool = True):
                 }
             )
             result["node_trace"] = trace
+            if name == "retrieve":
+                _append_event(ctx, state["answer_id"], {"type": "tool.completed", "tool": "knowledge_search", "message": "知识库检索完成", "duration_ms": round((time.monotonic() - start) * 1000, 3), "evidence_count": len(result.get("evidence") or [])})
             _log(state, result, (time.monotonic() - start) * 1000, ctx)
             stage = NODE_PROGRESS.get(name)
             if stage and not result.get("_terminate"):
-                _set_progress(ctx, state["answer_id"], stage)
+                _set_progress(ctx, state["answer_id"], stage, NODE_PROGRESS_MESSAGE.get(name))
             return result
 
         wrapped.__name__ = f"node_{name}"  # 便于观测与调试
