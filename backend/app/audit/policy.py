@@ -163,6 +163,14 @@ ACTION_REGISTRY: dict[str, ActionSpec] = {
     "audit.query": _spec("audit.query", "AUDIT", "AUDIT_LOG", risk="low"),
     "audit.view_detail": _spec("audit.view_detail", "AUDIT", "AUDIT_LOG", risk="medium"),
     "audit.export": _spec("audit.export", "AUDIT", "AUDIT_EXPORT", risk="high"),
+    "user.query": _spec("user.query", "USER", "USER", risk="low"),
+    "user.view": _spec("user.view", "USER", "USER", risk="low"),
+    "user.update": _spec("user.update", "USER", "USER", ("display_name", "status", "is_admin"), risk="high"),
+    "user.enable": _spec("user.enable", "USER", "USER", ("status",), risk="high"),
+    "user.disable": _spec("user.disable", "USER", "USER", ("status",), risk="high"),
+    "user.role.change": _spec("user.role.change", "USER", "USER", ("is_admin",), risk="high"),
+    "conversation.admin.list": _spec("conversation.admin.list", "CONVERSATION", "CONVERSATION", risk="low"),
+    "conversation.admin.view": _spec("conversation.admin.view", "CONVERSATION", "CONVERSATION", risk="medium"),
 }
 
 # 风险等级 ≥ 该值判定为高风险（用于前端高亮/导出提示）

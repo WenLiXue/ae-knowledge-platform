@@ -99,9 +99,13 @@ def process_oauth_callback(
         user = session.get(User, identity.user_id)
         if user is None:
             raise FeishuAuthError("FEISHU_USER_MISSING", "绑定的系统用户不存在", status=409)
+        # 早期版本只保存了显示名，补齐已有飞书用户的稳定账号标识。
+        if not user.username:
+            user.username = external_user_id
     else:
         newly_bound = True
         user = User(
+            username=external_user_id,
             display_name=profile.name or external_user_id,
             status="ACTIVE",
             is_admin=False,

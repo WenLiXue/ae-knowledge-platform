@@ -163,6 +163,8 @@ def _build_row(event: AuditEvent) -> AuditLog:
 
 def _finalize(row: AuditLog, session: Session) -> AuditLog:
     """计算 prev_hash/record_hash 并加入会话。调用方负责 commit/flush。"""
+    # 哈希链头是全局共享状态；事务级 advisory lock 防止并发请求读到同一条链头。
+    session.execute(select(func.pg_advisory_xact_lock(743219861)))
     row.prev_hash = _last_record_hash(session)
     row.record_hash = _hash_row(row, row.prev_hash)
     session.add(row)
@@ -418,10 +420,14 @@ def verify_hash_chain(session: Session, *, since: datetime | None = None) -> lis
     """校验哈希链，返回所有异常项（link 断裂 / hash 不匹配）。只读，不自动修复。"""
     stmt = select(AuditLog).order_by(AuditLog.occurred_at, AuditLog.id)
     if since is not None:
+        prev = session.execute(
+            select(AuditLog).where(AuditLog.occurred_at < since).order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc()).limit(1)
+        ).scalar_one_or_none()
         stmt = stmt.where(AuditLog.occurred_at >= since)
+    else:
+        prev = None
     rows = list(session.execute(stmt).scalars().all())
     mismatches: list[dict] = []
-    prev: AuditLog | None = None
     for row in rows:
         expected_prev = prev.record_hash if prev is not None else None
         if row.prev_hash != expected_prev:
