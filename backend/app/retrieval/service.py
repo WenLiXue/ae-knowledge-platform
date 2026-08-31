@@ -84,12 +84,7 @@ class RetrievalResult:
 def _default_embed_query(db: Session, query: str) -> EmbedOutcome:
     """解析 DOCUMENT_EMBEDDING 模型并向量化查询问题。失败由调用方降级 BM25-only。"""
     resolved = resolve_service_model(db, "DOCUMENT_EMBEDDING")
-    settings = get_settings()
-    gateway = create_gateway(
-        resolved,
-        total_timeout=settings.agent_rerank_timeout_seconds,
-        retries=0,
-    )
+    gateway = create_gateway(resolved)
     resp = gateway.embed(EmbeddingRequest(model=resolved.model_name, input=[query]))
     if not resp.data or not resp.data[0].embedding:
         raise RetrievalError("PROVIDER", "EMBED_EMPTY", "查询向量为空", retryable=False)
@@ -103,7 +98,12 @@ def _default_rerank(
     resolved = resolve_service_model(db, "RETRIEVAL_RERANK")
     if resolved is None:
         return None
-    gateway = create_gateway(resolved)
+    settings = get_settings()
+    gateway = create_gateway(
+        resolved,
+        total_timeout=settings.agent_rerank_timeout_seconds,
+        retries=0,
+    )
     resp = gateway.rerank(
         RerankRequest(model=resolved.model_name, query=query, documents=documents, top_n=top_n)
     )
