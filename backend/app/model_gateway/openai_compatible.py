@@ -123,6 +123,8 @@ class OpenAICompatibleGateway:
             payload["max_tokens"] = request.max_tokens
         if request.top_p is not None:
             payload["top_p"] = request.top_p
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
         if request.tools:
             payload["tools"] = [
                 {

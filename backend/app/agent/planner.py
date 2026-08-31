@@ -20,7 +20,7 @@ from .tools.registry import ToolRegistry
 class PlannerLimits:
     max_steps: int = 8
     max_tool_calls: int = 10
-    max_replans: int = 2
+    max_replans: int = 1
     parallel_read_limit: int = 3
 
 
@@ -81,10 +81,18 @@ def plan_goal(
             "existing_plan": existing_plan.model_dump(mode="json") if existing_plan else None,
         }
         try:
-            plan = parse_plan(chat([
+            messages = [
                 {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-            ]))
+            ]
+            # Request provider-side JSON mode where supported. Keep a
+            # compatibility fallback for injected test chat functions and
+            # providers that do not expose response_format.
+            try:
+                raw_plan = chat(messages, response_format={"type": "json_object"})
+            except TypeError:
+                raw_plan = chat(messages)
+            plan = parse_plan(raw_plan)
         except Exception:
             plan = None
     if plan is None:

@@ -62,7 +62,9 @@ class Settings(BaseSettings):
     agent_write_tools_enabled: bool = False
     agent_max_plan_steps: int = 8
     agent_max_tool_calls: int = 10
-    agent_max_replans: int = 2
+    agent_max_replans: int = 1
+    agent_planner_timeout_seconds: float = 15.0
+    agent_rerank_timeout_seconds: float = 8.0
     agent_parallel_read_limit: int = 3
     agent_task_timeout_seconds: int = 180
     agent_tool_result_max_bytes: int = 65536

@@ -36,6 +36,10 @@ class ChatRequest(BaseModel):
     top_p: float | None = None
     tools: list[GatewayTool] = Field(default_factory=list)
     tool_choice: Literal["none", "auto", "required"] | str = "none"
+    # Provider-neutral structured output hint. OpenAI-compatible providers
+    # accept {"type": "json_object"}; providers that ignore it still get
+    # schema validation at the caller.
+    response_format: dict[str, Any] | None = None
 
 
 class ChatUsage(BaseModel):

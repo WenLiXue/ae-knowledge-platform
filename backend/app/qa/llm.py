@@ -44,7 +44,15 @@ class QaError(Exception):
 ChatFn = Callable[[list[dict]], str]
 
 
-def chat_with_retry(gateway, model_name: str, messages: list[dict], *, max_tokens: int = 4096, retries: int = 3):
+def chat_with_retry(
+    gateway,
+    model_name: str,
+    messages: list[dict],
+    *,
+    max_tokens: int = 4096,
+    retries: int = 3,
+    response_format: dict | None = None,
+):
     """调用 chat 并对空内容（CHAT_EMPTY）做有限重试——真实模型（deepseek-v4-flash）
     对长 prompt 偶发空返回。仍空则抛最后一次 GatewayError。"""
     import time
@@ -52,7 +60,14 @@ def chat_with_retry(gateway, model_name: str, messages: list[dict], *, max_token
     last_error: GatewayError | None = None
     for attempt in range(retries + 1):
         try:
-            resp = gateway.chat(ChatRequest(model=model_name, messages=messages, max_tokens=max_tokens))
+            resp = gateway.chat(
+                ChatRequest(
+                    model=model_name,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                )
+            )
             return resp.content
         except GatewayError as exc:
             if exc.code == "CHAT_EMPTY" and attempt < retries:

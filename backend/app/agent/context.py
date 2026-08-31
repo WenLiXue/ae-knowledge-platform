@@ -75,7 +75,14 @@ class AgentModels:
     def last_model_key(self) -> str | None:
         return self._last_model_key
 
-    def chat(self, messages: list[dict], *, max_tokens: int = 4096) -> str:
+    def chat(
+        self,
+        messages: list[dict],
+        *,
+        max_tokens: int = 4096,
+        timeout_seconds: float | None = None,
+        response_format: dict | None = None,
+    ) -> str:
         """调用 QA 模型。messages 为 [{role, content}, ...]；返回文本。"""
         if self._chat_fn is not None:
             return self._chat_fn(messages)
@@ -84,11 +91,24 @@ class AgentModels:
         with self._session_factory() as db:
             resolved = self._resolve_model(db, "QA")
             self._last_model_key = resolved.model_config_id
-            gateway = self._gateway_factory(resolved)
+            try:
+                gateway = self._gateway_factory(
+                    resolved,
+                    **({"total_timeout": timeout_seconds, "retries": 0} if timeout_seconds else {}),
+                )
+            except TypeError:
+                gateway = self._gateway_factory(resolved)
             model_name = resolved.model_name
             # 读配置的短事务在此结束，外部 HTTP 不持有 DB 事务/行锁
             db.commit()
-        return chat_with_retry(gateway, model_name, messages, max_tokens=max_tokens)
+        return chat_with_retry(
+            gateway,
+            model_name,
+            messages,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            retries=0 if timeout_seconds else 3,
+        )
 
     def chat_with_tools(
         self,

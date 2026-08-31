@@ -24,11 +24,18 @@ def core_create_plan(state: dict, ctx):
                 completion_criteria=state.get("completion_criteria") or [],
                 steps=state.get("plan_steps") or [],
             )
+        planner_chat = None
+        if ctx.settings.feature_real_qa:
+            planner_chat = lambda messages, **kwargs: ctx.models.chat(
+                messages,
+                timeout_seconds=ctx.settings.agent_planner_timeout_seconds,
+                **kwargs,
+            )
         plan = plan_goal(
             goal,
             registry=ctx.tool_registry,
             permissions=frozenset(permissions),
-            chat=(ctx.models.chat if ctx.settings.feature_real_qa else None),
+            chat=planner_chat,
             limits=PlannerLimits(
                 max_steps=ctx.settings.agent_max_plan_steps,
                 max_tool_calls=ctx.settings.agent_max_tool_calls,
