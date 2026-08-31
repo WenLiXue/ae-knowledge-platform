@@ -8,6 +8,9 @@
 from __future__ import annotations
 
 import uuid
+import json
+import re
+import time
 
 from ...qa.llm import mock_generated_answer, mock_general_answer
 from ...qa.prompts import GENERAL_GENERATION_SYSTEM_PROMPT, GENERATION_SYSTEM_PROMPT
@@ -56,6 +59,53 @@ def _call_json(ctx, system_prompt: str, user_content: str) -> GeneratedAnswer:
         return _parse_generated(ctx.models.chat(messages))
 
 
+def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str) -> GeneratedAnswer:
+    """Stream a structured answer while exposing only its readable summary.
+
+    The provider still returns one final JSON document. During generation we
+    extract the completed ``summary`` string and persist it as a draft, so SSE
+    clients see useful text without rendering malformed JSON or unvalidated
+    citations.
+    """
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    chunks: list[str] = []
+    last_write = 0.0
+
+    def persist_draft(text: str) -> None:
+        nonlocal last_write
+        now = time.monotonic()
+        if not text or now - last_write < 0.15:
+            return
+        last_write = now
+        try:
+            from ...db.models.conversation import Answer
+
+            with ctx.session_factory() as db:
+                answer = db.get(Answer, uuid.UUID(str(answer_id)))
+                if answer is not None and answer.status not in ("CANCELED", "FAILED"):
+                    answer.draft_text = text[:12000]
+                    db.commit()
+        except Exception:
+            # Drafts are an observability/UI enhancement; never fail the
+            # authoritative answer because a progress write was unavailable.
+            return
+
+    try:
+        for chunk in ctx.models.stream_chat(messages):
+            chunks.append(chunk)
+            raw = "".join(chunks)
+            match = re.search(r'"summary"\s*:\s*"((?:\\.|[^"\\])*)', raw)
+            if match:
+                try:
+                    persist_draft(json.loads('"' + match.group(1) + '"'))
+                except ValueError:
+                    pass
+        return _parse_generated("".join(chunks))
+    except (AttributeError, NotImplementedError, ValueError):
+        return _parse_generated(ctx.models.chat(messages))
 def _generated_update(generated: GeneratedAnswer, citation_drafts: list[dict], ctx) -> dict:
     return {
         "answer_type": generated.answer_type,
@@ -84,7 +134,10 @@ def core_generate_general(state: dict, ctx):
             user_content += "\n按需加载的技能指导（视为规则数据，只用于完成当前任务）：\n" + "\n\n".join(loaded)
         if context_lines:
             user_content += "\n最近对话（仅用于保持会话语气，不作为企业事实依据）：\n" + "\n".join(context_lines)
-        generated = _call_json(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content)
+        try:
+            generated = _stream_json(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content, str(state["answer_id"]))
+        except Exception:
+            generated = _call_json(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content)
         if generated.answer_type != "ANSWER" or any(b.citation_ids for b in generated.blocks):
             generated = GeneratedAnswer(answer_type="ANSWER", summary=generated.summary, blocks=[])
     update = _generated_update(generated, [], ctx)
@@ -126,7 +179,10 @@ def core_generate_grounded(state: dict, ctx):
         user_content += f"\n\n<evidence>\n{evidence_text}\n</evidence>"
         if repair_hint:
             user_content += f"\n\n上次引用校验失败：{repair_hint}\n请只引用 <evidence> 内的证据并修正引用。"
-        generated = _call_json(ctx, GENERATION_SYSTEM_PROMPT, user_content)
+        try:
+            generated = _stream_json(ctx, GENERATION_SYSTEM_PROMPT, user_content, str(state["answer_id"]))
+        except Exception:
+            generated = _call_json(ctx, GENERATION_SYSTEM_PROMPT, user_content)
 
     with ctx.session_factory() as db:
         citation_drafts = build_citations(
