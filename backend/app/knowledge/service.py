@@ -320,10 +320,12 @@ def _list_classifications(session: Session, version_ids: list[uuid.UUID]) -> dic
     return out
 
 
-def list_knowledge_sources(session: Session) -> list[dict[str, object]]:
+def list_knowledge_sources(session: Session, *, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, object]], int]:
+    all_sources = repository.list_sources_with_detail(session)
+    total = len(all_sources)
     items: list[dict[str, object]] = []
     version_ids: list[uuid.UUID] = []
-    for source, detail in repository.list_sources_with_detail(session):
+    for source, detail in all_sources[max(offset, 0): max(offset, 0) + min(max(limit, 1), 200)]:
         latest = repository.get_latest_version(session, source.id)
         task = repository.get_latest_task(session, source.id)
         if latest is not None:
@@ -343,7 +345,7 @@ def list_knowledge_sources(session: Session) -> list[dict[str, object]]:
     for item in items:
         version_id = item.get("version_id")
         item["classification"] = classifications.get(uuid.UUID(str(version_id))) if version_id else None
-    return items
+    return items, total
 
 
 def get_knowledge_source(session: Session, source_id: uuid.UUID) -> dict[str, object] | None:

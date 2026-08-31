@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .db.session import get_db
@@ -13,8 +13,9 @@ router = APIRouter(prefix="/api/v1/knowledge-sources", tags=["knowledge-sources"
 
 
 @router.get("")
-def list_knowledge_sources(db: Session = Depends(get_db)) -> dict[str, object]:
-    return {"data": {"items": service.list_knowledge_sources(db)}}
+def list_knowledge_sources(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db)) -> dict[str, object]:
+    items, total = service.list_knowledge_sources(db, limit=limit, offset=offset)
+    return {"data": {"items": items, "total": total, "limit": limit, "offset": offset}}
 
 
 @router.get("/{source_id}")

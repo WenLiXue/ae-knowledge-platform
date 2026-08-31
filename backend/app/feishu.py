@@ -147,7 +147,7 @@ def list_documents(
                 url=doc.url,
             )
         )
-    return {"data": {"items": items, "next_cursor": result.next_cursor}}
+    return {"data": {"items": items, "next_cursor": result.next_cursor, "has_more": bool(result.next_cursor)}}
 
 
 @router.post("/documents/submit", status_code=status.HTTP_202_ACCEPTED)

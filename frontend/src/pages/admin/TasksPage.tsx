@@ -13,7 +13,6 @@ import {
   CardContent,
   Chip,
   MenuItem,
-  Pagination,
   Stack,
   Table,
   TableBody,
@@ -30,6 +29,7 @@ import { listAdminTasks, type AdminTask } from "../../api/admin";
 import { getErrorMessage } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+import { ListPagination } from "../../components/ListPagination";
 import { PageHeader } from "../../components/PageHeader";
 import { TASK_STATUS_META, TASK_TYPE_META, statusLabel } from "../../types/statusMeta";
 
@@ -242,20 +242,8 @@ export function TasksPage() {
                 </Table>
               </TableContainer>
               <Stack spacing={1.5} alignItems="center" sx={{ px: 2, py: 1.5, borderTop: 1, borderColor: "divider" }}>
-                <Typography variant="caption" color="text.secondary">
-                  当前显示 {items.length} 条，共 {total} 条 · 第 {page + 1} / {totalPages} 页
-                </Typography>
-                {totalPages > 1 && (
-                  <Pagination
-                    count={totalPages}
-                    page={page + 1}
-                    onChange={(_e, value) => void load(value - 1)}
-                    color="primary"
-                    showFirstButton
-                    showLastButton
-                    disabled={loading}
-                  />
-                )}
+                <ListPagination page={page + 1} pageSize={PAGE_SIZE} total={total} totalPages={totalPages}
+                  loading={loading} pageSizeOptions={[10, 20, 30]} onPageChange={(value) => void load(value - 1)} />
               </Stack>
             </>
           )}

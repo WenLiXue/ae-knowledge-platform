@@ -57,8 +57,10 @@ import type {
 } from "../../types/audit";
 import {
   AUDIT_EXPORT_META,
+  AUDIT_ACTION_LABEL,
   AUDIT_MODULE_LABEL,
   AUDIT_OUTCOME_META,
+  AUDIT_TARGET_LABEL,
   statusLabel,
 } from "../../types/statusMeta";
 
@@ -400,7 +402,7 @@ export function AuditLogsPage() {
                 key={m.module}
                 size="small"
                 variant="outlined"
-                label={`${AUDIT_MODULE_LABEL[m.module] ?? m.module} ${m.count}`}
+                label={`${AUDIT_MODULE_LABEL[m.module] ?? "其他模块"} ${m.count}`}
               />
             ))}
           </Stack>
@@ -446,7 +448,7 @@ export function AuditLogsPage() {
               <MenuItem value="">全部模块</MenuItem>
               {MODULES.map((m) => (
                 <MenuItem key={m} value={m}>
-                  {AUDIT_MODULE_LABEL[m] ?? m}
+                  {AUDIT_MODULE_LABEL[m] ?? "其他模块"}
                 </MenuItem>
               ))}
             </TextField>
@@ -529,7 +531,7 @@ export function AuditLogsPage() {
                 <Table size="small" sx={{ minWidth: 980 }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>时间 / 日志编号</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>时间</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>操作者</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>业务模块</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>操作</TableCell>
@@ -551,9 +553,6 @@ export function AuditLogsPage() {
                           <Typography variant="body2" fontWeight={600}>
                             {formatTime(row.occurred_at)}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
-                            {row.id.slice(0, 8)}…
-                          </Typography>
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
                           <Typography variant="body2">{row.actor_name}</Typography>
@@ -564,16 +563,16 @@ export function AuditLogsPage() {
                           )}
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
-                          <Typography variant="body2">{AUDIT_MODULE_LABEL[row.module] ?? row.module}</Typography>
+                          <Typography variant="body2">{AUDIT_MODULE_LABEL[row.module] ?? "其他模块"}</Typography>
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
                           <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12.5 }}>
-                            {row.action}
+                            {AUDIT_ACTION_LABEL[row.action] ?? "其他操作"}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
                           <Typography variant="body2" color={row.target_name ? "text.primary" : "text.secondary"}>
-                            {row.target_name ?? (row.target_type ? `${row.target_type}:${row.target_id ?? "—"}` : "—")}
+                            {row.target_name ?? (row.target_type ? `${AUDIT_TARGET_LABEL[row.target_type] ?? "其他对象"}` : "—")}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
@@ -656,7 +655,7 @@ export function AuditLogsPage() {
                     )}
                   </Stack>
                   <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                    {detail.action}
+                    {AUDIT_ACTION_LABEL[detail.action] ?? "其他操作"}
                   </Typography>
                   <Typography variant="body1" sx={{ mt: 1 }}>
                     {detail.summary}
@@ -673,7 +672,7 @@ export function AuditLogsPage() {
                       ["账号", detail.actor_account ?? "—"],
                       ["操作时间", formatTime(detail.occurred_at)],
                       ["来源 IP", detail.source_ip ?? "—"],
-                      ["业务模块", AUDIT_MODULE_LABEL[detail.module] ?? detail.module],
+                      ["业务模块", AUDIT_MODULE_LABEL[detail.module] ?? "其他模块"],
                       ["请求编号", detail.request_id],
                       ["日志编号", detail.id],
                     ].map(([label, value]) => (

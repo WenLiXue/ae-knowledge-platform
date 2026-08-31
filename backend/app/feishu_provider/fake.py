@@ -106,7 +106,10 @@ class FakeFeishuProvider(FeishuDocumentProvider):
         if resource_types:
             allowed = set(resource_types)
             items = [d for d in items if d.resource_type in allowed]
-        return FeishuListResult(items=items[:limit], next_cursor=None)
+        start = int(page_token or 0) if str(page_token or "0").isdigit() else 0
+        page = items[start : start + limit]
+        next_cursor = str(start + limit) if start + limit < len(items) else None
+        return FeishuListResult(items=page, next_cursor=next_cursor)
 
     def resolve_url(self, user_access_token: str | None, url: str) -> FeishuDocument:
         token, resource_type = _parse_url(url)

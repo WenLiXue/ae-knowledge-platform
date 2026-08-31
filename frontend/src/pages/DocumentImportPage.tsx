@@ -14,7 +14,6 @@ import {
   ListItem,
   ListItemText,
   MenuItem,
-  Pagination,
   Select,
   Stack,
   Tab,
@@ -35,6 +34,7 @@ import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { LoadingState } from "../components/LoadingState";
+import { ListPagination } from "../components/ListPagination";
 import { PageHeader } from "../components/PageHeader";
 import { RESOURCE_TYPE_LABEL } from "../types/statusMeta";
 import type { FeishuDocument, FeishuResourceType, FeishuSubmitResult } from "../types/documents";
@@ -51,13 +51,16 @@ export function DocumentImportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<Record<string, FeishuDocument>>({});
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"" | FeishuResourceType>("");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  // 云盘接口一次返回全部文件（无服务端分页 token），改用客户端分页控件逐页展示
+  // 飞书接口使用 page_token；页面用游标历史实现可点击页码分页
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [pageCursors, setPageCursors] = useState<(string | null)[]>([null]);
+  const [hasMore, setHasMore] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"" | "submitted" | "pending">("");
   const [sortBy, setSortBy] = useState<"modified" | "title">("modified");
   const [importMode, setImportMode] = useState<ImportMode>("account");
@@ -65,33 +68,33 @@ export function DocumentImportPage() {
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [directSubmitting, setDirectSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (pageNo = 1, cursor: string | null = null) => {
     setLoading(true);
     setError(null);
     try {
       const [docs, connection] = await Promise.all([
-        listFeishuDocuments({ limit: 50 }),
+        listFeishuDocuments({ limit: pageSize, query: query.trim() || undefined, resource_type: typeFilter ? [typeFilter] : undefined, page_token: cursor || undefined }),
         getFeishuConnection(),
       ]);
       setDocuments(docs.items);
       setConnected(connection.connected);
-      setPage(1);
+      setPage(pageNo);
+      setHasMore(Boolean(docs.has_more ?? docs.next_cursor));
+      if (pageNo === 1) setPageCursors([null]);
+      if (docs.next_cursor) setPageCursors((current) => [...current.slice(0, pageNo), docs.next_cursor ?? null]);
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize, query, typeFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const visibleDocuments = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
     const filtered = documents.filter((document) => {
-      if (keyword && !document.title.toLowerCase().includes(keyword)) return false;
-      if (typeFilter && document.resource_type !== typeFilter) return false;
       if (statusFilter === "submitted" && !document.submitted) return false;
       if (statusFilter === "pending" && document.submitted) return false;
       return true;
@@ -101,24 +104,23 @@ export function DocumentImportPage() {
         ? a.title.localeCompare(b.title, "zh-CN")
         : new Date(b.modified_at).getTime() - new Date(a.modified_at).getTime(),
     );
-  }, [documents, query, typeFilter, statusFilter, sortBy]);
+  }, [documents, statusFilter, sortBy]);
 
-  // 客户端分页：标准 Pagination 控件，每页 pageSize 条
-  const totalPages = Math.max(1, Math.ceil(visibleDocuments.length / pageSize));
-  const shownDocuments = useMemo(
-    () => visibleDocuments.slice((page - 1) * pageSize, page * pageSize),
-    [visibleDocuments, page, pageSize],
-  );
-
-  // 筛选/排序/每页条数变化时回到第 1 页
-  useEffect(() => {
-    setPage(1);
-  }, [query, typeFilter, statusFilter, sortBy, pageSize]);
+  const totalPages = Math.max(1, page + (hasMore ? 1 : 0));
+  const shownDocuments = visibleDocuments;
 
   const toggleSelection = (token: string) => {
+    const document = documents.find((item) => item.resource_token === token);
     setSelected((current) =>
       current.includes(token) ? current.filter((item) => item !== token) : [...current, token],
     );
+    if (document) {
+      setSelectedDocuments((current) => {
+        const next = { ...current };
+        if (next[token]) delete next[token]; else next[token] = document;
+        return next;
+      });
+    }
   };
 
   // 当前页可勾选的文档（已提交的不参与全选）
@@ -137,12 +139,21 @@ export function DocumentImportPage() {
     if (allVisibleSelected) {
       const remove = new Set(selectableDocuments.map((document) => document.resource_token));
       setSelected((current) => current.filter((token) => !remove.has(token)));
+      setSelectedDocuments((current) => {
+        const next = { ...current };
+        remove.forEach((token) => delete next[token]);
+        return next;
+      });
     } else {
       setSelected((current) => {
         const set = new Set(current);
         selectableDocuments.forEach((document) => set.add(document.resource_token));
         return [...set];
       });
+      setSelectedDocuments((current) => ({
+        ...current,
+        ...Object.fromEntries(selectableDocuments.map((document) => [document.resource_token, document])),
+      }));
     }
   };
 
@@ -152,7 +163,7 @@ export function DocumentImportPage() {
     setNotice(null);
     try {
       const items = selected.map((token) => {
-        const document = documents.find((item) => item.resource_token === token)!;
+        const document = selectedDocuments[token]!;
         return {
           client_item_id: token,
           resource_token: token,
@@ -171,6 +182,7 @@ export function DocumentImportPage() {
         ),
       );
       setSelected([]);
+      setSelectedDocuments({});
 
       let text = `已提交入库 ${created} 个文档，正在处理中。`;
       if (duplicated > 0) {
@@ -394,10 +406,9 @@ export function DocumentImportPage() {
                   value={pageSize}
                   onChange={(event) => setPageSize(Number(event.target.value))}
                 >
-                  <MenuItem value={5}>5 条</MenuItem>
                   <MenuItem value={10}>10 条</MenuItem>
                   <MenuItem value={20}>20 条</MenuItem>
-                  <MenuItem value={50}>50 条</MenuItem>
+                  <MenuItem value={30}>30 条</MenuItem>
                 </Select>
               </FormControl>
               <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => void load()} disabled={loading}>
@@ -480,18 +491,9 @@ export function DocumentImportPage() {
                   </ListItem>
                 ))}
               </List>
-              {totalPages > 1 && (
-                <Box sx={{ display: "flex", justifyContent: "center", pt: 2 }}>
-                  <Pagination
-                    count={totalPages}
-                    page={page}
-                    onChange={(_event, value) => setPage(value)}
-                    color="primary"
-                    showFirstButton
-                    showLastButton
-                  />
-                </Box>
-              )}
+              <ListPagination page={page} pageSize={pageSize} total={page * pageSize} totalPages={totalPages} totalKnown={false}
+                pageSizeOptions={[10, 20, 30]} onPageChange={(value) => void load(value, pageCursors[value - 1] ?? null)}
+                onPageSizeChange={(value) => setPageSize(value)} />
             </>
           )}
         </CardContent>

@@ -165,7 +165,7 @@ class RealFeishuProvider(FeishuDocumentProvider):
             # 有关键字：搜索云文档（需搜索 scope）
             body = self._request(
                 "POST", "/open-apis/suite/docs-api/search/object", token=user_access_token,
-                json={"search_key": query, "count": limit},
+                json={"search_key": query, "count": limit, **({"page_token": page_token} if page_token else {})},
             )
             data = body.get("data", {})
             items = [_entity_to_document(e) for e in (data.get("entities", []) or [])]

@@ -24,6 +24,7 @@ import { listKnowledgeSources } from "../api/knowledgeSources";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { LoadingState } from "../components/LoadingState";
+import { ListPagination } from "../components/ListPagination";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 import { RESOURCE_TYPE_LABEL, SOURCE_STATUS_META } from "../types/statusMeta";
@@ -52,19 +53,24 @@ export function DocumentsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextPage = 1, nextSize = pageSize) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await listKnowledgeSources();
+      const result = await listKnowledgeSources({ limit: nextSize, offset: (nextPage - 1) * nextSize });
       setSources(result.items);
+      setTotal(result.total);
+      setPage(nextPage);
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     void load();
@@ -226,6 +232,9 @@ export function DocumentsPage() {
           )}
         </CardContent>
       </Card>
+      <ListPagination page={page} pageSize={pageSize} total={total} loading={loading}
+        onPageChange={(value) => void load(value)}
+        onPageSizeChange={(value) => { setPageSize(value); void load(1, value); }} />
     </>
   );
 }

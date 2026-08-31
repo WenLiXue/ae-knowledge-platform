@@ -14,8 +14,9 @@ import type {
   SourceRetryResult,
 } from "../types/documents";
 
-export function listKnowledgeSources(): Promise<ApiList<KnowledgeSource>> {
-  return apiGet<ApiList<KnowledgeSource>>("/api/v1/knowledge-sources");
+export function listKnowledgeSources(params: { limit?: number; offset?: number } = {}): Promise<ApiList<KnowledgeSource> & { total: number }> {
+  const q = new URLSearchParams({ limit: String(params.limit ?? 50), offset: String(params.offset ?? 0) });
+  return apiGet<ApiList<KnowledgeSource> & { total: number }>(`/api/v1/knowledge-sources?${q}`);
 }
 
 export function getKnowledgeSource(sourceId: string): Promise<KnowledgeSourceDetail> {

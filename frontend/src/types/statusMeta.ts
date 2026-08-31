@@ -86,6 +86,36 @@ export const AUDIT_MODULE_LABEL: Record<string, string> = {
   AUDIT: "审计管理",
   KNOWLEDGE: "知识库",
   TASKING: "处理任务",
+  USER: "用户管理",
+  CONVERSATION: "会话管理",
+};
+
+/** 审计动作展示名；原始动作码仅在详情中保留。 */
+export const AUDIT_ACTION_LABEL: Record<string, string> = {
+  "auth.login": "登录",
+  "auth.logout": "退出登录",
+  "auth.feishu.bind": "绑定飞书账号",
+  "auth.feishu.unbind": "解除飞书绑定",
+  "user.query": "查询用户",
+  "user.view": "查看用户详情",
+  "user.update": "更新用户",
+  "user.enable": "启用用户",
+  "user.disable": "禁用用户",
+  "user.role.change": "变更用户角色",
+  "conversation.admin.list": "查看全部会话",
+  "conversation.admin.view": "查看会话详情",
+  "audit.query": "查询审计日志",
+  "audit.view_detail": "查看审计详情",
+  "audit.export": "导出审计日志",
+};
+
+export const AUDIT_TARGET_LABEL: Record<string, string> = {
+  USER: "用户",
+  CONVERSATION: "会话",
+  AUDIT_LOG: "审计日志",
+  AUDIT_EXPORT: "审计导出",
+  LLM_CONFIG: "LLM 配置",
+  LLM_MODEL: "LLM 模型",
 };
 
 /** 任务类型展示。 */
@@ -111,6 +141,6 @@ export const RESOURCE_TYPE_LABEL: Record<string, string> = {
 
 /** 获取任意状态的中文标签（未收录时展示原值、中性配色）。 */
 export function statusLabel(meta: Record<string, StatusMeta>, value: string | null | undefined): StatusMeta {
-  const fallback: StatusMeta = { label: value || "未知", bg: NEUTRAL.bg, fg: NEUTRAL.fg };
+  const fallback: StatusMeta = { label: "未知状态", bg: NEUTRAL.bg, fg: NEUTRAL.fg };
   return (value && meta[value]) || fallback;
 }

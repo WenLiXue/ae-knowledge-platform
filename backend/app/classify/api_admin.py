@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from ..audit import service as audit_service
@@ -76,8 +76,9 @@ def _audit_failure(
 
 
 @router.get("")
-def admin_list_pending(db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
-    return {"data": {"items": confirmation.list_pending(db)}}
+def admin_list_pending(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+    items, total = confirmation.list_pending(db, limit=limit, offset=offset)
+    return {"data": {"items": items, "total": total, "limit": limit, "offset": offset}}
 
 
 @router.get("/{version_id}")

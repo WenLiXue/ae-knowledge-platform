@@ -50,6 +50,7 @@ import {
 } from "../../api/catalog";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+import { ListPagination } from "../../components/ListPagination";
 import { PageHeader } from "../../components/PageHeader";
 import type { ConfirmIrrelevantBody, ConfirmRelevantBody, PendingClassification } from "../../types/classificationPending";
 import type { CatalogItem, DocumentType, ProductVersion } from "../../types/config";
@@ -139,19 +140,21 @@ export function PendingClassificationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [page, setPage] = useState(1); const [pageSize, setPageSize] = useState(20); const [total, setTotal] = useState(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextPage = 1, nextSize = pageSize) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await listPendingClassification();
+      const data = await listPendingClassification({ limit: nextSize, offset: (nextPage - 1) * nextSize });
       setItems(data.items);
+      setTotal(data.total); setPage(nextPage);
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     void load();
@@ -389,6 +392,7 @@ export function PendingClassificationPage() {
           )}
         </CardContent>
       </Card>
+      <ListPagination page={page} pageSize={pageSize} total={total} loading={loading} onPageChange={(value) => void load(value)} onPageSizeChange={(value) => { setPageSize(value); void load(1, value); }} />
 
       {/* 详情抽屉 */}
       <Drawer anchor="right" open={detailOpen} onClose={closeDetail}>

@@ -18,8 +18,9 @@ import type {
 
 const BASE = "/api/v1/admin/classification-pending";
 
-export function listPendingClassification(): Promise<ApiList<PendingClassification>> {
-  return apiGet<ApiList<PendingClassification>>(BASE);
+export function listPendingClassification(params: { limit?: number; offset?: number } = {}): Promise<ApiList<PendingClassification> & { total: number }> {
+  const q = new URLSearchParams({ limit: String(params.limit ?? 50), offset: String(params.offset ?? 0) });
+  return apiGet<ApiList<PendingClassification> & { total: number }>(`${BASE}?${q}`);
 }
 
 export function getPendingClassificationDetail(

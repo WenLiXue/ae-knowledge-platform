@@ -91,19 +91,20 @@ def _pending_item(source: KnowledgeSource, version: DocumentVersion, result: Cla
 
 # ---- 查询 ----
 
-def list_pending(session: Session) -> list[dict]:
+def list_pending(session: Session, *, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
     sources = session.execute(
         select(KnowledgeSource)
         .where(KnowledgeSource.status == "PENDING_CONFIRMATION")
         .order_by(KnowledgeSource.updated_at.desc())
     ).scalars().all()
+    total = len(sources)
     items: list[dict] = []
-    for source in sources:
+    for source in sources[max(offset, 0): max(offset, 0) + min(max(limit, 1), 200)]:
         version = session.get(DocumentVersion, source.pending_version_id) if source.pending_version_id else None
         if version is None:
             continue
         items.append(_pending_item(source, version, _latest_result(session, version.id)))
-    return items
+    return items, total
 
 
 def get_pending_detail(session: Session, version_id: uuid.UUID) -> dict | None:
