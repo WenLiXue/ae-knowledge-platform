@@ -108,6 +108,8 @@ export interface Answer {
   progress_stage?: AnswerStage | null;
   answer_type: AnswerType | null;
   summary: string | null;
+  /** 流式生成期间的未校验草稿，终态后由正式答案替代。 */
+  draft_text?: string | null;
   blocks: AnswerBlock[];
   citations: Citation[];
   degradation_flags: string[];
