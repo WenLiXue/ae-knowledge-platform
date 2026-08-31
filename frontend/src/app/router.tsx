@@ -14,6 +14,8 @@ import { LlmConfigPage } from "../pages/admin/LlmConfigPage";
 import { PendingClassificationPage } from "../pages/admin/PendingClassificationPage";
 import { SystemLogsPage } from "../pages/admin/SystemLogsPage";
 import { TasksPage } from "../pages/admin/TasksPage";
+import { UsersPage } from "../pages/admin/UsersPage";
+import { AdminConversationsPage } from "../pages/admin/AdminConversationsPage";
 import { LoginPage } from "../pages/LoginPage";
 import { SearchPage } from "../pages/SearchPage";
 
@@ -80,7 +82,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "admin/users",
-        element: <PlaceholderPage title="用户管理" description="管理系统用户、角色与飞书绑定。" />,
+        element: <UsersPage />,
+      },
+      {
+        path: "admin/conversations",
+        element: <AdminConversationsPage />,
       },
       {
         path: "admin/audit-logs",

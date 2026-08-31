@@ -42,22 +42,18 @@ export function LoginPage() {
         }}
       >
         <Box
+          component="img"
+          src="/workbench-icon.svg"
+          alt="智能工作台"
           sx={{
             width: { xs: 60, sm: 78 },
             height: { xs: 60, sm: 78 },
             flexShrink: 0,
             borderRadius: "12px",
-            border: "1px solid rgba(255,255,255,.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: { xs: 22, sm: 28 },
-            fontWeight: 700,
-            letterSpacing: "-0.03em",
+            bgcolor: "#fff",
+            p: 1,
           }}
-        >
-          AE
-        </Box>
+        />
         <Box sx={{ minWidth: 0 }}>
           <Box
             sx={{

@@ -69,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon /> },
       { to: "/admin/llm-config", label: "LLM 配置", icon: <SmartToyOutlinedIcon /> },
       { to: "/admin/system-logs", label: "系统日志", icon: <ListAltOutlinedIcon /> },
+      { to: "/admin/conversations", label: "全部会话", icon: <AssignmentOutlinedIcon /> },
       { to: "/admin/users", label: "用户管理", icon: <PeopleOutlinedIcon /> },
       { to: "/admin/audit-logs", label: "审计日志", icon: <ReceiptLongOutlinedIcon /> },
     ],
@@ -101,22 +102,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Box sx={{ px: 2.5, py: 2.5, display: "flex", alignItems: "center", gap: 1.5 }}>
         <Box
-          sx={{
-            width: 34,
-            height: 34,
-            borderRadius: 1.5,
-            bgcolor: "primary.main",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 15,
-            flexShrink: 0,
-          }}
-        >
-          AE
-        </Box>
+          component="img"
+          src="/workbench-icon.svg"
+          alt="智能工作台"
+          sx={{ width: 36, height: 36, flexShrink: 0 }}
+        />
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ lineHeight: 1.2, fontWeight: 700 }}>
             智能工作台
@@ -129,7 +119,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <Divider />
 
       <Box sx={{ flexGrow: 1, overflowY: "auto", px: 1.5, py: 1.5 }}>
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.filter((group) => group.label !== "系统管理" || user?.role === "admin").map((group) => (
           <Box key={group.label} sx={{ mb: 1.5 }}>
             <Typography
               variant="overline"

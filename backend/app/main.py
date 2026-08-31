@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
 
 from .audit.api import router as audit_router
+from .admin.api import router as admin_router
 from .agent.api import router as agent_router
 from .agent.capability_api import router as capability_router
 from .auth.api import router as auth_router
@@ -111,6 +112,7 @@ app.include_router(admin_config_router)
 app.include_router(classification_admin_router)
 app.include_router(llm_config_router)
 app.include_router(audit_router)
+app.include_router(admin_router)
 app.include_router(agent_router)
 app.include_router(capability_router)
 app.include_router(logs_router)

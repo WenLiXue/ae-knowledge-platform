@@ -65,6 +65,7 @@ const KNOWLEDGE_ITEMS: NavItem[] = [
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
+  { to: "/admin/conversations", label: "全部会话", icon: <AssignmentOutlinedIcon fontSize="small" /> },
   { to: "/admin/agent-capabilities", label: "Agent 能力", icon: <ExtensionOutlinedIcon fontSize="small" /> },
   { to: "/admin/tasks", label: "处理任务", icon: <AssignmentOutlinedIcon fontSize="small" /> },
   { to: "/admin/knowledge-config", label: "知识库配置", icon: <TuneOutlinedIcon fontSize="small" /> },
@@ -189,22 +190,11 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
       {/* 品牌 */}
       <Box sx={{ px: 2.5, py: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
         <Box
-          sx={{
-            width: 34,
-            height: 34,
-            borderRadius: 1.5,
-            bgcolor: "primary.main",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 15,
-            flexShrink: 0,
-          }}
-        >
-          AE
-        </Box>
+          component="img"
+          src="/workbench-icon.svg"
+          alt="智能工作台"
+          sx={{ width: 36, height: 36, flexShrink: 0 }}
+        />
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ lineHeight: 1.2, fontWeight: 700 }}>
             智能工作台
@@ -322,7 +312,7 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
             </Stack>
           </Collapse>
 
-          <>
+          {user?.role === "admin" && <>
               <Button
                 onClick={() => setAdminOpen((open) => !open)}
                 aria-expanded={adminOpen}
@@ -372,7 +362,7 @@ export function QueryWorkspaceSidebar({ onNavigate }: QueryWorkspaceSidebarProps
                   })}
                 </Stack>
               </Collapse>
-          </>
+          </>}
         </Stack>
       </Box>
 
