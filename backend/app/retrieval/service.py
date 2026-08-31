@@ -240,15 +240,21 @@ class RetrievalService:
             # 4) Rerank（可选；失败/为空降级 RRF 顺序 + RERANK_FAILED）
             if candidates:
                 try:
+                    # Send only the top rerank window to the model.  The
+                    # previous implementation sent fusion_top_k (40 by
+                    # default) even when rerank_top_k was 12, increasing
+                    # request size and model latency without affecting the
+                    # final evidence window.
+                    rerank_candidates = candidates[: config.rerank_top_k]
                     outcome = self._rerank_fn(
                         db,
                         plan.normalized_question,
-                        [c.doc.get("content") or "" for c in candidates],
+                        [c.doc.get("content") or "" for c in rerank_candidates],
                         config.rerank_top_k,
                     )
                     rerank_model_key = outcome.model_key if outcome is not None else None
                     if outcome is not None and outcome.results:
-                        by_index = {i: c for i, c in enumerate(candidates)}
+                        by_index = {i: c for i, c in enumerate(rerank_candidates)}
                         reranked: list[Candidate] = []
                         for idx, score in outcome.results:
                             cand = by_index.get(idx)

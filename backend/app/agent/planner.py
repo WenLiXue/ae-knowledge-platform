@@ -62,7 +62,18 @@ def plan_goal(
     if not available:
         raise ToolError("TOOL_PERMISSION_DENIED", "当前用户没有可用工具")
     plan: AgentPlan | None = None
-    if chat is not None:
+    # A single read-only capability has a deterministic plan. Skip the LLM
+    # planner entirely for this common path (knowledge queries), avoiding an
+    # unnecessary round trip and malformed-JSON retries.
+    deterministic_capability = next(
+        (name for name in goal.candidate_capabilities if name in registry.names()), None
+    )
+    can_skip_llm = (
+        deterministic_capability == "knowledge.search"
+        and len(goal.candidate_capabilities) <= 1
+        and goal.risk_hint in ("NONE", "READ_ONLY")
+    )
+    if chat is not None and not can_skip_llm:
         prompt = {
             "goal": goal.model_dump(mode="json"),
             "available_tools": available,
