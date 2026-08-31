@@ -589,6 +589,7 @@ export function ConversationPage() {
           progress_stage: answer.progress_stage ?? null,
           answer_type: answer.answer_type,
           summary: answer.summary,
+          draft_text: answer.draft_text,
           blocks: answer.blocks,
           citations: answer.citations,
           degradation_flags: answer.degradation_flags,
@@ -603,6 +604,10 @@ export function ConversationPage() {
         setStreaming((prev) =>
           prev ? { ...prev, status: payload.status, progress_stage: payload.progress_stage } : prev,
         );
+      },
+      onDelta: (payload) => {
+        if (cancelled) return;
+        setStreaming((prev) => (prev ? { ...prev, draft_text: payload.text } : prev));
       },
       onBlock: (block) => {
         if (cancelled) return;
@@ -782,6 +787,11 @@ export function ConversationPage() {
                 <CircularProgress size={18} />
                 <Box minWidth={0}>
                   <Typography variant="subtitle2">{streamStageText(streaming)}</Typography>
+                  {streaming.draft_text && (
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 1 }}>
+                      {streaming.draft_text}
+                    </Typography>
+                  )}
                   <Typography variant="caption" color="text.secondary">
                     {streaming.degradation_flags.length > 0
                       ? "（降级模式：部分能力暂不可用）"

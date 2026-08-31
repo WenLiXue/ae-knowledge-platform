@@ -216,6 +216,7 @@ def answer_events(
     def stream():
         after_no = _cursor_seq(after)
         last_signal: tuple[str, str | None] | None = None
+        last_draft = ""
         last_heartbeat = time.monotonic()
         deadline = time.monotonic() + 600
         with SessionLocal() as session:
@@ -251,6 +252,13 @@ def answer_events(
                 if signal != last_signal:
                     last_signal = signal
                     yield _status_event(answer)
+                if answer.draft_text and answer.draft_text != last_draft:
+                    last_draft = answer.draft_text
+                    yield _sse_event(
+                        f"draft:{answer.updated_at.isoformat()}",
+                        "answer.delta",
+                        {"answer_id": str(answer.id), "text": answer.draft_text},
+                    )
                 if answer.status in _TERMINAL:
                     for seq, name, data in _final_events(session, answer):
                         yield _sse_event(f"e{seq}:{name}:{_event_suffix(name, data)}", name, data)

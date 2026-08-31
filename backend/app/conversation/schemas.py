@@ -90,6 +90,7 @@ class AnswerOut(BaseModel):
     progress_stage: str | None = None
     answer_type: str | None = None
     summary: str | None = None
+    draft_text: str | None = None
     blocks: list[AnswerBlock] = Field(default_factory=list)
     citations: list[AnswerCitationOut] = Field(default_factory=list)
     degradation_flags: list[str] = Field(default_factory=list)

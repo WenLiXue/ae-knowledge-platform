@@ -44,6 +44,7 @@ export interface StreamingAnswer {
   progress_stage: string | null;
   answer_type: AnswerType | null;
   summary: string | null;
+  draft_text?: string | null;
   blocks: AnswerBlock[];
   citations: Citation[];
   degradation_flags: string[];
@@ -123,6 +124,7 @@ export interface AnswerEventsHandlers {
   onStatus?: (payload: { answer_id: string; status: string; progress_stage: string | null }) => void;
   onBlock?: (block: AnswerBlock) => void;
   onCitation?: (citation: Citation) => void;
+  onDelta?: (payload: { answer_id: string; text: string }) => void;
   onDone?: (payload: { answer_id: string; status: string; answer_type: string }) => void;
   onEnd?: () => void;
 }
@@ -147,6 +149,7 @@ export function subscribeAnswerEvents(
     else if (eventName === "answer.status") handlers.onStatus?.(payload);
     else if (eventName === "answer.block") handlers.onBlock?.(payload);
     else if (eventName === "answer.citation") handlers.onCitation?.(payload);
+    else if (eventName === "answer.delta") handlers.onDelta?.(payload);
     else if (eventName === "answer.done") handlers.onDone?.(payload);
   };
 

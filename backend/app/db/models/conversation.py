@@ -188,6 +188,7 @@ class Answer(Base, TimestampMixin):
     progress_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
     answer_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    draft_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     blocks_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     degradation_flags: Mapped[list | None] = mapped_column(ARRAY(String), nullable=False)
     retrieval_config_revision: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
