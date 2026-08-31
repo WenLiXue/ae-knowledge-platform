@@ -23,15 +23,17 @@ class UserUpdateIn(BaseModel):
     status: str | None = Field(default=None, pattern="^(ACTIVE|DISABLED)$")
     is_admin: bool | None = None
 
-def _user_out(user: User, account_id: str | None = None) -> dict:
+def _user_out(user: User, account_id: str | None = None, identity: ExternalIdentity | None = None) -> dict:
+    snapshot = identity.profile_snapshot if identity else None
+    avatar_url = snapshot.get("avatar_url") if isinstance(snapshot, dict) else None
     return {"id": str(user.id), "username": user.username or account_id, "display_name": user.display_name,
             "email": user.email, "status": user.status, "is_admin": user.is_admin,
-            "created_source": user.created_source, "created_at": user.created_at}
+            "created_source": user.created_source, "created_at": user.created_at, "avatar_url": avatar_url}
 
 @router.get("/users")
 def list_users(request: Request, keyword: str | None = None, status: str | None = None, limit: int = 50, offset: int = 0,
                db: Session = Depends(get_db), admin: User = Depends(require_admin_action("user.query"))):
-    query = select(User, ExternalIdentity.external_user_id).outerjoin(
+    query = select(User, ExternalIdentity).outerjoin(
         ExternalIdentity,
         (ExternalIdentity.user_id == User.id) & (ExternalIdentity.provider == "FEISHU")
     )
@@ -47,7 +49,7 @@ def list_users(request: Request, keyword: str | None = None, status: str | None 
         target_type="USER", metadata={"count": len(rows), "total": total},
     ))
     db.commit()
-    return {"data": {"items": [_user_out(user, account_id) for user, account_id in rows], "total": total}}
+    return {"data": {"items": [_user_out(user, identity.external_user_id if identity else None, identity) for user, identity in rows], "total": total}}
 
 @router.patch("/users/{user_id}")
 def update_user(request: Request, user_id: uuid.UUID, data: UserUpdateIn, db: Session = Depends(get_db), admin: User = Depends(require_admin_action("user.update"))):
@@ -101,7 +103,7 @@ def get_user_detail(request: Request, user_id: uuid.UUID, db: Session = Depends(
     ))
     db.commit()
     return {"data": {
-        **_user_out(user, identity.external_user_id if identity else None),
+        **_user_out(user, identity.external_user_id if identity else None, identity),
         "feishu": {
             "bound": identity is not None and identity.binding_status == "BOUND",
             "provider": identity.provider if identity else None,

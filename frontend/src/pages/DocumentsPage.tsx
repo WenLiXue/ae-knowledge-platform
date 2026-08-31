@@ -20,7 +20,8 @@ import {
   Typography,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { listKnowledgeSources } from "../api/knowledgeSources";
+import ReplayIcon from "@mui/icons-material/Replay";
+import { listKnowledgeSources, retryKnowledgeSource } from "../api/knowledgeSources";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { LoadingState } from "../components/LoadingState";
@@ -56,6 +57,7 @@ export function DocumentsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const load = useCallback(async (nextPage = 1, nextSize = pageSize) => {
     setLoading(true);
@@ -85,6 +87,19 @@ export function DocumentsPage() {
       return true;
     });
   }, [sources, query, statusFilter, typeFilter]);
+
+  const retry = async (sourceId: string) => {
+    if (retryingId) return;
+    setRetryingId(sourceId);
+    try {
+      await retryKnowledgeSource(sourceId);
+      await load(page, pageSize);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   return (
     <>
@@ -220,9 +235,16 @@ export function DocumentsPage() {
                     </TableCell>
                     <TableCell>{formatTime(source.created_at)}</TableCell>
                     <TableCell>
-                      <Button size="small" onClick={(event) => event.stopPropagation()}>
-                        查看详情
-                      </Button>
+                      <Stack direction="row" spacing={0.5}>
+                        <Button size="small" onClick={(event) => { event.stopPropagation(); navigate(`/documents/${source.source_id}`); }}>
+                          查看详情
+                        </Button>
+                        {source.status === "FAILED" && (
+                          <Button size="small" color="warning" startIcon={<ReplayIcon />} disabled={retryingId === source.source_id} onClick={(event) => { event.stopPropagation(); void retry(source.source_id); }}>
+                            {retryingId === source.source_id ? "重试中" : "重试"}
+                          </Button>
+                        )}
+                      </Stack>
                     </TableCell>
                   </TableRow>
                   );

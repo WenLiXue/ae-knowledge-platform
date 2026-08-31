@@ -16,14 +16,16 @@ COPY backend/pyproject.toml ./pyproject.toml
 COPY backend/app ./app
 COPY backend/migrations ./migrations
 COPY backend/alembic.ini ./alembic.ini
+COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN uv pip install --system --index-url https://pypi.tuna.tsinghua.edu.cn/simple .
 
 RUN addgroup --system app && adduser --system --ingroup app app \
     && mkdir -p /app/backend/storage /app/backend/exports \
-    && chown -R app:app /app
+    && chown -R app:app /app \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
-USER app
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 EXPOSE 8000
 

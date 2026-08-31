@@ -17,14 +17,12 @@ import {
   LinearProgress,
   MenuItem,
   Stack,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -103,8 +101,6 @@ function OutcomeChip({ outcome }: { outcome: string }) {
   return <Chip size="small" label={meta.label} sx={{ bgcolor: meta.bg, color: meta.fg, fontWeight: 600 }} />;
 }
 
-type OutcomeTab = "all" | AuditOutcome;
-
 /** 审计日志页：筛选、摘要、列表、详情抽屉与导出。 */
 export function AuditLogsPage() {
   // 列表与筛选
@@ -127,8 +123,6 @@ export function AuditLogsPage() {
   const [outcome, setOutcome] = useState<"" | AuditOutcome>("");
   const [startAt, setStartAt] = useState(initial.start);
   const [endAt, setEndAt] = useState(initial.end);
-  // 结果 Tabs 由 outcome 派生，避免双控件状态冲突
-  const tab: OutcomeTab = outcome === "" ? "all" : outcome;
 
   // 已应用的筛选
   const [applied, setApplied] = useState<AuditQueryParams>({
@@ -220,14 +214,6 @@ export function AuditLogsPage() {
   const changePageSize = (size: number) => {
     setPageSize(size);
     void loadFirstPage(applied, applied, size);
-  };
-
-  const onTabChange = (_: unknown, value: OutcomeTab) => {
-    const nextOutcome: "" | AuditOutcome = value === "all" ? "" : value;
-    setOutcome(nextOutcome);
-    const params = paramsFrom(nextOutcome);
-    setApplied(params);
-    void loadFirstPage(params, params);
   };
 
   const clearFilters = () => {
@@ -349,9 +335,6 @@ export function AuditLogsPage() {
     }
   };
 
-  const outcomeCount = (o: AuditOutcome) =>
-    summary?.by_outcome.find((item) => item.outcome === o)?.count ?? 0;
-
   const exportMeta = exportTask ? statusLabel(AUDIT_EXPORT_META, exportTask.status) : null;
 
   return (
@@ -387,33 +370,6 @@ export function AuditLogsPage() {
           {getErrorMessage(error, "加载失败")}
         </Alert>
       )}
-
-      {/* 结果概览：成功 / 失败 / 拒绝 */}
-      <Card sx={{ mb: 2 }}>
-        <Tabs value={tab} onChange={onTabChange} variant="scrollable" allowScrollButtonsMobile>
-          <Tab value="all" label={`全部结果 ${summary?.total ?? "…"}`} />
-          <Tab value="SUCCESS" label={`成功 ${outcomeCount("SUCCESS")}`} />
-          <Tab value="FAILURE" label={`失败 ${outcomeCount("FAILURE")}`} />
-          <Tab value="DENIED" label={`拒绝 ${outcomeCount("DENIED")}`} />
-        </Tabs>
-        {summary && summary.by_module.length > 0 && (
-          <Stack
-            direction="row"
-            spacing={1}
-            flexWrap="wrap"
-            sx={{ px: 2, pb: 1.5, pt: 0.5 }}
-          >
-            {summary.by_module.map((m) => (
-              <Chip
-                key={m.module}
-                size="small"
-                variant="outlined"
-                label={`${AUDIT_MODULE_LABEL[m.module] ?? "其他模块"} ${m.count}`}
-              />
-            ))}
-          </Stack>
-        )}
-      </Card>
 
       {/* 筛选 */}
       <Card sx={{ mb: 2 }}>
@@ -572,7 +528,7 @@ export function AuditLogsPage() {
                           <Typography variant="body2">{AUDIT_MODULE_LABEL[row.module] ?? "其他模块"}</Typography>
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
-                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12.5 }}>
+                          <Typography variant="body2">
                             {AUDIT_ACTION_LABEL[row.action] ?? "其他操作"}
                           </Typography>
                         </TableCell>
@@ -585,7 +541,7 @@ export function AuditLogsPage() {
                           <OutcomeChip outcome={row.outcome} />
                         </TableCell>
                         <TableCell sx={{ py: 1.5 }}>
-                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12.5 }}>
+                          <Typography variant="body2">
                             {row.source_ip ?? "—"}
                           </Typography>
                         </TableCell>
@@ -654,7 +610,7 @@ export function AuditLogsPage() {
                       <Chip size="small" label={detail.error_code} sx={{ fontFamily: "monospace" }} />
                     )}
                   </Stack>
-                  <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                  <Typography variant="body2">
                     {AUDIT_ACTION_LABEL[detail.action] ?? "其他操作"}
                   </Typography>
                   <Typography variant="body1" sx={{ mt: 1 }}>

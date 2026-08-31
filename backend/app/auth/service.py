@@ -102,6 +102,13 @@ def process_oauth_callback(
         # 早期版本只保存了显示名，补齐已有飞书用户的稳定账号标识。
         if not user.username:
             user.username = external_user_id
+        # 同步飞书资料，头像变更后下次登录即可在管理端更新。
+        current_snapshot = identity.profile_snapshot if isinstance(identity.profile_snapshot, dict) else {}
+        identity.profile_snapshot = {
+            **current_snapshot,
+            "name": profile.name or current_snapshot.get("name"),
+            "avatar_url": profile.avatar_url or current_snapshot.get("avatar_url"),
+        }
     else:
         newly_bound = True
         user = User(

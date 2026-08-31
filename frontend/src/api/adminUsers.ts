@@ -1,6 +1,6 @@
 import { apiGet, apiPatch } from "./client";
 
-export interface AdminUser { id: string; username: string | null; display_name: string; email: string | null; status: "ACTIVE" | "DISABLED"; is_admin: boolean; created_source: string; created_at: string; }
+export interface AdminUser { id: string; username: string | null; display_name: string; email: string | null; status: "ACTIVE" | "DISABLED"; is_admin: boolean; created_source: string; created_at: string; avatar_url?: string | null; }
 export interface AdminUserDetail extends AdminUser { feishu: { bound: boolean; provider: string | null; tenant_key: string | null; external_user_id: string | null; open_id: string | null; union_id: string | null; bound_at: string | null; access_expires_at: string | null } }
 export interface AdminConversation { id: string; title: string; status: string; filters: Record<string, unknown>; last_message_at: string | null; created_at: string; owner: { id: string; username: string | null; display_name: string }; }
 export function listAdminUsers(params: { keyword?: string; status?: string; limit?: number; offset?: number } = {}) { const q = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => v !== undefined && v !== "" && q.set(k,String(v))); return apiGet<{items: AdminUser[]; total: number}>(`/api/v1/admin/users?${q}`); }
