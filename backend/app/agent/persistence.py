@@ -20,11 +20,29 @@ def _hash(value: object) -> str:
 
 def persist_plan(session_factory, *, answer_id: str, plan: AgentPlan) -> None:
     from .db_models import AgentPlan as DbPlan, AgentPlanStep, AgentRun
+    from ..db.models.conversation import Answer
 
     with session_factory() as db:
         run = db.execute(select(AgentRun).where(AgentRun.answer_id == uuid.UUID(str(answer_id)))).scalar_one_or_none()
         if run is None:
-            raise ToolError("AGENT_RUN_NOT_FOUND", "Agent 运行记录不存在")
+            # A retry or a worker crash can leave the Answer without its
+            # runtime row. Recreate the row transactionally instead of
+            # discarding an otherwise valid plan.
+            answer = db.get(Answer, uuid.UUID(str(answer_id)))
+            if answer is None:
+                raise ToolError("AGENT_RUN_NOT_FOUND", "Agent 运行记录不存在")
+            run = AgentRun(
+                answer_id=answer.id,
+                conversation_id=answer.conversation_id,
+                status="RUNNING",
+                graph_version="knowledge-assistant-v1",
+                checkpoint_thread_id=str(answer.id),
+                max_steps=12,
+                degradation_flags=[],
+                step_count=0,
+            )
+            db.add(run)
+            db.flush()
         db_plan = db.get(DbPlan, uuid.UUID(str(plan.id)))
         if db_plan is None:
             db_plan = DbPlan(

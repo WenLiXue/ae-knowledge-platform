@@ -64,6 +64,10 @@ def core_create_plan(state: dict, ctx):
 
         persist_plan(ctx.session_factory, answer_id=str(state["answer_id"]), plan=plan)
     except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "agent_plan_persistence_failed", extra={"answer_id": state.get("answer_id")}
+        )
         return {
             "_terminate": True,
             "final_status": "FAILED",
