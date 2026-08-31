@@ -12,6 +12,7 @@ import logging
 import json
 import time
 import uuid
+from collections.abc import Iterator
 
 import httpx
 
@@ -191,6 +192,54 @@ class OpenAICompatibleGateway:
             },
         )
         return response
+
+    def stream_chat(self, request: ChatRequest) -> Iterator[str]:
+        """Stream assistant text deltas from an OpenAI-compatible endpoint.
+
+        The normal ``chat`` path remains the authoritative structured-output
+        path. This method is intentionally a small transport primitive: it
+        yields only text deltas and leaves persistence, cancellation and final
+        schema validation to the caller.
+        """
+        request_id = _request_id()
+        payload = {"model": request.model, "messages": request.messages, "stream": True}
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
+        url = f"{self.base_url}/{_ENDPOINTS['chat']}"
+        try:
+            with self._client().stream("POST", url, json=payload, headers=self._headers()) as response:
+                if response.status_code != 200:
+                    # Reuse stable status handling without consuming partial
+                    # data; callers get the same GatewayError categories.
+                    if response.status_code in (401, 403):
+                        raise GatewayError("AUTH", "AUTH_FAILED", "模型凭据无效或无权访问", retryable=False, status=response.status_code)
+                    raise GatewayError("PROVIDER", f"PROVIDER_{response.status_code}", "模型服务异常", retryable=response.status_code >= 500, status=response.status_code)
+                for line in response.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    raw = line[5:].strip()
+                    if raw == "[DONE]":
+                        break
+                    try:
+                        item = json.loads(raw)
+                    except ValueError as exc:
+                        raise GatewayError("SCHEMA", "STREAM_INVALID_JSON", "模型流返回非法 JSON", retryable=False) from exc
+                    choices = item.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = (choices[0].get("delta") or {}).get("content")
+                    if delta:
+                        yield str(delta)
+        except httpx.TimeoutException as exc:
+            raise GatewayError("NETWORK", "TIMEOUT", "模型流调用超时", retryable=True) from exc
+        except httpx.TransportError as exc:
+            raise GatewayError("NETWORK", "TRANSPORT_ERROR", "模型流调用网络错误", retryable=True) from exc
 
     def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         request_id = _request_id()

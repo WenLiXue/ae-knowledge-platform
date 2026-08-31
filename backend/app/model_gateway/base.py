@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol
+from typing import Any, Iterator, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -101,5 +101,6 @@ class ModelGateway(Protocol):
     """供应商无关的模型调用协议。"""
 
     def chat(self, request: ChatRequest) -> ChatResponse: ...
+    def stream_chat(self, request: ChatRequest) -> Iterator[str]: ...
     def embed(self, request: EmbeddingRequest) -> EmbeddingResponse: ...
     def rerank(self, request: RerankRequest) -> RerankResponse: ...

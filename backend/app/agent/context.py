@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, Iterator
 import uuid
 
 from sqlalchemy.orm import Session
@@ -109,6 +109,22 @@ class AgentModels:
             response_format=response_format,
             retries=0 if timeout_seconds else 3,
         )
+
+    def stream_chat(self, messages: list[dict], *, max_tokens: int = 4096) -> Iterator[str]:
+        """Yield provider text deltas; callers own persistence and final parsing."""
+        if self._chat_fn is not None:
+            raise ValueError("注入式 chat_fn 不支持流式调用")
+        if self._session_factory is None:
+            raise ValueError("AgentModels 未配置 session_factory，无法解析 QA 模型")
+        from ..model_gateway.base import ChatRequest
+
+        with self._session_factory() as db:
+            resolved = self._resolve_model(db, "QA")
+            self._last_model_key = resolved.model_config_id
+            gateway = self._gateway_factory(resolved)
+            model_name = resolved.model_name
+            db.commit()
+        yield from gateway.stream_chat(ChatRequest(model=model_name, messages=messages, max_tokens=max_tokens))
 
     def chat_with_tools(
         self,
