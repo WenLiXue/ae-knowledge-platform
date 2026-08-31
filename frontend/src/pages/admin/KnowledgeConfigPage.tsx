@@ -49,6 +49,7 @@ import { getErrorMessage } from "../../api/client";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorAlert } from "../../components/ErrorAlert";
 import { LoadingState } from "../../components/LoadingState";
+import { ListPagination } from "../../components/ListPagination";
 import { PageHeader } from "../../components/PageHeader";
 import type { CatalogItem, DocumentType, ProductVersion, SourcePriority } from "../../types/config";
 
@@ -80,6 +81,8 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
   const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; row: CatalogItem } | { mode: "delete"; row: CatalogItem }>(null);
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +91,7 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
       const fn =
         kind === "product" ? adminListProducts : kind === "doc-type" ? adminListDocumentTypes : adminListProductForms;
       setRows((await fn()).items);
+      setPage(1);
     } catch (err) {
       setError(err);
     } finally {
@@ -190,7 +194,7 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.slice((page - 1) * pageSize, page * pageSize).map((row) => (
               <TableRow key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{row.code}</TableCell>
@@ -216,6 +220,7 @@ function CatalogSection({ kind }: { kind: CatalogKind }) {
           </TableBody>
         </Table>
       )}
+      {rows.length > 0 && <ListPagination page={page} pageSize={pageSize} total={rows.length} totalPages={Math.ceil(rows.length / pageSize)} pageSizeOptions={[10, 20, 30]} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
 
       <Dialog open={dialog !== null} onClose={() => setDialog(null)} fullWidth maxWidth="sm">
         <DialogTitle>{dialog?.mode === "create" ? `新增${KIND_LABEL[kind]}` : dialog?.mode === "delete" ? `删除${KIND_LABEL[kind]}` : `编辑${KIND_LABEL[kind]}`}</DialogTitle>
@@ -255,11 +260,14 @@ function VersionsSection({ product }: { product: CatalogItem }) {
   const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; row: ProductVersion }>(null);
   const [form, setForm] = useState({ version_code: "", big_version: "", sort_order: 0 });
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows((await adminListVersions(product.id)).items);
+      setPage(1);
     } finally {
       setLoading(false);
     }
@@ -322,7 +330,7 @@ function VersionsSection({ product }: { product: CatalogItem }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.slice((page - 1) * pageSize, page * pageSize).map((row) => (
               <TableRow key={row.id}>
                 <TableCell>{row.big_version ?? "-"}</TableCell>
                 <TableCell>{row.version_code}</TableCell>
@@ -347,6 +355,7 @@ function VersionsSection({ product }: { product: CatalogItem }) {
           </TableBody>
         </Table>
       )}
+      {rows.length > 0 && <ListPagination page={page} pageSize={pageSize} total={rows.length} totalPages={Math.ceil(rows.length / pageSize)} pageSizeOptions={[10, 20, 30]} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
 
       <Dialog open={dialog !== null} onClose={() => setDialog(null)} fullWidth maxWidth="sm">
         <DialogTitle>{dialog?.mode === "create" ? "新增版本" : "编辑版本"}</DialogTitle>
@@ -377,6 +386,8 @@ function SourcePrioritiesSection() {
   const [values, setValues] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -417,7 +428,7 @@ function SourcePrioritiesSection() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.slice((page - 1) * pageSize, page * pageSize).map((row) => (
               <TableRow key={row.source_code}>
                 <TableCell>{row.display_name}</TableCell>
                 <TableCell>
@@ -430,6 +441,7 @@ function SourcePrioritiesSection() {
           </TableBody>
         </Table>
       )}
+      {rows.length > 0 && <ListPagination page={page} pageSize={pageSize} total={rows.length} totalPages={Math.ceil(rows.length / pageSize)} pageSizeOptions={[10, 20, 30]} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
       <Box>
         <Button variant="contained" onClick={() => void save()}>保存优先级</Button>
       </Box>
@@ -455,6 +467,8 @@ export function KnowledgeConfigPage() {
   const [productDialog, setProductDialog] = useState<null | { mode: "create" } | { mode: "edit"; product: CatalogItem }>(null);
   const [productForm, setProductForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
   const [productSaving, setProductSaving] = useState(false);
+  const [productPage, setProductPage] = useState(1);
+  const [productPageSize, setProductPageSize] = useState(10);
 
   const openProductCreate = () => {
     setProductForm(EMPTY_PRODUCT_FORM);
@@ -506,6 +520,7 @@ export function KnowledgeConfigPage() {
   useEffect(() => {
     adminListProducts().then((res) => {
       setProducts(res.items);
+      setProductPage(1);
       setSelectedProduct((current) => current ?? res.items[0] ?? null);
     }).finally(() => setProductLoading(false));
   }, []);
@@ -534,8 +549,9 @@ export function KnowledgeConfigPage() {
                   ) : products.length === 0 ? (
                     <Typography color="text.secondary">暂无产品，点击上方“新增产品”创建。</Typography>
                   ) : (
+                    <Box>
                     <Stack spacing={0.5}>
-                      {products.map((p) => {
+                      {products.slice((productPage - 1) * productPageSize, productPage * productPageSize).map((p) => {
                         const selected = selectedProduct?.id === p.id;
                         return (
                           <Stack
@@ -574,6 +590,8 @@ export function KnowledgeConfigPage() {
                         );
                       })}
                     </Stack>
+                    <ListPagination page={productPage} pageSize={productPageSize} total={products.length} totalPages={Math.ceil(products.length / productPageSize)} pageSizeOptions={[10, 20, 30]} onPageChange={setProductPage} onPageSizeChange={(size) => { setProductPageSize(size); setProductPage(1); }} />
+                    </Box>
                   )}
                 </Box>
                 <Box sx={{ flex: 1 }}>

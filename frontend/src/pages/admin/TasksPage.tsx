@@ -34,7 +34,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { TASK_STATUS_META, TASK_TYPE_META, statusLabel } from "../../types/statusMeta";
 
 const TASK_TYPES = ["FETCH", "PARSE", "CLASSIFY", "CHUNK", "EMBED", "INDEX", "FINALIZE", "CLEANUP", "GENERATE_ANSWER"];
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 20;
 
 function formatTime(iso: string | null): string {
   if (!iso) return "—";
@@ -52,6 +52,7 @@ export function TasksPage() {
   const [items, setItems] = useState<AdminTask[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -60,7 +61,7 @@ export function TasksPage() {
   const [status, setStatus] = useState("");
   const [keyword, setKeyword] = useState("");
 
-  const load = useCallback(async (nextPage: number, filter?: { taskType: string; status: string; keyword: string }) => {
+  const load = useCallback(async (nextPage: number, filter?: { taskType: string; status: string; keyword: string }, size = pageSize) => {
     setLoading(true);
     setError(null);
     const f = filter ?? { taskType, status, keyword };
@@ -69,8 +70,8 @@ export function TasksPage() {
         task_type: f.taskType || undefined,
         status: f.status || undefined,
         keyword: f.keyword.trim() || undefined,
-        limit: PAGE_SIZE,
-        offset: nextPage * PAGE_SIZE,
+        limit: size,
+        offset: nextPage * size,
       });
       setItems(data.items);
       setTotal(data.total);
@@ -80,7 +81,7 @@ export function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [taskType, status, keyword]);
+  }, [taskType, status, keyword, pageSize]);
 
   useEffect(() => {
     void load(0);
@@ -96,7 +97,12 @@ export function TasksPage() {
     void load(0, { taskType: "", status: "", keyword: "" });
   };
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const changePageSize = (size: number) => {
+    setPageSize(size);
+    void load(0, undefined, size);
+  };
 
   return (
     <>
@@ -242,8 +248,9 @@ export function TasksPage() {
                 </Table>
               </TableContainer>
               <Stack spacing={1.5} alignItems="center" sx={{ px: 2, py: 1.5, borderTop: 1, borderColor: "divider" }}>
-                <ListPagination page={page + 1} pageSize={PAGE_SIZE} total={total} totalPages={totalPages}
-                  loading={loading} pageSizeOptions={[10, 20, 30]} onPageChange={(value) => void load(value - 1)} />
+                <ListPagination page={page + 1} pageSize={pageSize} total={total} totalPages={totalPages}
+                  loading={loading} pageSizeOptions={[10, 20, 30]} onPageChange={(value) => void load(value - 1)}
+                  onPageSizeChange={changePageSize} />
               </Stack>
             </>
           )}

@@ -16,7 +16,6 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
   TextField,
   Typography,
@@ -26,10 +25,11 @@ import { adminListSystemLogs, type SystemLogQuery } from "../../api/logs";
 import { ErrorAlert } from "../../components/ErrorAlert";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+import { ListPagination } from "../../components/ListPagination";
 import { PageHeader } from "../../components/PageHeader";
 import type { SystemLogItem } from "../../types/logs";
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 const LEVEL_OPTIONS = ["", "ERROR", "WARNING", "INFO", "DEBUG"];
 const SERVICE_OPTIONS = ["", "api", "worker"];
@@ -85,6 +85,7 @@ export function SystemLogsPage() {
   const [rows, setRows] = useState<SystemLogItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [detail, setDetail] = useState<SystemLogItem | null>(null);
@@ -95,10 +96,10 @@ export function SystemLogsPage() {
       request_id: requestId.trim() || undefined,
       level: level || undefined,
       service: service || undefined,
-      limit: PAGE_SIZE,
-      offset: pageNo * PAGE_SIZE,
+      limit: pageSize,
+      offset: pageNo * pageSize,
     }),
-    [keyword, requestId, level, service],
+    [keyword, requestId, level, service, pageSize],
   );
 
   const load = useCallback(
@@ -137,12 +138,18 @@ export function SystemLogsPage() {
     setLevel("");
     setService("");
     setPage(0);
-    void load({ limit: PAGE_SIZE, offset: 0 });
+    void load({ limit: pageSize, offset: 0 });
   };
 
-  const changePage = (_event: unknown, next: number) => {
+  const changePage = (next: number) => {
     setPage(next);
     void load(buildQuery(next));
+  };
+
+  const changePageSize = (size: number) => {
+    setPageSize(size);
+    setPage(0);
+    void load({ ...buildQuery(0), limit: size, offset: 0 });
   };
 
   return (
@@ -270,13 +277,15 @@ export function SystemLogsPage() {
           </TableContainer>
         )}
         {!loading && total > 0 && (
-          <TablePagination
-            component="div"
-            count={total}
-            page={page}
-            rowsPerPage={PAGE_SIZE}
-            rowsPerPageOptions={[PAGE_SIZE]}
-            onPageChange={changePage}
+          <ListPagination
+            page={page + 1}
+            pageSize={pageSize}
+            total={total}
+            totalPages={Math.max(1, Math.ceil(total / pageSize))}
+            loading={loading}
+            pageSizeOptions={[10, 20, 30]}
+            onPageChange={(value) => changePage(value - 1)}
+            onPageSizeChange={changePageSize}
           />
         )}
       </Card>
