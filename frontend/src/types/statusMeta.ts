@@ -137,6 +137,14 @@ export const RESOURCE_TYPE_LABEL: Record<string, string> = {
   wiki: "知识库",
   docx: "文档",
   sheet: "电子表格",
+  FILE: "文件附件",
+  file: "文件附件",
+};
+
+/** 来源渠道展示；与资源格式（Wiki/文档/表格）分开。 */
+export const SOURCE_TYPE_LABEL: Record<string, string> = {
+  FEISHU: "飞书",
+  MANUAL_UPLOAD: "上传文件",
 };
 
 /** 获取任意状态的中文标签（未收录时展示原值、中性配色）。 */

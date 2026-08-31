@@ -81,8 +81,12 @@ export type ProcessingStage =
 /** 知识来源列表项。 */
 export interface KnowledgeSource {
   source_id: string;
+  /** 来源渠道：飞书或本地上传。 */
+  source_type: string | null;
   resource_token: string | null;
   resource_type: string | null;
+  /** 飞书原文地址；本地上传来源为空。 */
+  original_url: string | null;
   display_name: string;
   status: string;
   update_status: string;

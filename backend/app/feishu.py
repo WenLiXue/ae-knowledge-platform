@@ -189,6 +189,7 @@ def submit_documents(
                 revision=meta.revision,
                 modified_at=meta.modified_at,
                 owner_name=meta.owner_name,
+                node_token=meta.node_token,
             )
         )
 
@@ -263,6 +264,7 @@ def submit_document_links(
                 revision=meta.revision,
                 modified_at=meta.modified_at,
                 owner_name=meta.owner_name,
+                node_token=meta.node_token,
             )
         )
     if not items:

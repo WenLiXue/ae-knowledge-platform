@@ -29,7 +29,7 @@ import { ListPagination } from "../../components/ListPagination";
 import { PageHeader } from "../../components/PageHeader";
 import type { SystemLogItem } from "../../types/logs";
 
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 10;
 
 const LEVEL_OPTIONS = ["", "ERROR", "WARNING", "INFO", "DEBUG"];
 const SERVICE_OPTIONS = ["", "api", "worker"];

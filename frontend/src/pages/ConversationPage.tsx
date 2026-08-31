@@ -109,9 +109,9 @@ function CitationList({ citations }: { citations: Citation[] }) {
       onChange={(_event, nextExpanded) => setExpanded(nextExpanded)}
       disableGutters
       elevation={0}
-      sx={{ mt: 2, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
+      sx={{ mt: 1.25, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
     >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, px: 1.5, "& .MuiAccordionSummary-content": { my: 1 } }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />} sx={{ minHeight: 36, px: 1, "& .MuiAccordionSummary-content": { my: 0.5 } }}>
         <Stack direction="row" spacing={0.75} alignItems="center">
           <ArticleOutlinedIcon fontSize="small" color="disabled" />
           <Typography variant="subtitle2">来源文档</Typography>
@@ -120,8 +120,8 @@ function CitationList({ citations }: { citations: Citation[] }) {
           </Typography>
         </Stack>
       </AccordionSummary>
-      <AccordionDetails sx={{ pt: 0, px: 1.5, pb: 1.5 }}>
-        <Stack spacing={1}>
+      <AccordionDetails sx={{ pt: 0, px: 1, pb: 1 }}>
+        <Stack spacing={0.75}>
           {citations.map((citation) => {
             const unavailable = citation.availability !== "AVAILABLE";
             const locations = citation.locations?.length
@@ -133,7 +133,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
                   excerpt: citation.excerpt,
                 }];
             return (
-              <Paper key={citation.citation_no} variant="outlined" sx={{ p: 1.5 }}>
+              <Paper key={citation.citation_no} variant="outlined" sx={{ p: 1, borderRadius: 1 }}>
                 <Stack direction="row" spacing={1.5}>
                   <Typography
                     variant="caption"
@@ -300,13 +300,6 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
     }
   };
 
-  // 仅对已完成的回答判断证据充分性；进行中（answer_type 为 null）不提前提示依据不足
-  const lowEvidence =
-    answer.status === "SUCCEEDED" &&
-    (answer.answer_type !== "ANSWER" ||
-      answer.degradation_flags.includes("LOW_EVIDENCE") ||
-      answer.degradation_flags.includes("NO_EVIDENCE"));
-
   // 模型可能同时把完整回答写入 summary 和 blocks；展示时避免重复输出。
   const visibleBlocks = answer.blocks.filter((block, index, all) => {
     const value = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
@@ -318,8 +311,6 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
   // blocks 是生成答案的正文；summary 仅用于没有正文块的澄清/降级回答。
   // 不尝试用字符串相似度判断，避免模型换一种措辞时仍出现两段重复问候。
   const showSummary = visibleBlocks.length === 0 && Boolean(answer.summary?.trim());
-  const processEvents = answer.progress_events ?? [];
-
   const handleRate = (rating: FeedbackRating) => {
     if (submitted) return;
     setPanel(rating);
@@ -384,33 +375,16 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
         </Stack>
       )}
 
-      {lowEvidence && (
-        <Alert severity="warning" sx={{ mt: 2 }}>
-          本次回答依据不足或仅部分命中，请结合下方来源信息核对；也可换个问法或放宽检索条件再试。
-        </Alert>
-      )}
-
       {answer.citations.length > 0 && <CitationList citations={answer.citations} />}
 
-      {processEvents.length > 0 && (
-        <Accordion disableGutters elevation={0} sx={{ mt: 1.5, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 38, px: 1.5, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
-            <Typography variant="caption" color="text.secondary">查看处理过程</Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ pt: 0, px: 1.5, pb: 1.25 }}>
-            <Stack spacing={0.5}>
-              {processEvents.filter((event) => event.message).map((event, index) => (
-                <Typography key={`${event.type}-${index}`} variant="caption" color="text.secondary">
-                  {event.message}{event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}
-                </Typography>
-              ))}
-            </Stack>
-          </AccordionDetails>
-        </Accordion>
-      )}
-
       {/* 反馈 */}
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }}>
+      <Stack
+        className="answer-feedback"
+        direction="row"
+        spacing={0.5}
+        alignItems="center"
+        sx={{ mt: 1, opacity: { xs: 1, md: 0.35 }, transition: "opacity 160ms ease", "&:hover": { opacity: 1 } }}
+      >
         {submitted ? (
           <Typography variant="caption" color="success.main">
             已收到你的反馈，感谢！
@@ -499,18 +473,11 @@ function MessageRow({ message, onRetry }: { message: Message; onRetry?: () => vo
           component="article"
           sx={{
             width: "100%",
-            maxWidth: 1000,
-            py: { xs: 2, sm: 2.5 },
-            borderBottom: 1,
-            borderColor: "divider",
+            maxWidth: 1040,
+            py: { xs: 1.5, sm: 2.25 },
+            "&:hover .answer-feedback": { opacity: 1 },
           }}
         >
-          <Typography
-            variant="overline"
-            sx={{ display: "block", mb: 1, color: "primary.main", letterSpacing: "0.08em" }}
-          >
-            知识助手
-          </Typography>
           {message.answer ? (
             <AnswerView answer={message.answer} onRetry={onRetry} />
           ) : (
@@ -737,12 +704,11 @@ export function ConversationPage() {
   return (
     <Box
       sx={{
-        width: { xs: "100%", md: "calc(100% - 48px)" },
-        maxWidth: 1400,
+        width: { xs: "100%", md: "calc(100% - 32px)" },
+        maxWidth: 1240,
         height: "100%",
         minHeight: 0,
-        ml: { xs: 0, md: "clamp(24px, 4vw, 64px)" },
-        mr: { xs: 0, md: "auto" },
+        mx: "auto",
         px: { xs: 1.5, sm: 2.5 },
         pt: { xs: 1.5, sm: 2 },
         display: "flex",
@@ -753,7 +719,7 @@ export function ConversationPage() {
         direction="row"
         spacing={1.5}
         alignItems="center"
-        sx={{ width: "100%", maxWidth: 1000, mb: 1.5, flexShrink: 0 }}
+        sx={{ width: "100%", maxWidth: 1040, mb: 1.5, flexShrink: 0 }}
       >
         <IconButton component={RouterLink} to="/search" aria-label="返回知识查询">
           <ArrowBackIcon />
@@ -802,7 +768,7 @@ export function ConversationPage() {
             py: { xs: 1, sm: 1.5 },
             scrollbarGutter: "stable",
             alignItems: "flex-start",
-            "& > *": { width: "100%", maxWidth: 1000 },
+            "& > *": { width: "100%", maxWidth: 1040 },
           }}
         >
           {messages.length === 0 ? (
@@ -922,7 +888,7 @@ export function ConversationPage() {
             bgcolor: "#f8fafc",
           }}
         >
-          <Stack direction="row" spacing={1.5} alignItems="flex-end" sx={{ maxWidth: 1000 }}>
+          <Stack direction="row" spacing={1.5} alignItems="flex-end" sx={{ maxWidth: 1040, mx: "auto" }}>
             <TextField
               placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
               value={input}

@@ -28,11 +28,11 @@ import { LoadingState } from "../components/LoadingState";
 import { ListPagination } from "../components/ListPagination";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
-import { RESOURCE_TYPE_LABEL, SOURCE_STATUS_META } from "../types/statusMeta";
+import { RESOURCE_TYPE_LABEL, SOURCE_STATUS_META, SOURCE_TYPE_LABEL } from "../types/statusMeta";
 import type { ClassificationSummary, KnowledgeSource } from "../types/documents";
 
 const SOURCE_STATUS_OPTIONS = Object.keys(SOURCE_STATUS_META);
-const TYPE_OPTIONS = ["WIKI", "DOCX"];
+const TYPE_OPTIONS = ["FEISHU", "MANUAL_UPLOAD"];
 
 function formatTime(value: string | null): string {
   if (!value) return "—";
@@ -55,7 +55,7 @@ export function DocumentsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
@@ -83,7 +83,7 @@ export function DocumentsPage() {
     return sources.filter((source) => {
       if (keyword && !source.display_name.toLowerCase().includes(keyword)) return false;
       if (statusFilter && source.status !== statusFilter) return false;
-      if (typeFilter && source.resource_type !== typeFilter) return false;
+      if (typeFilter && source.source_type !== typeFilter) return false;
       return true;
     });
   }, [sources, query, statusFilter, typeFilter]);
@@ -133,12 +133,12 @@ export function DocumentsPage() {
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ minWidth: { sm: 160 } }}>
-          <InputLabel>来源类型</InputLabel>
-          <Select label="来源类型" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            <MenuItem value="">全部类型</MenuItem>
+          <InputLabel>来源</InputLabel>
+          <Select label="来源" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <MenuItem value="">全部来源</MenuItem>
             {TYPE_OPTIONS.map((type) => (
               <MenuItem key={type} value={type}>
-                {RESOURCE_TYPE_LABEL[type] ?? type}
+                {SOURCE_TYPE_LABEL[type] ?? type}
               </MenuItem>
             ))}
           </Select>
@@ -168,7 +168,7 @@ export function DocumentsPage() {
               <TableHead>
                 <TableRow>
                   <TableCell>文档</TableCell>
-                  <TableCell>来源类型</TableCell>
+                  <TableCell>来源</TableCell>
                   <TableCell>分类</TableCell>
                   <TableCell>来源状态</TableCell>
                   <TableCell>版本状态</TableCell>
@@ -199,15 +199,18 @@ export function DocumentsPage() {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      {source.resource_type ? (
+                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
-                          label={RESOURCE_TYPE_LABEL[source.resource_type] ?? source.resource_type}
+                          label={SOURCE_TYPE_LABEL[source.source_type ?? ""] ?? source.source_type ?? "—"}
                           variant="outlined"
                         />
-                      ) : (
-                        "—"
-                      )}
+                        {source.resource_type && (
+                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                            {RESOURCE_TYPE_LABEL[source.resource_type] ?? source.resource_type}
+                          </Typography>
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       {productName || typeName ? (

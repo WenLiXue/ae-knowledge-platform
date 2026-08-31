@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
-import { Alert, Box, Button, Card, CardContent, Chip, IconButton, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, Chip, IconButton, Link, Stack, Typography } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -9,7 +9,7 @@ import { getKnowledgeSource, retryKnowledgeSource } from "../api/knowledgeSource
 import { ErrorAlert } from "../components/ErrorAlert";
 import { FullPageLoading } from "../components/LoadingState";
 import { StatusChip } from "../components/StatusChip";
-import { RESOURCE_TYPE_LABEL } from "../types/statusMeta";
+import { RESOURCE_TYPE_LABEL, SOURCE_TYPE_LABEL } from "../types/statusMeta";
 import type { KnowledgeSourceDetail } from "../types/documents";
 
 function formatTime(value: string | null): string {
@@ -155,13 +155,23 @@ export function DocumentDetailPage() {
           </Stack>
 
           <InfoRow label="文档名称">{source.display_name}</InfoRow>
-          <InfoRow label="来源类型">
-            {source.resource_type ? (
-              <Chip size="small" label={RESOURCE_TYPE_LABEL[source.resource_type] ?? source.resource_type} variant="outlined" />
-            ) : (
-              "—"
-            )}
+          <InfoRow label="来源">
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip size="small" label={SOURCE_TYPE_LABEL[source.source_type ?? ""] ?? source.source_type ?? "—"} variant="outlined" />
+              {source.resource_type && (
+                <Typography variant="body2" color="text.secondary">
+                  {RESOURCE_TYPE_LABEL[source.resource_type] ?? source.resource_type}
+                </Typography>
+              )}
+            </Stack>
           </InfoRow>
+          {source.source_type === "FEISHU" && source.original_url && (
+            <InfoRow label="飞书原文">
+              <Link href={source.original_url} target="_blank" rel="noreferrer" underline="hover">
+                在飞书中打开
+              </Link>
+            </InfoRow>
+          )}
           <InfoRow label="来源状态">
             <StatusChip value={source.status} kind="source" />
           </InfoRow>

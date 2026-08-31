@@ -108,7 +108,7 @@ export function AuditLogsPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   // 游标接口没有页码，保存每一页的起始游标以支持上一页。
   const [pageCursors, setPageCursors] = useState<(string | null)[]>([null]);
   const [loading, setLoading] = useState(false);

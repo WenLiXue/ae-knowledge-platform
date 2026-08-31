@@ -148,6 +148,26 @@ def _fetch(
 
     # user_access_token 由来源 owner 的飞书绑定解析（未绑定则 None，Fake 忽略、Real 需凭据）
     user_access_token = get_user_access_token(session, source.owner_user_id, oauth_client)
+
+    # Wiki 节点可能被替换或重新关联文件，底层 obj_token 也会随之变化。
+    # 每次 FETCH 优先通过 node_token（旧数据则从原始 /wiki/ URL 恢复）重新解析，
+    # 避免使用过期/大小写不同的 resource_token 导致 404 DOC_NOT_FOUND。
+    wiki_node_token = detail.node_token if detail else None
+    if not wiki_node_token and detail and detail.original_url:
+        original_url = detail.original_url.strip()
+        if "/wiki/" in original_url:
+            wiki_node_token = original_url.split("/wiki/", 1)[1].split("?", 1)[0].split("#", 1)[0]
+    if wiki_node_token:
+        node_meta = provider.get_metadata(user_access_token, wiki_node_token, "wiki")
+        resource_token = node_meta.resource_token
+        resource_type = node_meta.resource_type
+        if detail:
+            detail.node_token = wiki_node_token
+            detail.resource_token = resource_token
+            detail.resource_type = resource_type.upper()
+            detail.last_seen_revision = node_meta.revision
+            detail.last_seen_modified_at = node_meta.modified_at
+
     content = provider.fetch_content(
         user_access_token,
         resource_token,

@@ -35,6 +35,8 @@ class SubmitItemIn:
     modified_at: datetime | None = None
     owner_name: str | None = None
     original_url: str | None = None
+    # Wiki 节点 token；Wiki 节点指向的底层文件 token 可能变化，需保留以便重解析。
+    node_token: str | None = None
 
 
 @dataclass
@@ -64,6 +66,7 @@ def _utcnow() -> datetime:
 def _source_display_source(source: KnowledgeSource) -> dict[str, object]:
     return {
         "source_id": str(source.id),
+        "source_type": source.source_type,
         "resource_token": None,
         "resource_type": None,
         "display_name": source.display_name,
@@ -113,6 +116,7 @@ def submit_feishu_sources(
             resource_type=item.resource_type.upper(),
             resource_token=item.resource_token.strip(),
             original_url=item.original_url,
+            node_token=item.node_token,
             last_seen_revision=item.revision,
             last_seen_modified_at=item.modified_at,
         )
@@ -335,6 +339,7 @@ def list_knowledge_sources(session: Session, *, limit: int = 50, offset: int = 0
                 **_source_display_source(source),
                 "resource_token": detail.resource_token if detail else None,
                 "resource_type": detail.resource_type if detail else None,
+                "original_url": detail.original_url if detail else None,
                 "version_id": str(latest.id) if latest else None,
                 "version_status": latest.status if latest else None,
                 "task_id": str(task.id) if task else None,
@@ -391,6 +396,7 @@ def get_knowledge_source(session: Session, source_id: uuid.UUID) -> dict[str, ob
         **_source_display_source(source),
         "resource_token": detail.resource_token if detail else None,
         "resource_type": detail.resource_type if detail else None,
+        "original_url": detail.original_url if detail else None,
         "current_version_id": str(source.current_version_id) if source.current_version_id else None,
         "pending_version_id": str(source.pending_version_id) if source.pending_version_id else None,
         "version_id": str(latest.id) if latest else None,
