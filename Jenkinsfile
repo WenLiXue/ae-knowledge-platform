@@ -119,7 +119,9 @@ pipeline {
                     export FRONTEND_IMAGE="$FRONTEND_IMAGE"
                     export COMPOSE_PROJECT_NAME=ae-knowledge-platform
                     COMPOSE_ARGS="--project-directory $DEPLOY_DIR_VALUE --env-file $APP_ENV_FILE -f $WORKSPACE/docker-compose.prod.yml"
-                    docker compose $COMPOSE_ARGS up -d --remove-orphans
+                    # 固定运行 3 个 worker 副本；任务通过 PostgreSQL 队列共享，
+                    # Compose 的 SKIP LOCKED 领取逻辑负责避免重复消费。
+                    docker compose $COMPOSE_ARGS up -d --remove-orphans --scale worker=3
 
                     # 等待迁移和 FastAPI 启动完成；失败时打印服务日志方便定位。
                     ready=0
@@ -138,8 +140,8 @@ pipeline {
                     fi
                     worker_total=$(docker compose $COMPOSE_ARGS ps -a -q worker | wc -l)
                     worker_running=$(docker compose $COMPOSE_ARGS ps -q worker | wc -l)
-                    if [ "$worker_total" -eq 0 ] || [ "$worker_running" -ne "$worker_total" ]; then
-                        echo "worker 服务未全部运行：$worker_running/$worker_total" >&2
+                    if [ "$worker_total" -ne 3 ] || [ "$worker_running" -ne 3 ]; then
+                        echo "worker 服务未按 3 副本运行：$worker_running/$worker_total" >&2
                         docker compose $COMPOSE_ARGS ps
                         docker compose $COMPOSE_ARGS logs --tail=120 worker
                         exit 1

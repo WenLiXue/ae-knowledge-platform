@@ -197,6 +197,29 @@ class WorkerRunner:
                     # 租约已被回收或转交，放弃本次 attempt
                     self._record_attempt(session, task.id, attempt_no, "ABANDONED", None, None)
                     return "ABANDONED"
+                # A manual retry can race with a task that was just recovered
+                # from a lease.  Only one GENERATE_ANSWER task may execute for
+                # an answer at a time; otherwise both workers resume the same
+                # checkpoint and persist duplicate plan revisions.
+                answer_id = (locked.payload or {}).get("answer_id")
+                if locked.task_type == "GENERATE_ANSWER" and answer_id:
+                    duplicate = session.execute(
+                        select(ProcessingTask.id).where(
+                            ProcessingTask.task_type == "GENERATE_ANSWER",
+                            ProcessingTask.status == "RUNNING",
+                            ProcessingTask.lease_owner != self.worker_id,
+                            ProcessingTask.id != locked.id,
+                            ProcessingTask.payload["answer_id"].as_string() == str(answer_id),
+                        ).limit(1)
+                    ).scalar_one_or_none()
+                    if duplicate is not None:
+                        locked.status = "CANCELED"
+                        locked.lease_owner = None
+                        locked.lease_expires_at = None
+                        locked.last_error_code = "DUPLICATE_ANSWER_TASK"
+                        locked.last_error_summary = "同一回答已有任务执行中，跳过重复任务"
+                        self._record_attempt(session, locked.id, attempt_no, "SKIPPED", "CONFLICT", "DUPLICATE_ANSWER_TASK")
+                        return "SKIPPED"
             with session.begin():
                 try:
                     next_type = pipeline.execute_stage(

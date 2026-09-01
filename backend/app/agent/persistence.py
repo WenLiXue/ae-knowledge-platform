@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from .contracts.plan import AgentPlan
 from .contracts.tool import ToolCallProposal, ToolResultEnvelope
@@ -43,6 +44,20 @@ def persist_plan(session_factory, *, answer_id: str, plan: AgentPlan) -> None:
             )
             db.add(run)
             db.flush()
+        # A resumed checkpoint can re-enter create_plan after a lease recovery,
+        # and two workers may briefly race on the same `(run_id, revision)`.
+        # Treat that key as idempotent: the first committed plan is authoritative
+        # and the retry must not turn a recoverable task into a terminal failure.
+        existing_revision = db.execute(
+            select(DbPlan).where(
+                DbPlan.run_id == run.id,
+                DbPlan.revision == plan.revision,
+            )
+        ).scalar_one_or_none()
+        if existing_revision is not None:
+            db.commit()
+            return
+
         db_plan = db.get(DbPlan, uuid.UUID(str(plan.id)))
         if db_plan is None:
             db_plan = DbPlan(
@@ -66,7 +81,21 @@ def persist_plan(session_factory, *, answer_id: str, plan: AgentPlan) -> None:
                     status=step.status,
                     input_summary={"keys": sorted(step.input_bindings)},
                 ))
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another worker may have committed the same revision between the
+            # read and insert.  Roll back and verify the idempotent row exists;
+            # re-raise only for an unrelated integrity violation.
+            db.rollback()
+            raced = db.execute(
+                select(DbPlan.id).where(
+                    DbPlan.run_id == run.id,
+                    DbPlan.revision == plan.revision,
+                )
+            ).scalar_one_or_none()
+            if raced is None:
+                raise
 
 
 def persist_tool_call(session_factory, *, state: dict, proposal: ToolCallProposal, result: ToolResultEnvelope) -> None:
