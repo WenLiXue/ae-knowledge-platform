@@ -94,7 +94,10 @@ def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str) -> 
             return
 
     try:
-        for chunk in ctx.models.stream_chat(messages):
+        for chunk in ctx.models.stream_chat(
+            messages,
+            timeout_seconds=max(5.0, ctx.deadline - ctx.clock().timestamp()),
+        ):
             chunks.append(chunk)
             raw = "".join(chunks)
             match = re.search(r'"summary"\s*:\s*"((?:\\.|[^"\\])*)', raw)

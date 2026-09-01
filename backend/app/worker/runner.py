@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -167,7 +168,25 @@ class WorkerRunner:
                 worker_id=self.worker_id,
             )
         )
+        heartbeat_stop = threading.Event()
+        heartbeat_interval = max(1.0, min(self.lease_seconds / 3, 20.0))
+
+        def keep_lease_alive() -> None:
+            while not heartbeat_stop.wait(heartbeat_interval):
+                try:
+                    if not self.heartbeat(task.id, self.worker_id):
+                        return
+                except Exception:  # noqa: BLE001 - heartbeat must never kill the task thread
+                    logger.warning("task_heartbeat_failed", extra={"task_id": str(task.id)})
+
+        heartbeat_thread = threading.Thread(
+            target=keep_lease_alive, name=f"heartbeat-{task.id}", daemon=True
+        )
+        heartbeat_thread.start()
         try:
+            # Do not hold a row lock while waiting on Feishu/LLM/network I/O.
+            # The previous implementation wrapped the whole stage in one
+            # transaction, which made heartbeat updates block behind that lock.
             with session.begin():
                 locked = session.execute(
                     select(ProcessingTask)
@@ -178,7 +197,7 @@ class WorkerRunner:
                     # 租约已被回收或转交，放弃本次 attempt
                     self._record_attempt(session, task.id, attempt_no, "ABANDONED", None, None)
                     return "ABANDONED"
-
+            with session.begin():
                 try:
                     next_type = pipeline.execute_stage(
                         session,
@@ -203,6 +222,8 @@ class WorkerRunner:
             session.rollback()
             return self._handle_unexpected_error(task, exc)
         finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=2)
             reset_task_context(ctx_token)
             session.close()
 

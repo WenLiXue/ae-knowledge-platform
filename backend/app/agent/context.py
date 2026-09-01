@@ -109,7 +109,7 @@ class AgentModels:
             retries=0 if timeout_seconds else 3,
         )
 
-    def stream_chat(self, messages: list[dict], *, max_tokens: int = 4096) -> Iterator[str]:
+    def stream_chat(self, messages: list[dict], *, max_tokens: int = 4096, timeout_seconds: float | None = None) -> Iterator[str]:
         """Yield provider text deltas; callers own persistence and final parsing."""
         if self._chat_fn is not None:
             raise ValueError("注入式 chat_fn 不支持流式调用")
@@ -120,7 +120,11 @@ class AgentModels:
         with self._session_factory() as db:
             resolved = self._resolve_model(db, "QA")
             self._last_model_key = resolved.model_config_id
-            gateway = self._gateway_factory(resolved)
+            kwargs = {"total_timeout": timeout_seconds, "retries": 0} if timeout_seconds else {}
+            try:
+                gateway = self._gateway_factory(resolved, **kwargs)
+            except TypeError:
+                gateway = self._gateway_factory(resolved)
             model_name = resolved.model_name
             db.commit()
         yield from gateway.stream_chat(ChatRequest(model=model_name, messages=messages, max_tokens=max_tokens))
