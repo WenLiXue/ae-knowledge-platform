@@ -104,6 +104,10 @@ def test_fake_provider_discovery_and_metadata() -> None:
     assert resolved.resource_token == "wikixyz123"
     assert resolved.resource_type == "wiki"
 
+    file_resolved = provider.resolve_url(None, "https://xx.feishu.cn/file/filexyz123#page_number=0")
+    assert file_resolved.resource_token == "filexyz123"
+    assert file_resolved.resource_type == "file"
+
     content = provider.fetch_content(None, "wiki-hardware-spec", "wiki")
     assert "T90000" in content.text
     assert content.revision == "mock-rev-1"

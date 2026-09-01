@@ -496,9 +496,9 @@ def _parse_timestamp(value: Any) -> datetime | None:
 def _parse_url(url: str) -> tuple[str, str]:
     """从飞书 URL 提取 (token, resource_type)。"""
     lowered = url.casefold()
-    for marker, resource_type in (("/wiki/", "wiki"), ("/docx/", "docx"), ("/sheets/", "sheet")):
+    for marker, resource_type in (("/wiki/", "wiki"), ("/docx/", "docx"), ("/sheets/", "sheet"), ("/file/", "file")):
         if marker in lowered:
-            token = url.rsplit(marker, 1)[-1].split("?", 1)[0].rstrip("/")
+            token = url.rsplit(marker, 1)[-1].split("?", 1)[0].split("#", 1)[0].rstrip("/")
             return token, resource_type
     raise FeishuError(VALIDATION, "UNSUPPORTED_URL", f"无法识别的飞书链接: {url}", retryable=False)
 
