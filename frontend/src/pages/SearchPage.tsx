@@ -62,7 +62,7 @@ export function SearchPage() {
         sx={{ display: { xs: "none", md: "flex" }, minHeight: 58, px: 3, flexShrink: 0 }}
       >
         <Typography variant="subtitle1" fontWeight={600}>
-          智能问答
+          知识查询
         </Typography>
       </Stack>
 

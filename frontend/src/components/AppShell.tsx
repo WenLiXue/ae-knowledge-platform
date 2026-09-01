@@ -20,6 +20,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
+import BiotechOutlinedIcon from "@mui/icons-material/BiotechOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import TuneOutlinedIcon from "@mui/icons-material/TuneOutlined";
@@ -54,9 +55,10 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "知识工作区",
     items: [
-      { to: "/search", label: "智能问答", icon: <SearchIcon /> },
+      { to: "/search", label: "知识查询", icon: <SearchIcon /> },
       { to: "/documents/import", label: "文档导入", icon: <UploadFileIcon /> },
       { to: "/documents", label: "已入库文档", icon: <FolderOutlinedIcon /> },
+      { to: "/diagnosis", label: "问题诊断", icon: <BiotechOutlinedIcon /> },
     ],
   },
   {
