@@ -222,11 +222,22 @@ function CitationList({ citations }: { citations: Citation[] }) {
 }
 
 function AnswerBlockView({ block }: { block: AnswerBlock }) {
+  const textContent = (value: AnswerBlock["content"]): string => {
+    if (typeof value === "string") return value;
+    // Older/generated answers may label structured content as a list or
+    // paragraph. Never let a malformed block crash the whole conversation.
+    if (value && typeof value === "object") {
+      const items = (value as { items?: unknown }).items;
+      if (Array.isArray(items)) return items.map(String).join("\n");
+      return JSON.stringify(value);
+    }
+    return "";
+  };
   if (block.type === "paragraph") {
     return (
       // 答案正文对齐原型 .answer-copy：15px / 1.75 行高
       <Typography sx={{ fontSize: 15, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
-        {block.content as string}
+        {textContent(block.content)}
       </Typography>
     );
   }
@@ -258,7 +269,7 @@ function AnswerBlockView({ block }: { block: AnswerBlock }) {
     );
   }
   // list：按换行拆分渲染
-  const lines = (block.content as string).split("\n").filter((line) => line.trim());
+  const lines = textContent(block.content).split("\n").filter((line) => line.trim());
   return (
     <Stack component="ul" spacing={0.5} sx={{ m: 0, pl: 2.5 }}>
       {lines.map((line, index) => (
