@@ -103,12 +103,24 @@ def core_understand_goal(state: dict, ctx):
             "suspended_reason": "MISSING_REQUEST",
         }
     understanding = None
-    fast_knowledge_path = policies.looks_like_knowledge_question(raw_question)
+    fast_knowledge_path = (
+        policies.looks_like_knowledge_question(raw_question)
+        and "knowledge.search" in ctx.tool_registry.names()
+    )
+    knowledge_disabled_request = (
+        policies.looks_like_knowledge_question(raw_question)
+        and "knowledge.search" not in ctx.tool_registry.names()
+    )
     # Fast path for explicit enterprise knowledge questions.  These requests
     # need retrieval, but not a planner round-trip; this removes one LLM call
     # from the common RAG path while preserving the normal Agent route for
     # ambiguous, diagnostic, or write-capable requests.
-    if fast_knowledge_path:
+    if knowledge_disabled_request:
+        understanding = GoalUnderstanding(
+            decision="RESPOND", operation="EXPLAIN", goal=raw_question,
+            requires_enterprise_evidence=False, confidence=1.0,
+        )
+    elif fast_knowledge_path:
         understanding = GoalUnderstanding(
             decision="CALL_TOOL",
             operation="ANSWER",

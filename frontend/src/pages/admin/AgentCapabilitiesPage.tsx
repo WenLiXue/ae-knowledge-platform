@@ -61,7 +61,7 @@ export function AgentCapabilitiesPage() {
             <Typography variant="h6" gutterBottom>Tools</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Tool 只向 Agent 暴露名称、描述和 Schema；停用后不会出现在运行时工具集。</Typography>
             <Table size="small"><TableHead><TableRow><TableCell>名称</TableCell><TableCell>说明</TableCell><TableCell>来源</TableCell><TableCell>状态</TableCell></TableRow></TableHead><TableBody>
-              {data.tools.map((item) => <TableRow key={item.name}><TableCell><Typography fontFamily="monospace">{item.name}</Typography></TableCell><TableCell>{item.description}</TableCell><TableCell>{item.source}</TableCell><TableCell><Switch checked={item.enabled} onChange={() => void run(() => setAgentToolEnabled(item.name, !item.enabled), `${item.name} 已${item.enabled ? "停用" : "启用"}。`)} /></TableCell></TableRow>)}
+              {data.tools.map((item) => <TableRow key={item.name}><TableCell sx={{ width: 220, whiteSpace: "nowrap" }}><Typography sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 14, letterSpacing: 0 }}>{item.name}</Typography></TableCell><TableCell>{item.description}</TableCell><TableCell>{item.source}</TableCell><TableCell><Switch checked={item.enabled} onChange={() => void run(() => setAgentToolEnabled(item.name, !item.enabled), `${item.name} 已${item.enabled ? "停用" : "启用"}。`)} /></TableCell></TableRow>)}
             </TableBody></Table>
           </CardContent></Card>
         )}
