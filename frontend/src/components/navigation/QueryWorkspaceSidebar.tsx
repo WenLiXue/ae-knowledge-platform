@@ -27,7 +27,6 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import ExtensionOutlinedIcon from "@mui/icons-material/ExtensionOutlined";
-import BiotechOutlinedIcon from "@mui/icons-material/BiotechOutlined";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
@@ -54,8 +53,7 @@ interface NavItem {
 }
 
 const PRIMARY_ITEMS: NavItem[] = [
-  { to: "/search", label: "知识查询", icon: <SearchIcon fontSize="small" /> },
-  { to: "/diagnosis", label: "问题诊断", icon: <BiotechOutlinedIcon fontSize="small" /> },
+  { to: "/search", label: "智能问答", icon: <SearchIcon fontSize="small" /> },
 ];
 
 const KNOWLEDGE_ITEMS: NavItem[] = [

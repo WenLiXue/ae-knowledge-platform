@@ -47,15 +47,7 @@ export const router = createBrowserRouter([
       { path: "documents/import", element: <DocumentImportPage /> },
       { path: "documents", element: <DocumentsPage /> },
       { path: "documents/:sourceId", element: <DocumentDetailPage /> },
-      {
-        path: "diagnosis",
-        element: (
-          <PlaceholderPage
-            title="问题诊断"
-            description="根据故障现象、日志与配置信息，结合知识库辅助定位问题根因。"
-          />
-        ),
-      },
+      { path: "diagnosis", element: <Navigate to="/search" replace /> },
       {
         path: "admin/agent-capabilities",
         element: <AgentCapabilitiesPage />,
