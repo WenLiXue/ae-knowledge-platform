@@ -278,13 +278,15 @@ class OpenAICompatibleGateway:
         payload = {"model": request.model, "query": request.query, "documents": request.documents}
         if request.top_n is not None:
             payload["top_n"] = request.top_n
+        if request.instruction:
+            payload["instruction"] = request.instruction
         data = self._post(_ENDPOINTS["rerank"], payload, request_id=request_id)
         try:
             validated = OpenAIRerankResponse.model_validate(data)
         except ValidationError as exc:
             raise GatewayError("SCHEMA", "RERANK_SCHEMA_INVALID", "模型响应不符合重排协议", retryable=False) from exc
         response = RerankResponse(
-            model=validated.model,
+            model=validated.model or request.model,
             results=[
                 {"index": item.index, "relevance_score": item.relevance_score, "document": item.document}
                 for item in validated.results

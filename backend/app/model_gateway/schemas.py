@@ -48,7 +48,9 @@ class OpenAIRerankResult(BaseModel):
 
 
 class OpenAIRerankResponse(BaseModel):
-    model: str
+    # SiliconFlow's /rerank response omits the model field although the
+    # OpenAI-compatible contract commonly includes it.
+    model: str = ""
     results: list[OpenAIRerankResult]
 
 

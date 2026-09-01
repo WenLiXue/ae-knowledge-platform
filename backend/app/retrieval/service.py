@@ -50,6 +50,12 @@ from .schemas import EvidenceItem, QueryPlan, RetrievalFilters
 
 logger = logging.getLogger(__name__)
 
+RERANK_INSTRUCTION = (
+    "Rank passages by whether they contain facts that directly answer the enterprise "
+    "product support query. Prefer authoritative, version-specific evidence. "
+    "Do not reward passages that are merely topically related."
+)
+
 
 @dataclass(frozen=True)
 class EmbedOutcome:
@@ -91,6 +97,20 @@ def _default_embed_query(db: Session, query: str) -> EmbedOutcome:
     return EmbedOutcome(embedding=list(resp.data[0].embedding), model_key=resolved.model_config_id)
 
 
+def _format_rerank_document(doc: dict) -> str:
+    """保留标题/章节/版本等结构信息，避免 Reranker 只看到脱离上下文的正文。"""
+    heading = doc.get("heading_path") or []
+    lines = [
+        f"Title: {doc.get('title') or ''}",
+        f"Section: {' > '.join(str(item) for item in heading)}",
+        f"Product: {doc.get('product_code') or ''}",
+        f"Version: {doc.get('product_version_code') or ''}",
+        f"Document type: {doc.get('document_type_code') or ''}",
+        f"Content: {doc.get('content') or ''}",
+    ]
+    return "\n".join(lines)
+
+
 def _default_rerank(
     db: Session, query: str, documents: list[str], top_n: int
 ) -> RerankOutcome | None:
@@ -105,7 +125,13 @@ def _default_rerank(
         retries=0,
     )
     resp = gateway.rerank(
-        RerankRequest(model=resolved.model_name, query=query, documents=documents, top_n=top_n)
+        RerankRequest(
+            model=resolved.model_name,
+            query=query,
+            documents=documents,
+            top_n=top_n,
+            instruction=RERANK_INSTRUCTION,
+        )
     )
     return RerankOutcome(
         results=[(item.index, float(item.relevance_score)) for item in resp.results],
@@ -254,7 +280,7 @@ class RetrievalService:
                     outcome = self._rerank_fn(
                         db,
                         plan.normalized_question,
-                        [c.doc.get("content") or "" for c in rerank_candidates],
+                        [_format_rerank_document(c.doc) for c in rerank_candidates],
                         config.rerank_top_k,
                     )
                     rerank_model_key = outcome.model_key if outcome is not None else None
@@ -288,6 +314,8 @@ class RetrievalService:
                 evidence_max=config.evidence_max,
                 evidence_token_budget=config.evidence_token_budget,
                 per_source_limit=config.per_source_limit,
+                score_floor=config.evidence_score_floor,
+                score_margin=config.evidence_score_margin,
             )
 
             evidence = [

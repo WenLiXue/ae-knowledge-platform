@@ -106,6 +106,26 @@ def test_select_evidence_token_budget() -> None:
     assert cands[1].exclusion_reason == "TOKEN_BUDGET"
 
 
+def test_select_evidence_score_floor_and_relative_margin() -> None:
+    high = _cand("high", rrf=0.3)
+    high.rerank_score = 0.9
+    near = _cand("near", rrf=0.2)
+    near.rerank_score = 0.72
+    low = _cand("low", rrf=0.1)
+    low.rerank_score = 0.4
+    kept = select_evidence(
+        [high, near, low],
+        evidence_min=1,
+        evidence_max=5,
+        evidence_token_budget=10_000,
+        per_source_limit=10,
+        score_floor=0.5,
+        score_margin=0.15,
+    )
+    assert [c.chunk_id for c in kept] == ["high", "near"]
+    assert low.exclusion_reason == "SCORE_BELOW_THRESHOLD"
+
+
 def test_evidence_status_thresholds() -> None:
     assert evidence_status(4, 4) == "SUFFICIENT"
     assert evidence_status(2, 4) == "PARTIAL"

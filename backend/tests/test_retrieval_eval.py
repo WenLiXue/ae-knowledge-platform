@@ -8,14 +8,18 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.db.session import SessionLocal
 from app.retrieval.eval import (
+    _title_match,
     evaluate,
     load_golden,
     report_to_dict,
     report_to_markdown,
     save_report,
 )
+from app.retrieval.service import _format_rerank_document
 from app.retrieval.service import RetrievalService
 from app.search.fake import FakeSearchAdapter
 
@@ -27,6 +31,42 @@ KQ-EVAL-02,confirmed,白皮书,product_overview,信舷防毒墙 V7.0 是什么�
 KQ-EVAL-03,needs_business_review,SEG案件,case_retrieval,白云机场案件,answer,...,白云机场SEG案件原始记录,待入库,不得改写
 KQ-EVAL-04,confirmed,系统行为,clarification,哪款设备最适合客户？,clarify,...,业务规则,澄清规则,不得直接推荐
 """
+
+
+@pytest.mark.parametrize(
+    ("required_source", "display_name"),
+    [
+        ("AE硬件型号规格", "AE硬件型号规格"),
+        ("AE各版本补丁下载链接", "【AE】各版本（补丁）下载链接"),
+        ("台山核电G680访问卡顿定位报告", "【台山核电】G680访问卡顿定位报告"),
+        ("金华公安设备资源分析", "金华公安设备资源分析"),
+        ("产品FAQ", "[信舷防毒墙系统]_AE_产品常见问题（FAQ）  (1).docx"),
+        ("V7.0.0.2.2800部署指南", "亚信安全 信舷防毒墙系统 V7.0.0.2.2800_部署指南.pdf"),
+    ],
+)
+def test_title_match_accepts_real_imported_names(required_source: str, display_name: str) -> None:
+    assert _title_match(required_source, display_name)
+
+
+def test_title_match_rejects_different_documents() -> None:
+    assert not _title_match("产品FAQ", "V7.0.0.2.2800部署指南.pdf")
+
+
+def test_rerank_document_keeps_structured_context() -> None:
+    formatted = _format_rerank_document(
+        {
+            "title": "部署指南",
+            "heading_path": ["升级", "主线版本"],
+            "product_code": "AE",
+            "product_version_code": "7.0.0.2.2800",
+            "document_type_code": "DEPLOYMENT",
+            "content": "先检查当前版本",
+        }
+    )
+    assert "Title: 部署指南" in formatted
+    assert "Section: 升级 > 主线版本" in formatted
+    assert "Version: 7.0.0.2.2800" in formatted
+    assert "Content: 先检查当前版本" in formatted
 
 
 def _fake_embed(db, query: str):

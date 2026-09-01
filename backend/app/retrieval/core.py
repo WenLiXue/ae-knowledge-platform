@@ -101,6 +101,8 @@ def select_evidence(
     evidence_max: int,
     evidence_token_budget: int,
     per_source_limit: int,
+    score_floor: float = 0.0,
+    score_margin: float = 0.0,
 ) -> list[Candidate]:
     """从已排序候选中选择最终证据（DD-19 §12.4/DD-07 §8.3）。
 
@@ -111,9 +113,20 @@ def select_evidence(
     kept: list[Candidate] = []
     source_count: dict[str, int] = {}
     total_tokens = 0
+    rerank_scores = [c.rerank_score for c in candidates if c.rerank_score is not None]
+    top_rerank_score = max(rerank_scores) if rerank_scores else None
+    relative_floor = (
+        top_rerank_score - score_margin
+        if score_margin > 0 and top_rerank_score is not None
+        else 0.0
+    )
+    effective_floor = max(score_floor, relative_floor)
     for cand in candidates:
         if len(kept) >= evidence_max:
             cand.exclusion_reason = "EVIDENCE_MAX"
+            continue
+        if cand.rerank_score is not None and cand.rerank_score < effective_floor:
+            cand.exclusion_reason = "SCORE_BELOW_THRESHOLD"
             continue
         tokens = _tokens(cand)
         if total_tokens + tokens > evidence_token_budget:

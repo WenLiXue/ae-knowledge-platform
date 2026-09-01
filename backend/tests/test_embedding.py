@@ -67,6 +67,19 @@ def test_embed_chunks_batches_and_validates_dimension() -> None:
     assert result.token_usage["total_tokens"] == 5
 
 
+def test_embed_chunks_can_use_contextual_text_without_changing_citations() -> None:
+    chunks = [_chunk(1)]
+    gateway = FakeEmbeddingGateway(dim=4)
+    result = embed_chunks(
+        chunks,
+        gateway=gateway,
+        model_name="emb",
+        text_builder=lambda chunk: f"Section: troubleshooting\nContent: {chunk.content}",
+    )
+    assert gateway.calls[0].input[0].startswith("Section: troubleshooting")
+    assert result.items[0].content == chunks[0].content
+
+
 def test_embed_count_mismatch_fails() -> None:
     chunks = [_chunk(i) for i in range(3)]
     gateway = FakeEmbeddingGateway(dim=4, count_offset=1)

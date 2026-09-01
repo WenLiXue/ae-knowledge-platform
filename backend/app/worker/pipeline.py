@@ -485,6 +485,7 @@ def _real_embed(
             gateway=gateway,
             model_name=resolved.model_name,
             batch_size=get_settings().embedding_batch_size,
+            text_builder=_contextual_embedding_text,
         )
     except EmbeddingError as exc:
         raise PipelineError(exc.category, exc.code, exc.message, retryable=exc.retryable) from exc
@@ -529,6 +530,25 @@ def _real_embed(
     )
     logger.info("embed_done", extra={"stage": "EMBED", "chunk_count": len(items), "dimension": result.dimension})
     return NEXT_STAGE["EMBED"]
+
+
+def _contextual_embedding_text(chunk: DocumentChunk) -> str:
+    """Build a compact contextual representation for embedding only.
+
+    The original chunk is retained unchanged for citations.  Heading and stable
+    product/version metadata make short or ambiguous chunks distinguishable to
+    the embedding model without polluting answer text.
+    """
+    snapshot = dict(chunk.metadata_snapshot or {})
+    heading = " > ".join(str(item) for item in (chunk.heading_path or []))
+    context = [
+        f"Document: {snapshot.get('title') or ''}",
+        f"Section: {heading}",
+        f"Product: {snapshot.get('product_code') or ''}",
+        f"Version: {snapshot.get('product_version_code') or ''}",
+        f"Type: {snapshot.get('document_type_code') or ''}",
+    ]
+    return "\n".join(context + [f"Content: {chunk.content}"])
 
 
 def _real_index(

@@ -1,5 +1,7 @@
 """Model Gateway 适配层测试（DD-19 Phase 3）。"""
 
+import json
+
 import httpx
 import pytest
 
@@ -131,7 +133,10 @@ def test_embed_success_and_count_mismatch() -> None:
 
 
 def test_rerank_success() -> None:
+    seen: dict = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
+        seen["payload"] = request.read()
         return httpx.Response(
             200,
             json={
@@ -143,8 +148,16 @@ def test_rerank_success() -> None:
             },
         )
 
-    resp = _gateway(handler).rerank(RerankRequest(model="test-model", query="q", documents=["a", "b"]))
+    resp = _gateway(handler).rerank(
+        RerankRequest(
+            model="test-model",
+            query="q",
+            documents=["a", "b"],
+            instruction="rank direct evidence",
+        )
+    )
     assert [r.index for r in resp.results] == [1, 0]
+    assert json.loads(seen["payload"])["instruction"] == "rank direct evidence"
 
 
 def test_factory_unsupported_provider() -> None:

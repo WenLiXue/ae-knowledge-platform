@@ -62,6 +62,7 @@ def embed_chunks(
     gateway,
     model_name: str,
     batch_size: int = 32,
+    text_builder=None,
 ) -> EmbeddingRunResult:
     """分批向量化并严格校验。chunks 需提供 id/ordinal/content（DocumentChunk 或同构对象）。"""
     if not chunks:
@@ -75,7 +76,9 @@ def embed_chunks(
 
     for start in range(0, len(chunks), batch_size):
         batch = chunks[start : start + batch_size]
-        texts = [c.content for c in batch]
+        # Embedding text may include concise document context while the persisted
+        # chunk content remains lossless/raw for citations and UI rendering.
+        texts = [text_builder(c) if text_builder else c.content for c in batch]
         try:
             resp = gateway.embed(EmbeddingRequest(model=model_name, input=texts))
         except GatewayError as exc:

@@ -28,6 +28,11 @@ DEFAULT_PARAMS: dict = {
     "fusion_top_k": 40,
     "rerank_top_k": 12,
     "rerank_min_score": 0.2,
+    # 证据选择阈值默认关闭；使用黄金集校准后再启用，避免跨模型硬编码。
+    "evidence_score_floor": 0.0,
+    # 相对最高 rerank 分数的保留窗口；避免把仅有主题相关性的长尾 chunk
+    # 一并放入上下文。可在配置中按模型分数分布校准。
+    "evidence_score_margin": 0.1,
     "evidence_min": 4,
     "evidence_max": 8,
     "evidence_token_budget": 4000,
@@ -47,6 +52,8 @@ class RetrievalConfig:
     fusion_top_k: int = 40
     rerank_top_k: int = 12
     rerank_min_score: float = 0.2
+    evidence_score_floor: float = 0.0
+    evidence_score_margin: float = 0.1
     evidence_min: int = 4
     evidence_max: int = 8
     evidence_token_budget: int = 4000
@@ -61,6 +68,8 @@ class RetrievalConfig:
             "fusion_top_k": self.fusion_top_k,
             "rerank_top_k": self.rerank_top_k,
             "rerank_min_score": self.rerank_min_score,
+            "evidence_score_floor": self.evidence_score_floor,
+            "evidence_score_margin": self.evidence_score_margin,
             "evidence_min": self.evidence_min,
             "evidence_max": self.evidence_max,
             "evidence_token_budget": self.evidence_token_budget,
@@ -111,6 +120,8 @@ def load_retrieval_config(db: Session) -> RetrievalConfig:
         fusion_top_k=params["fusion_top_k"],
         rerank_top_k=params["rerank_top_k"],
         rerank_min_score=params["rerank_min_score"],
+        evidence_score_floor=params["evidence_score_floor"],
+        evidence_score_margin=params["evidence_score_margin"],
         evidence_min=evidence_min,
         evidence_max=params["evidence_max"],
         evidence_token_budget=params["evidence_token_budget"],

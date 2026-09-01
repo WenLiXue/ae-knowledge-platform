@@ -62,6 +62,8 @@ def main() -> None:
     print(f"Recall@K      = {report.recall_at_k}")
     print(f"MRR           = {report.mrr}")
     print(f"证据 Precision = {report.evidence_precision}")
+    print(f"候选来源 Precision@K = {report.candidate_source_precision}")
+    print(f"平均最终证据数 = {report.average_evidence_count}")
     print(f"旧版本误召回率  = {report.stale_version_recall_rate}")
     print(f"配置 revision  = {report.retrieval_config_revision}")
     print(f"报告已保存: {saved}")

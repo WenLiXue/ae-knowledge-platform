@@ -16,6 +16,8 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import re
+import unicodedata
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -61,6 +63,8 @@ class CaseResult:
     recall_at_k: bool = False
     mrr: float = 0.0
     evidence_precision: float = 0.0
+    candidate_source_precision: float = 0.0
+    evidence_count: int = 0
     stale_version_recalled: bool = False
     error_code: str | None = None
 
@@ -74,6 +78,8 @@ class EvalReport:
     recall_at_k: float
     mrr: float
     evidence_precision: float
+    candidate_source_precision: float
+    average_evidence_count: float
     stale_version_recall_rate: float
     retrieval_config_revision: int | None = None
 
@@ -100,10 +106,31 @@ def load_golden(path: str | Path) -> list[GoldenCase]:
     return [c for c in cases if c.case_id]
 
 
+_TITLE_SUFFIX_RE = re.compile(r"\.(?:docx?|pdf|xlsx?|pptx?|csv|txt|md)$", re.IGNORECASE)
+_COPY_SUFFIX_RE = re.compile(
+    r"\s*(?:\((?:副本|copy)?\s*\d+\)|（(?:副本|copy)?\s*\d+）)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_title(value: str) -> str:
+    """将黄金集来源名和真实文档名归一化为可比较的稳定键。
+
+    飞书附件经常带有书名号/方括号、空格、下划线、文件扩展名和 ``(1)``
+    之类的副本后缀。这里仅消除这些展示差异，并统一 FAQ 的中英文写法；不做
+    任意模糊匹配，避免把名称相近但内容不同的文档当成同一来源。
+    """
+    text = unicodedata.normalize("NFKC", value or "").strip().casefold()
+    text = _TITLE_SUFFIX_RE.sub("", text)
+    text = _COPY_SUFFIX_RE.sub("", text)
+    text = re.sub(r"[\s_\-—–·•/\\\[\]【】()（）《》〈〉]+", "", text)
+    return text.replace("常见问题", "faq")
+
+
 def _title_match(a: str, b: str) -> bool:
-    a = (a or "").strip()
-    b = (b or "").strip()
-    return bool(a and b and (a in b or b in a))
+    left = _normalize_title(a)
+    right = _normalize_title(b)
+    return bool(left and right and (left in right or right in left))
 
 
 def _resolve_source_ids(db: Session, required_source: str) -> list[uuid.UUID]:
@@ -165,6 +192,9 @@ def evaluate(
 
         result.candidate_sources = list(dict.fromkeys(c.source_id for c in candidates))
         result.evidence_sources = [str(ev.source_id) for ev in evidence]
+        result.evidence_count = len(evidence)
+        if candidates:
+            result.candidate_source_precision = sum(1 for c in candidates if c.source_id in allowed) / len(candidates)
 
         first_allowed_rank = next(
             (rank for rank, c in enumerate(candidates, start=1) if c.source_id in allowed), None
@@ -182,6 +212,8 @@ def evaluate(
     recall_at_k = _mean(r.recall_at_k for r in executed) if executed else 0.0
     mrr = _mean(r.mrr for r in executed) if executed else 0.0
     precision = _mean(r.evidence_precision for r in executed) if executed else 0.0
+    candidate_precision = _mean(r.candidate_source_precision for r in executed) if executed else 0.0
+    average_evidence_count = _mean(r.evidence_count for r in executed) if executed else 0.0
     stale_rate = (
         sum(1 for r in executed if r.stale_version_recalled) / len(executed) if executed else 0.0
     )
@@ -193,6 +225,8 @@ def evaluate(
         recall_at_k=round(recall_at_k, 4),
         mrr=round(mrr, 4),
         evidence_precision=round(precision, 4),
+        candidate_source_precision=round(candidate_precision, 4),
+        average_evidence_count=round(average_evidence_count, 4),
         stale_version_recall_rate=round(stale_rate, 4),
         retrieval_config_revision=last_config_revision,
     )
@@ -212,6 +246,8 @@ def report_to_dict(report: EvalReport) -> dict:
             "recall_at_k": report.recall_at_k,
             "mrr": report.mrr,
             "evidence_precision": report.evidence_precision,
+            "candidate_source_precision": report.candidate_source_precision,
+            "average_evidence_count": report.average_evidence_count,
             "stale_version_recall_rate": report.stale_version_recall_rate,
             "retrieval_config_revision": report.retrieval_config_revision,
         },
@@ -231,6 +267,8 @@ def report_to_markdown(report: EvalReport) -> str:
         f"| Recall@K | {report.recall_at_k} |",
         f"| MRR | {report.mrr} |",
         f"| 证据 Precision | {report.evidence_precision} |",
+        f"| 候选来源 Precision@K | {report.candidate_source_precision} |",
+        f"| 平均最终证据数 | {report.average_evidence_count} |",
         f"| 旧版本误召回率 | {report.stale_version_recall_rate} |",
         "",
         "## 明细",

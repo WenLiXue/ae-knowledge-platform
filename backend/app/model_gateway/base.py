@@ -83,6 +83,7 @@ class RerankRequest(BaseModel):
     query: str
     documents: list[str]
     top_n: int | None = None
+    instruction: str | None = None
 
 
 class RerankResult(BaseModel):
