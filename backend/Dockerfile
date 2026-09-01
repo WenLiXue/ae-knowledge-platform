@@ -1,5 +1,10 @@
 FROM python:3.12-slim
 
+# PDF 扫描件 OCR 降级：普通文本 PDF 不会走该路径。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-chi-sim \
+    && rm -rf /var/lib/apt/lists/*
+
 # Use uv for dependency resolution and installation. The uv binary is copied
 # from the official image so the runtime image does not need pip to bootstrap
 # the environment.

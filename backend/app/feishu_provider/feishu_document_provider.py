@@ -270,7 +270,16 @@ class RealFeishuProvider(FeishuDocumentProvider):
     ) -> FeishuContent:
         if user_access_token is None:
             raise FeishuError(AUTH, "USER_TOKEN_MISSING", "缺少用户访问凭证", retryable=False)
-        meta = self.get_metadata(user_access_token, resource_token, resource_type)
+
+        # Wiki 的 file 节点可以正常通过 get_node 返回 obj_token，但该 token
+        # 不一定能通过 drive/v1/files/{token} 获取元数据（部分租户会返回 404）。
+        # 只要来源是 Wiki，就直接用节点解析结果下载文件，避免无意义的元数据请求。
+        wiki_file_source = resource_type == "file" and source_url and "/wiki/" in source_url
+        if wiki_file_source:
+            node_token = source_url.split("/wiki/", 1)[1].split("?", 1)[0].split("#", 1)[0]
+            meta = self.get_metadata(user_access_token, node_token, "wiki")
+        else:
+            meta = self.get_metadata(user_access_token, resource_token, resource_type)
         obj_token = meta.resource_token
         if meta.resource_type == "sheet":
             return self._fetch_sheet(
