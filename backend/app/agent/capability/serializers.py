@@ -1,6 +1,6 @@
 """Stable API representations for persisted Agent capabilities."""
 
-from ..db.models.capability import AgentMcpServer, AgentSkill, AgentToolConfig
+from ...db.models.capability import AgentMcpServer, AgentSkill, AgentToolConfig
 
 
 def tool_dict(row: AgentToolConfig) -> dict:
