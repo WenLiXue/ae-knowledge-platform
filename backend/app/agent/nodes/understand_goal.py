@@ -103,7 +103,21 @@ def core_understand_goal(state: dict, ctx):
             "suspended_reason": "MISSING_REQUEST",
         }
     understanding = None
-    if ctx.settings.feature_real_qa:
+    # Fast path for explicit enterprise knowledge questions.  These requests
+    # need retrieval, but not a planner round-trip; this removes one LLM call
+    # from the common RAG path while preserving the normal Agent route for
+    # ambiguous, diagnostic, or write-capable requests.
+    if policies.looks_like_knowledge_question(raw_question):
+        understanding = GoalUnderstanding(
+            decision="CALL_TOOL",
+            operation="ANSWER",
+            goal=policies.strip_greeting_prefix(raw_question),
+            requires_enterprise_evidence=True,
+            candidate_capabilities=["knowledge.search"],
+            risk_hint="READ_ONLY",
+            confidence=1.0,
+        )
+    elif ctx.settings.feature_real_qa:
         try:
             context_parts = []
             if state.get("memory_summary"):

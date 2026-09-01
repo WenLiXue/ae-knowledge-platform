@@ -73,7 +73,7 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
     )
     builder.add_conditional_edges(
         "understand_goal", route_after_goal,
-        ["create_plan", "answer_identity", "generate_general", "finalize_clarification", "persist_result"],
+        ["create_plan", "answer_identity", "generate_general", "finalize_clarification", "retrieve", "persist_result"],
     )
     builder.add_conditional_edges(
         "create_plan", _route_fixed("execute_tool"), ["execute_tool", "persist_result"]

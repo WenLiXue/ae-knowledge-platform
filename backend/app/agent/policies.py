@@ -166,6 +166,13 @@ def route_after_goal(state: AgentState) -> str:
         return "finalize_clarification"
     if mode == "DIRECT":
         return "generate_general"
+    # A plain enterprise knowledge lookup has a deterministic path.  Do not
+    # spend another model call creating a one-step knowledge.search plan.
+    if (
+        (state.get("goal") or {}).get("requires_enterprise_evidence")
+        and set((state.get("goal") or {}).get("candidate_capabilities") or []) <= {"knowledge.search"}
+    ):
+        return "retrieve"
     if (state.get("goal") or {}).get("operation") == "IDENTITY":
         return "answer_identity"
     return "create_plan"
