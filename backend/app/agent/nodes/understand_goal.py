@@ -179,7 +179,11 @@ def core_understand_goal(state: dict, ctx):
                 "ambiguity": [],
             }
         )
-    elif understanding.operation in ("CHAT", "EXPLAIN") and policies.looks_like_knowledge_question(raw_question):
+    elif (
+        understanding.operation in ("CHAT", "EXPLAIN")
+        and policies.looks_like_knowledge_question(raw_question)
+        and "knowledge.search" in ctx.tool_registry.names()
+    ):
         # 模型可能把“hello，介绍一下某版本”误判为闲聊；明确的企业知识信号
         # 必须优先进入检索，尤其是已有会话中的多轮追问。
         understanding = understanding.model_copy(
