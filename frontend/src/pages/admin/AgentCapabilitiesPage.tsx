@@ -49,17 +49,17 @@ export function AgentCapabilitiesPage() {
         <Card>
           <CardContent sx={{ pb: 0 }}>
             <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="fullWidth">
-              <Tab label="Tools" />
-              <Tab label="Skills" />
-              <Tab label="MCP Servers" />
+              <Tab label="工具" />
+              <Tab label="技能" />
+              <Tab label="MCP 服务" />
             </Tabs>
           </CardContent>
         </Card>
 
         {tab === 0 && (
           <Card><CardContent>
-            <Typography variant="h6" gutterBottom>Tools</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Tool 只向 Agent 暴露名称、描述和 Schema；停用后不会出现在运行时工具集。</Typography>
+            <Typography variant="h6" gutterBottom>内置工具</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>工具由运行时统一加载；关闭后不会进入后续会话的能力集合。</Typography>
             <Table size="small"><TableHead><TableRow><TableCell>名称</TableCell><TableCell>说明</TableCell><TableCell>来源</TableCell><TableCell>状态</TableCell></TableRow></TableHead><TableBody>
               {data.tools.map((item) => <TableRow key={item.name}><TableCell sx={{ width: 220, whiteSpace: "nowrap" }}><Typography sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 14, letterSpacing: 0 }}>{item.name}</Typography></TableCell><TableCell>{item.description}</TableCell><TableCell>{item.source}</TableCell><TableCell><Switch checked={item.enabled} onChange={() => void run(() => setAgentToolEnabled(item.name, !item.enabled), `${item.name} 已${item.enabled ? "停用" : "启用"}。`)} /></TableCell></TableRow>)}
             </TableBody></Table>
@@ -79,8 +79,8 @@ export function AgentCapabilitiesPage() {
 
         {tab === 2 && (
           <Card><CardContent>
-            <Typography variant="h6" gutterBottom>MCP Servers</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>MCP Server 默认关闭。连接、发现和调用必须经过后续授权与工具白名单校验。</Typography>
+            <Typography variant="h6" gutterBottom>MCP 服务</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>MCP 服务默认关闭；启用后才会发现并加载其工具，调用仍受权限和白名单控制。</Typography>
             <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mb: 2 }}><TextField label="名称" size="small" value={mcp.name} onChange={(e) => setMcp({ ...mcp, name: e.target.value })} /><TextField label="Endpoint" size="small" fullWidth value={mcp.endpoint} onChange={(e) => setMcp({ ...mcp, endpoint: e.target.value })} /><FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>认证</InputLabel><Select label="认证" value={mcp.auth_type} onChange={(e) => setMcp({ ...mcp, auth_type: e.target.value })}><MenuItem value="NONE">无</MenuItem><MenuItem value="OAUTH2">OAuth 2</MenuItem><MenuItem value="BEARER">Bearer</MenuItem></Select></FormControl><Button variant="contained" onClick={() => void addMcp()}>添加</Button></Stack>
             {data.mcp_servers.length === 0 ? <Typography color="text.secondary">暂无 MCP Server。</Typography> : <Table size="small"><TableHead><TableRow><TableCell>名称</TableCell><TableCell>Endpoint</TableCell><TableCell>传输</TableCell><TableCell>状态</TableCell><TableCell>启用</TableCell></TableRow></TableHead><TableBody>{data.mcp_servers.map((item) => <TableRow key={item.id}><TableCell>{item.name}</TableCell><TableCell>{item.endpoint}</TableCell><TableCell>{item.transport}</TableCell><TableCell><Chip size="small" label={item.status} /></TableCell><TableCell><Switch checked={item.enabled} onChange={() => void run(() => setMcpServerEnabled(item.id, !item.enabled), `${item.name} 已${item.enabled ? "停用" : "启用"}。`)} /></TableCell></TableRow>)}</TableBody></Table>}
           </CardContent></Card>

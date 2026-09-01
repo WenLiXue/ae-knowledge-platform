@@ -20,6 +20,7 @@ from ..model_gateway.base import ChatResponse, GatewayTool, ModelGateway
 from ..qa.llm import chat_with_retry
 from ..retrieval.service import RetrievalService, build_retrieval_service
 from .tools import ToolExecutor, ToolRegistry, build_default_tool_registry
+from .capability.resolver import CapabilityResolver
 from .tools.policy import ToolPolicy
 
 
@@ -179,6 +180,7 @@ class AgentRuntimeContext:
     deadline: float
     tool_registry: ToolRegistry
     tool_executor: ToolExecutor
+    capabilities: CapabilityResolver
     skill_catalog: tuple[dict, ...] = ()
     principal: PrincipalContext | None = None
 
@@ -210,7 +212,7 @@ def build_context(
     # without restarting workers. If the capability schema is unavailable
     # during an upgrade, retain the code-owned safe defaults.
     try:
-        from .capability import load_enabled_capabilities
+        from .capability.loader import load_enabled_capabilities
 
         with session_factory() as db:
             user, skill_catalog = load_enabled_capabilities(
@@ -230,6 +232,7 @@ def build_context(
         tool_registry,
         policy=ToolPolicy(allow_write=settings.agent_write_tools_enabled),
     )
+    capabilities = CapabilityResolver(tool_registry, executor=tool_executor)
     return AgentRuntimeContext(
         session_factory=session_factory,
         retrieval_service_factory=retrieval_service_factory,
@@ -240,6 +243,7 @@ def build_context(
         deadline=deadline,
         tool_registry=tool_registry,
         tool_executor=tool_executor,
+        capabilities=capabilities,
         skill_catalog=skill_catalog,
         principal=principal,
     )

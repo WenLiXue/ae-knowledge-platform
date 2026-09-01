@@ -24,7 +24,7 @@ def _filters_from_snapshot(snapshot: dict) -> RetrievalFilters:
 def core_retrieve(state: dict, ctx):
     # The direct RAG node is retained for the fast path, but it must obey the
     # same runtime capability catalog as planner-selected tools.
-    if "knowledge.search" not in (state.get("available_tool_names") or ctx.tool_registry.names()):
+    if "knowledge.search" not in (state.get("available_tool_names") or ctx.capabilities.names()):
         return {
             "_terminate": True,
             "final_status": "FAILED",

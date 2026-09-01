@@ -105,11 +105,11 @@ def core_understand_goal(state: dict, ctx):
     understanding = None
     fast_knowledge_path = (
         policies.looks_like_knowledge_question(raw_question)
-        and "knowledge.search" in ctx.tool_registry.names()
+        and "knowledge.search" in ctx.capabilities.names()
     )
     knowledge_disabled_request = (
         policies.looks_like_knowledge_question(raw_question)
-        and "knowledge.search" not in ctx.tool_registry.names()
+        and "knowledge.search" not in ctx.capabilities.names()
     )
     # Fast path for explicit enterprise knowledge questions.  These requests
     # need retrieval, but not a planner round-trip; this removes one LLM call
@@ -182,7 +182,7 @@ def core_understand_goal(state: dict, ctx):
     elif (
         understanding.operation in ("CHAT", "EXPLAIN")
         and policies.looks_like_knowledge_question(raw_question)
-        and "knowledge.search" in ctx.tool_registry.names()
+        and "knowledge.search" in ctx.capabilities.names()
     ):
         # 模型可能把“hello，介绍一下某版本”误判为闲聊；明确的企业知识信号
         # 必须优先进入检索，尤其是已有会话中的多轮追问。
@@ -214,6 +214,6 @@ def core_understand_goal(state: dict, ctx):
         "operation": understanding.operation or "ANSWER",
         "normalized_question": understanding.goal,
         "requires_retrieval": understanding.requires_enterprise_evidence,
-        "available_tool_names": list(ctx.tool_registry.names()),
+        "available_tool_names": list(ctx.capabilities.names()),
         "route_reason_code": "GOAL_UNDERSTOOD",
     }
