@@ -5,6 +5,7 @@ from __future__ import annotations
 from .knowledge import register_knowledge_tools
 from .skill import register_skill_tools
 from .tasks import register_task_tools
+from .primitives import register_primitive_tools
 from .registry import ToolRegistry
 
 
@@ -18,4 +19,5 @@ def build_default_tool_registry() -> ToolRegistry:
     register_skill_tools(registry)
     register_knowledge_tools(registry)
     register_task_tools(registry)
+    register_primitive_tools(registry)
     return registry
