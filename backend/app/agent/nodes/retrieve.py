@@ -22,6 +22,15 @@ def _filters_from_snapshot(snapshot: dict) -> RetrievalFilters:
 
 
 def core_retrieve(state: dict, ctx):
+    # The direct RAG node is retained for the fast path, but it must obey the
+    # same runtime capability catalog as planner-selected tools.
+    if "knowledge.search" not in (state.get("available_tool_names") or ctx.tool_registry.names()):
+        return {
+            "_terminate": True,
+            "final_status": "FAILED",
+            "error_code": "TOOL_DISABLED",
+            "error_summary": "知识检索工具当前已停用",
+        }
     svc = ctx.retrieval_service_factory()
     question = state.get("normalized_question") or state.get("question") or ""
     operation = state.get("operation") or "ANSWER"

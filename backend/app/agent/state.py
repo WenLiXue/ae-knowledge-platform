@@ -63,6 +63,7 @@ class AgentState(TypedDict, total=False):
     goal: dict
     execution_mode: str
     tool_agent_enabled: bool
+    available_tool_names: list[str]
     completion_criteria: list[dict]
     operation: str
     normalized_question: str

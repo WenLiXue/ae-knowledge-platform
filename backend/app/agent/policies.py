@@ -171,6 +171,7 @@ def route_after_goal(state: AgentState) -> str:
     # spend another model call creating a one-step knowledge.search plan.
     if (
         (state.get("goal") or {}).get("requires_enterprise_evidence")
+        and "knowledge.search" in (state.get("available_tool_names") or [])
         and set((state.get("goal") or {}).get("candidate_capabilities") or []) <= {"knowledge.search"}
     ):
         return "retrieve"

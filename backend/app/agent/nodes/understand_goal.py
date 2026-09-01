@@ -214,5 +214,6 @@ def core_understand_goal(state: dict, ctx):
         "operation": understanding.operation or "ANSWER",
         "normalized_question": understanding.goal,
         "requires_retrieval": understanding.requires_enterprise_evidence,
+        "available_tool_names": list(ctx.tool_registry.names()),
         "route_reason_code": "GOAL_UNDERSTOOD",
     }
