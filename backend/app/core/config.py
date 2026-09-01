@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     agent_max_tool_calls: int = 10
     agent_max_replans: int = 1
     agent_planner_timeout_seconds: float = 15.0
+    agent_query_rewrite_timeout_seconds: float = 5.0
     agent_rerank_timeout_seconds: float = 8.0
     agent_parallel_read_limit: int = 3
     agent_task_timeout_seconds: int = 180

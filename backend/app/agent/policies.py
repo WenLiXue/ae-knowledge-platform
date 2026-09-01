@@ -219,7 +219,6 @@ def route_after_evidence(state: AgentState) -> str:
         return "finalize_insufficient"
     if (
         quality == EVIDENCE_PARTIAL
-        and state.get("execution_mode") != "DIRECT_RAG"
         and state.get("query_rewrite_count", 0) < get_settings().agent_query_rewrite_limit
     ):
         return "rewrite_query"

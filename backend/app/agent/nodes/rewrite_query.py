@@ -23,7 +23,8 @@ def core_rewrite_query(state: dict, ctx):
                         "role": "user",
                         "content": f"原问题：{question}\n检索结果不足。请改写为一个更精确的检索表达式。",
                     },
-                ]
+                ],
+                timeout_seconds=ctx.settings.agent_query_rewrite_timeout_seconds,
             )
             import json
 
