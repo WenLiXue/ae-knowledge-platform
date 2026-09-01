@@ -14,6 +14,7 @@ from ..db.models.capability import AgentMcpServer, AgentSkill, AgentToolConfig
 from ..db.models.user import User
 from ..db.session import get_db
 from .capabilities import parse_skill_document
+from .mcp import McpDiscoveryError, discover_tools
 
 router = APIRouter(prefix="/api/v1/admin/agent", tags=["admin-agent-capabilities"])
 
@@ -152,4 +153,24 @@ def set_mcp_enabled(server_id: uuid.UUID, data: EnabledPatch, db: Session = Depe
     row.enabled = data.enabled
     row.status = "ENABLED" if data.enabled else "DISABLED"
     db.commit()
+    return {"data": _mcp_dict(row)}
+
+
+@router.post("/mcp-servers/{server_id}/discover")
+def discover_mcp_tools(server_id: uuid.UUID, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)):
+    row = db.get(AgentMcpServer, server_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "MCP_SERVER_NOT_FOUND", "message": "MCP Server 不存在"})
+    try:
+        tools = discover_tools(row.endpoint)
+    except McpDiscoveryError as exc:
+        row.status = "ERROR"
+        row.last_error = str(exc)[:512]
+        db.commit()
+        raise HTTPException(status_code=502, detail={"code": "MCP_DISCOVERY_FAILED", "message": "MCP 工具发现失败"}) from exc
+    row.discovered_tools = tools
+    row.status = "READY"
+    row.last_error = None
+    db.commit()
+    db.refresh(row)
     return {"data": _mcp_dict(row)}
