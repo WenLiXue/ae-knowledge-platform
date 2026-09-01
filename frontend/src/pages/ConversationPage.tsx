@@ -233,6 +233,37 @@ function AnswerBlockView({ block }: { block: AnswerBlock }) {
     }
     return "";
   };
+  const structuredContent = (() => {
+    if (block.content && typeof block.content === "object") return block.content;
+    if (typeof block.content === "string") {
+      try {
+        const parsed = JSON.parse(block.content);
+        if (parsed && typeof parsed === "object") return parsed;
+      } catch {
+        // 普通文本，不是结构化块
+      }
+    }
+    return null;
+  })() as { columns?: unknown; rows?: unknown } | null;
+  // 兼容模型把表格标成 list/paragraph，但正文仍返回 rows/columns JSON。
+  if (
+    structuredContent &&
+    Array.isArray(structuredContent.columns) &&
+    Array.isArray(structuredContent.rows)
+  ) {
+    const columns = structuredContent.columns.map(String);
+    const rows = structuredContent.rows.map((row) =>
+      Array.isArray(row) ? row.map(String) : [String(row)],
+    );
+    return (
+      <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+        <Table size="small">
+          <TableHead><TableRow>{columns.map((column) => <TableCell key={column}>{column}</TableCell>)}</TableRow></TableHead>
+          <TableBody>{rows.map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody>
+        </Table>
+      </TableContainer>
+    );
+  }
   if (block.type === "paragraph") {
     return (
       // 答案正文对齐原型 .answer-copy：15px / 1.75 行高
