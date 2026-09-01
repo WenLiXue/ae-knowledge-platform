@@ -59,6 +59,7 @@ def plan_goal(
     """Generate and validate a plan; a deterministic single-tool fallback is provided."""
     limits = limits or PlannerLimits()
     available = registry.definitions(permissions)
+    catalog = registry.catalog(permissions)
     if not available:
         raise ToolError("TOOL_PERMISSION_DENIED", "当前用户没有可用工具")
     plan: AgentPlan | None = None
@@ -76,7 +77,14 @@ def plan_goal(
     if chat is not None and not can_skip_llm:
         prompt = {
             "goal": goal.model_dump(mode="json"),
-            "available_tools": available,
+            # First-stage routing receives only lightweight metadata. Full
+            # schemas are disclosed only for capabilities suggested by goal
+            # understanding (or the single available tool fallback).
+            "available_tools": catalog,
+            "selected_tool_schemas": [
+                definition for definition in available
+                if definition["name"] in set(goal.candidate_capabilities)
+            ],
             "observations": observations or [],
             "existing_plan": existing_plan.model_dump(mode="json") if existing_plan else None,
         }

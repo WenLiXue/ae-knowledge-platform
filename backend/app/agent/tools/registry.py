@@ -56,6 +56,37 @@ class ToolRegistry:
             for tool in self.available(permissions, layers=layers)
         ]
 
+    def catalog(
+        self,
+        permissions: Iterable[str] = (),
+        *,
+        layers: Iterable[str] | None = None,
+    ) -> list[dict]:
+        """Return the lightweight first-stage catalog for progressive disclosure.
+
+        The planner/router sees only routing metadata initially; input/output
+        schemas are loaded later with :meth:`definition` after a tool is chosen.
+        """
+        return [
+            {
+                "name": tool.definition.name,
+                "version": tool.definition.version,
+                "description": tool.definition.description,
+                "layer": tool.definition.layer,
+                "risk": tool.definition.risk,
+                "side_effect": tool.definition.side_effect,
+            }
+            for tool in self.available(permissions, layers=layers)
+        ]
+
+    def definition(self, name: str, permissions: Iterable[str] = ()) -> dict:
+        """Load one tool's full schema after routing selects it."""
+        tool = self.get(name)
+        allowed = frozenset(permissions)
+        if not set(tool.definition.required_permissions).issubset(allowed):
+            raise ToolError("TOOL_PERMISSION_DENIED", "当前用户没有权限使用该工具")
+        return tool.definition.model_dump(mode="json")
+
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._tools))
 
