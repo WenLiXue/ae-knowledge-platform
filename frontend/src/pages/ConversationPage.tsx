@@ -77,8 +77,8 @@ function streamStageText(streaming: StreamingAnswer): string {
     UNDERSTANDING: "正在理解你的问题…",
     ROUTING: "正在确定查询范围…",
     BUILDING_CONTEXT: "正在整理相关信息…",
-    RETRIEVING: "正在查找知识库资料…",
-    RERANKING: "正在筛选最相关的资料…",
+    RETRIEVING: "正在执行工具…",
+    RERANKING: "正在处理工具结果…",
     GENERATING: "正在整理答案…",
     VALIDATING: "正在核对来源…",
     STREAMING: "正在输出答案…",
@@ -90,9 +90,22 @@ function streamStageText(streaming: StreamingAnswer): string {
 
 const THINKING_STEPS = [
   { key: "understand", label: "理解问题", stages: ["PENDING", "UNDERSTANDING", "ROUTING"] },
-  { key: "retrieve", label: "查找相关资料", stages: ["BUILDING_CONTEXT", "RETRIEVING", "RERANKING"] },
-  { key: "answer", label: "整理并核对答案", stages: ["GENERATING", "STREAMING", "VALIDATING", "UPDATING_MEMORY", "PERSISTING"] },
+  { key: "answer", label: "生成答案", stages: ["BUILDING_CONTEXT", "RETRIEVING", "RERANKING", "GENERATING", "STREAMING", "VALIDATING", "UPDATING_MEMORY", "PERSISTING"] },
 ];
+
+function toolDisplayName(tool?: string): string {
+  if (!tool) return "工具";
+  const labels: Record<string, string> = {
+    knowledge_search: "知识库检索",
+    "knowledge.search": "知识库检索",
+    "skill.load": "技能加载",
+    "task.retry": "任务重试",
+    "file.list": "文件列表",
+    "file.read": "读取文件",
+    "text.grep": "文本搜索",
+  };
+  return labels[tool] ?? tool;
+}
 
 function thinkingStepIndex(streaming: StreamingAnswer): number {
   const stage = streaming.progress_stage ?? streaming.status;
@@ -548,6 +561,9 @@ export function ConversationPage() {
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingAnswer | null>(null);
   const [progressEvents, setProgressEvents] = useState<Array<{ type: string; tool?: string; message?: string; duration_ms?: number; evidence_count?: number }>>([]);
+  const toolEvents = progressEvents.filter((event) => event.type.startsWith("tool.")).slice(-4);
+  const latestToolEvent = toolEvents[toolEvents.length - 1];
+  const activeToolEvent = latestToolEvent?.type === "tool.started" ? latestToolEvent : undefined;
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -817,7 +833,7 @@ export function ConversationPage() {
             <Box sx={{ py: 6 }}>
               <EmptyState
                 title="开始提问"
-                description="在下方输入你的问题，系统将检索已入库知识并给出带来源的答案。"
+                description="在下方输入问题，系统会按需调用已启用的工具并生成答案。"
               />
             </Box>
           ) : (
@@ -835,7 +851,11 @@ export function ConversationPage() {
               <Stack direction="row" spacing={1.5} alignItems="flex-start">
                 <CircularProgress size={18} />
                 <Box minWidth={0}>
-                  <Typography variant="subtitle2">{streaming.progress_message || streamStageText(streaming)}</Typography>
+                  <Typography variant="subtitle2">
+                    {activeToolEvent
+                      ? `${activeToolEvent.type === "tool.completed" ? "工具调用完成" : "正在调用工具"} · ${toolDisplayName(activeToolEvent.tool)}`
+                      : streaming.progress_message || streamStageText(streaming)}
+                  </Typography>
                   <Stack direction="row" spacing={1.5} sx={{ mt: 1, mb: streaming.draft_text ? 1 : 0 }}>
                     {THINKING_STEPS.map((step, index) => {
                       const current = thinkingStepIndex(streaming);
@@ -870,9 +890,11 @@ export function ConversationPage() {
                       ? "部分资料服务不可用，已使用可用结果继续回答。"
                       : "答案和来源会在生成过程中逐步显示。"}
                   </Typography>
-                  {progressEvents.filter((event) => event.type.startsWith("tool.")).slice(-3).map((event, index) => (
+                  {toolEvents.map((event, index) => (
                     <Typography key={`${event.type}-${index}`} variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {event.message}{event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}
+                      {event.type === "tool.completed" ? "✓" : "•"} {toolDisplayName(event.tool)}
+                      {event.message ? `：${event.message}` : ""}
+                      {event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}
                     </Typography>
                   ))}
                 </Box>

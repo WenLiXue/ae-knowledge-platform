@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import time
+
 from ..contracts.plan import AgentPlan
 from ..contracts.tool import ToolCallProposal
 from ..verifier import verify_plan
 from ..tools.base import ToolContext, ToolError
 from ..security import permissions_for_run
+from . import _append_event
 
 
 def core_execute_tool(state: dict, ctx):
@@ -70,7 +73,19 @@ def core_execute_tool(state: dict, ctx):
                 "error_summary": exc.message,
             }
         confirmed = True
+    started = time.monotonic()
+    _append_event(ctx, state["answer_id"], {
+        "type": "tool.started",
+        "tool": proposal.tool_name,
+        "message": f"开始调用 {proposal.tool_name}",
+    })
     result = ctx.tool_executor.execute(proposal, tool_context, confirmed=confirmed)
+    _append_event(ctx, state["answer_id"], {
+        "type": "tool.completed" if result.status == "SUCCEEDED" else "tool.failed",
+        "tool": proposal.tool_name,
+        "message": result.summary,
+        "duration_ms": round((time.monotonic() - started) * 1000, 3),
+    })
     index = next(i for i, item in enumerate(plan.steps) if item.id == step.id)
     if result.error_code == "APPROVAL_REQUIRED":
         from ..approvals import create_approval
