@@ -411,6 +411,41 @@ def test_real_provider_resolves_wiki_sheet_and_reads_selected_tab() -> None:
     assert not any("tab-b" in str(request.url) for request in requests if "/values/" in request.url.path)
 
 
+def test_real_provider_falls_back_to_wiki_for_file_url_node_token() -> None:
+    """某些 Wiki 附件的 /file/ 链接携带的是 node_token，而非 drive file_token。"""
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.url.path.endswith("/drive/v1/files/file-node"):
+            return httpx.Response(404, json={"code": 1061002, "msg": "not found"})
+        if request.url.path.endswith("/wiki/v2/spaces/get_node"):
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {"node": {
+                        "obj_token": "drive-file-token",
+                        "obj_type": "file",
+                        "title": "FAQ.docx",
+                    }},
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    provider = _real_provider(handler)
+    meta = provider.resolve_url("u-token", "https://example.feishu.cn/file/file-node")
+
+    assert meta.resource_token == "drive-file-token"
+    assert meta.resource_type == "file"
+    assert meta.node_token == "file-node"
+    assert meta.title == "FAQ.docx"
+    assert requests == [
+        "/open-apis/drive/v1/files/file-node",
+        "/open-apis/wiki/v2/spaces/get_node",
+    ]
+
+
 def test_real_provider_rejects_unknown_selected_sheet() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/sheets/v3/spreadsheets/spreadsheet-x/sheets/query"):

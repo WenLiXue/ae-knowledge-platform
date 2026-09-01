@@ -184,7 +184,24 @@ class RealFeishuProvider(FeishuDocumentProvider):
 
     def resolve_url(self, user_access_token: str | None, url: str) -> FeishuDocument:
         token, resource_type = _parse_url(url)
-        document = self.get_metadata(user_access_token, token, resource_type)
+        try:
+            document = self.get_metadata(user_access_token, token, resource_type)
+        except FeishuError as exc:
+            # 飞书 Wiki 中挂载的附件，其网页地址有时是 /file/{token}，但
+            # 该 token 实际是 Wiki node_token，而不是 drive file_token。
+            # 先走标准 Drive 元数据接口；仅在明确 404 时回退到 Wiki 节点
+            # 查询，避免把权限、授权或网络错误误判为“文件节点”。
+            if resource_type != "file" or exc.category != NOT_FOUND:
+                raise
+            try:
+                document = self.get_metadata(user_access_token, token, "wiki")
+            except FeishuError as fallback_exc:
+                # 回退接口若暴露了真正的授权/网络问题，应保留该错误；
+                # 两个接口都 404 时，返回原始 Drive 404。
+                if fallback_exc.category != NOT_FOUND:
+                    raise
+                raise exc
+            document.extra["resolved_from_wiki_node"] = True
         document.url = url
         selected_sheet_id = _selected_sheet_id(url)
         if selected_sheet_id:
@@ -204,6 +221,8 @@ class RealFeishuProvider(FeishuDocumentProvider):
                 params={"token": resource_token},
             )
             node = body.get("data", {}).get("node", {})
+            if not node:
+                raise FeishuError(NOT_FOUND, "DOC_NOT_FOUND", "资源不存在", retryable=False)
             obj_token = node.get("obj_token", resource_token)
             title = node.get("title", resource_token)
             modified = _parse_timestamp(node.get("modify_time"))
