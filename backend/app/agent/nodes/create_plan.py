@@ -11,6 +11,7 @@ def core_create_plan(state: dict, ctx):
     try:
         goal = GoalUnderstanding.model_validate(state.get("goal") or {})
         permissions = {"knowledge:read", "skill:read"}
+        permissions.add("mcp:read")
         if ctx.settings.agent_write_tools_enabled:
             permissions.add("task:write")
         existing_plan = None

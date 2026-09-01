@@ -34,7 +34,7 @@ def core_execute_tool(state: dict, ctx):
         if value == "$goal":
             arguments[key] = state.get("normalized_question") or state.get("question") or ""
     proposal = ToolCallProposal(tool_name=step.capability, arguments=arguments)
-    permissions = {"knowledge:read", "skill:read"}
+    permissions = {"knowledge:read", "skill:read", "mcp:read"}
     if ctx.settings.agent_write_tools_enabled:
         permissions.add("task:write")
     tool_context = ToolContext(

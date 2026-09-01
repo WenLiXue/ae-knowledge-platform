@@ -223,9 +223,13 @@ def build_context(
                         status=user.status,
                     )
             configured = enabled_tool_names(db)
+            from .mcp import register_discovered_tools
+            register_discovered_tools(tool_registry, db)
             if configured:
                 for name in tuple(tool_registry.names()):
-                    if name not in configured:
+                    # MCP tools are governed by their server's enabled flag;
+                    # persisted builtin toggles must not hide them accidentally.
+                    if not name.startswith("mcp.") and name not in configured:
                         tool_registry.remove(name)
             skill_catalog = tuple(
                 {"name": item.name, "description": item.description, "version": item.version}
