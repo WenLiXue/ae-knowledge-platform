@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from ..contracts.goal import GoalUnderstanding
 from ..planner import PlannerLimits, plan_goal
+from ..security import permissions_for_run
 from ..tools.base import ToolError
 
 
 def core_create_plan(state: dict, ctx):
     try:
         goal = GoalUnderstanding.model_validate(state.get("goal") or {})
-        permissions = {"knowledge:read", "skill:read"}
-        permissions.add("mcp:read")
-        permissions.add("filesystem:read")
-        if ctx.settings.agent_write_tools_enabled:
-            permissions.add("task:write")
+        permissions = permissions_for_run(
+            write_tools_enabled=ctx.settings.agent_write_tools_enabled,
+        )
         existing_plan = None
         if state.get("plan_steps"):
             from ..contracts.plan import AgentPlan
@@ -36,7 +35,7 @@ def core_create_plan(state: dict, ctx):
         plan = plan_goal(
             goal,
             registry=ctx.tool_registry,
-            permissions=frozenset(permissions),
+            permissions=permissions,
             chat=planner_chat,
             limits=PlannerLimits(
                 max_steps=ctx.settings.agent_max_plan_steps,

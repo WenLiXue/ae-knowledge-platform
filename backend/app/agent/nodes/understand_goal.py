@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from ...qa.llm import local_query_understanding
 from .. import policies
 from ..contracts.goal import GoalUnderstanding
+from ..security import permissions_for_run
 
 GOAL_SYSTEM_PROMPT = (
     "你是企业任务助手的目标理解器。请把用户请求转换为一个结构化任务目标。\n"
@@ -111,9 +112,9 @@ def core_understand_goal(state: dict, ctx):
                 context_parts.append("最近对话：" + str(state["recent_turns"][-6:]))
             if context_parts:
                 question = question + "\n\n" + "\n".join(context_parts)
-            permissions = {"knowledge:read", "skill:read"}
-            if ctx.settings.agent_write_tools_enabled:
-                permissions.add("task:write")
+            permissions = permissions_for_run(
+                write_tools_enabled=ctx.settings.agent_write_tools_enabled,
+            )
             tool_catalog = [
                 {"name": item["name"], "description": item["description"]}
                 for item in ctx.tool_registry.definitions(permissions)

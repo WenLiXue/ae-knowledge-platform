@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterator
-import uuid
 
 from sqlalchemy.orm import Session
 
@@ -207,34 +206,20 @@ def build_context(
     # without restarting workers. If the capability schema is unavailable
     # during an upgrade, retain the code-owned safe defaults.
     try:
-        from ..agent.capabilities import enabled_skills, enabled_tool_names
+        from .capability import load_enabled_capabilities
 
         with session_factory() as db:
-            if user_id:
-                from ..db.models.user import User
-
-                user = db.get(User, uuid.UUID(str(user_id)))
-                if user is not None:
-                    principal = PrincipalContext(
-                        user_id=str(user.id),
-                        username=user.username,
-                        display_name=user.display_name,
-                        is_admin=bool(user.is_admin),
-                        status=user.status,
-                    )
-            configured = enabled_tool_names(db)
-            from .mcp import register_discovered_tools
-            register_discovered_tools(tool_registry, db)
-            if configured:
-                for name in tuple(tool_registry.names()):
-                    # MCP tools are governed by their server's enabled flag;
-                    # persisted builtin toggles must not hide them accidentally.
-                    if not name.startswith("mcp.") and name not in configured:
-                        tool_registry.remove(name)
-            skill_catalog = tuple(
-                {"name": item.name, "description": item.description, "version": item.version}
-                for item in enabled_skills(db)
+            user, skill_catalog = load_enabled_capabilities(
+                db, tool_registry, user_id=user_id,
             )
+            if user is not None:
+                principal = PrincipalContext(
+                    user_id=str(user.id),
+                    username=user.username,
+                    display_name=user.display_name,
+                    is_admin=bool(user.is_admin),
+                    status=user.status,
+                )
     except Exception:  # noqa: BLE001 — startup/upgrade fallback is safe
         pass
     tool_executor = ToolExecutor(

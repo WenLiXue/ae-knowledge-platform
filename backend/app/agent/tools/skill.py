@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from ...db.models.capability import AgentSkill
-from ..capabilities import SKILL_NAME_RE
+from ..capability.skill_parser import SKILL_NAME_RE
 from ..contracts.tool import ToolDefinition, ToolResultEnvelope
 from .base import ToolContext, ToolError
 

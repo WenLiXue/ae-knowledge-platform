@@ -6,6 +6,7 @@ from ..contracts.plan import AgentPlan
 from ..contracts.tool import ToolCallProposal
 from ..verifier import verify_plan
 from ..tools.base import ToolContext, ToolError
+from ..security import permissions_for_run
 
 
 def core_execute_tool(state: dict, ctx):
@@ -34,9 +35,9 @@ def core_execute_tool(state: dict, ctx):
         if value == "$goal":
             arguments[key] = state.get("normalized_question") or state.get("question") or ""
     proposal = ToolCallProposal(tool_name=step.capability, arguments=arguments)
-    permissions = {"knowledge:read", "skill:read", "mcp:read", "filesystem:read"}
-    if ctx.settings.agent_write_tools_enabled:
-        permissions.add("task:write")
+    permissions = permissions_for_run(
+        write_tools_enabled=ctx.settings.agent_write_tools_enabled,
+    )
     tool_context = ToolContext(
         user_id=str(state.get("user_id") or ""),
         run_id=state.get("run_id"),
@@ -45,7 +46,7 @@ def core_execute_tool(state: dict, ctx):
         services={"retrieval_service_factory": ctx.retrieval_service_factory},
         # Knowledge access is the same read permission used by the existing
         # authenticated retrieval path. Admin/action permissions are not granted.
-        permissions=frozenset(permissions),
+        permissions=permissions,
     )
     approval_id = state.get("pending_approval_id")
     confirmed = False
