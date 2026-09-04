@@ -12,6 +12,16 @@ import {
 } from "../../api/agentCapabilities";
 import { PageHeader } from "../../components/PageHeader";
 
+function capabilitySourceLabel(source: string | null | undefined): string {
+  if (!source) return "—";
+  const labels: Record<string, string> = {
+    BUILTIN: "内置",
+    MCP: "MCP 服务",
+    IMPORTED: "导入",
+  };
+  return labels[source] ?? source;
+}
+
 export function AgentCapabilitiesPage() {
   const [data, setData] = useState<AgentCapabilities | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -61,7 +71,7 @@ export function AgentCapabilitiesPage() {
             <Typography variant="h6" gutterBottom>内置工具</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>工具由运行时统一加载；关闭后不会进入后续会话的能力集合。</Typography>
             <Table size="small"><TableHead><TableRow><TableCell>名称</TableCell><TableCell>说明</TableCell><TableCell>来源</TableCell><TableCell>状态</TableCell></TableRow></TableHead><TableBody>
-              {data.tools.map((item) => <TableRow key={item.name}><TableCell sx={{ width: 220, whiteSpace: "nowrap" }}><Typography sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 14, letterSpacing: 0 }}>{item.name}</Typography></TableCell><TableCell>{item.description}</TableCell><TableCell>{item.source}</TableCell><TableCell><Switch checked={item.enabled} onChange={() => void run(() => setAgentToolEnabled(item.name, !item.enabled), `${item.name} 已${item.enabled ? "停用" : "启用"}。`)} /></TableCell></TableRow>)}
+              {data.tools.map((item) => <TableRow key={item.name}><TableCell sx={{ width: 220, whiteSpace: "nowrap" }}><Typography sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 14, letterSpacing: 0 }}>{item.name}</Typography></TableCell><TableCell>{item.description}</TableCell><TableCell>{capabilitySourceLabel(item.source)}</TableCell><TableCell><Switch checked={item.enabled} onChange={() => void run(() => setAgentToolEnabled(item.name, !item.enabled), `${item.name} 已${item.enabled ? "停用" : "启用"}。`)} /></TableCell></TableRow>)}
             </TableBody></Table>
           </CardContent></Card>
         )}
