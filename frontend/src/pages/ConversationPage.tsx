@@ -227,6 +227,12 @@ function hasToolActivity(events: ProgressEvent[]): boolean {
 
 function stepDetail(step: ActivityStep): string | null {
   const event = step.event;
+  if (step.status === "running") {
+    if (step.key.startsWith("tool:")) return "正在查询企业知识库…";
+    if (step.key === "analysis") return "正在分析问题…";
+    if (step.key === "generation") return "正在生成回答…";
+    if (step.key === "validation") return "正在核对回答来源…";
+  }
   if (step.status === "completed") {
     if (step.key.startsWith("tool:") && event.evidence_count !== undefined) {
       return `找到 ${event.evidence_count} 条相关资料${event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}`;
