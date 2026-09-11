@@ -59,7 +59,13 @@ def render_generated_markdown(
     for block in generated.blocks:
         content = block.content
         if isinstance(content, dict):
-            if block.type == "list":
+            if block.type == "table" and content.get("columns") and content.get("rows") is not None:
+                columns = [str(item) for item in content["columns"]]
+                rows = [[str(item) for item in row] for row in content["rows"]]
+                content = "| " + " | ".join(columns) + " |\n"
+                content += "| " + " | ".join("---" for _ in columns) + " |\n"
+                content += "\n".join("| " + " | ".join(row) + " |" for row in rows)
+            elif block.type == "list":
                 content = "\n".join(f"- {value}" for value in content.values())
             else:
                 content = "\n".join(f"**{key}**：{value}" for key, value in content.items())
@@ -83,9 +89,14 @@ def render_persisted_markdown(summary: str | None, blocks: list[dict] | None) ->
             continue
         content = block.get("content")
         if isinstance(content, dict):
-            content = "\n".join(
-                f"**{key}**：{value}" for key, value in content.items()
-            )
+            if content.get("columns") and content.get("rows") is not None:
+                columns = [str(item) for item in content["columns"]]
+                rows = [[str(item) for item in row] for row in content["rows"]]
+                content = "| " + " | ".join(columns) + " |\n"
+                content += "| " + " | ".join("---" for _ in columns) + " |\n"
+                content += "\n".join("| " + " | ".join(row) + " |" for row in rows)
+            else:
+                content = "\n".join(f"**{key}**：{value}" for key, value in content.items())
         text = str(content or "").strip()
         if text:
             refs = block.get("citation_nos") or []

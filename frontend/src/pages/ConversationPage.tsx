@@ -115,6 +115,21 @@ function eventLabel(event: ProgressEvent): string {
   return event.message || event.summary || "处理步骤";
 }
 
+function userStepLabel(event: ProgressEvent): string {
+  const displayName = event.display_name || "";
+  if (displayName && !/^(tool|generation|answer|phase|step)\./.test(displayName)) {
+    return displayName;
+  }
+  if (event.kind === "tool" || event.type.startsWith("tool.")) {
+    return toolDisplayName(event.tool);
+  }
+  if ((event.stage || event.phase) === "UNDERSTANDING") return "分析问题";
+  if (["BUILDING_CONTEXT", "ROUTING"].includes(event.stage || event.phase || "")) return "分析问题";
+  if ((event.stage || event.phase) === "VALIDATING") return "核对来源";
+  if (event.type === "evidence.coverage") return "核对来源";
+  return "生成回答";
+}
+
 function eventIcon(event: ProgressEvent) {
   if (event.type === "tool.failed" || event.status === "FAILED") return <ErrorOutlineIcon fontSize="small" color="error" />;
   if (event.type === "tool.completed" || event.type === "answer.completed") return <CheckCircleOutlineIcon fontSize="small" color="success" />;
@@ -140,13 +155,9 @@ interface ActivityStep {
 
 function activityLabel(event: ProgressEvent): string {
   if (event.kind === "tool" || event.type.startsWith("tool.")) {
-    return event.display_name || toolDisplayName(event.tool);
+    return userStepLabel(event);
   }
-  if (event.stage === "UNDERSTANDING") return "分析问题";
-  if (event.stage === "GENERATING") return "整理回答";
-  if (event.stage === "VALIDATING") return "核对来源";
-  if (event.type === "answer.completed") return "生成回答";
-  return event.display_name || event.summary || event.message || "执行步骤";
+  return userStepLabel(event);
 }
 
 function activitySteps(events: ProgressEvent[]): ActivityStep[] {
@@ -158,7 +169,9 @@ function activitySteps(events: ProgressEvent[]): ActivityStep[] {
       ? `tool:${event.step_id || event.event_id || event.tool || event.display_name || "unknown"}`
       : event.type.startsWith("generation.") || event.type === "answer.finalized"
         ? "generation"
-        : (event.stage || event.phase) === "UNDERSTANDING"
+        : event.type === "evidence.coverage" || (event.stage || event.phase) === "VALIDATING"
+          ? "validation"
+        : ["UNDERSTANDING", "BUILDING_CONTEXT", "ROUTING"].includes(event.stage || event.phase || "")
         ? "analysis"
         : (event.stage || event.phase) === "GENERATING" || event.type.startsWith("answer.")
           ? "generation"
@@ -188,8 +201,20 @@ function activitySteps(events: ProgressEvent[]): ActivityStep[] {
   return steps;
 }
 
+function userVisibleActivityEvents(events: ProgressEvent[]): ProgressEvent[] {
+  return events.filter((event) =>
+    event.type.startsWith("tool.")
+    || event.type === "evidence.coverage"
+    || (
+      event.type === "thought.summary"
+      && ["UNDERSTANDING", "BUILDING_CONTEXT", "ROUTING"].includes(event.stage || event.phase || "")
+    )
+    || (event.type.startsWith("generation.") && event.type !== "generation.delta")
+  );
+}
+
 function activitySummary(events: ProgressEvent[]): string {
-  const steps = activitySteps(events);
+  const steps = activitySteps(userVisibleActivityEvents(events));
   const tools = steps.filter((step) => step.key.startsWith("tool:")).length;
   const duration = steps.reduce((total, step) => total + (step.event.duration_ms || 0), 0);
   const durationText = duration > 0 ? ` · ${(duration / 1000).toFixed(1)}s` : "";
@@ -198,6 +223,19 @@ function activitySummary(events: ProgressEvent[]): string {
 
 function hasToolActivity(events: ProgressEvent[]): boolean {
   return events.some((event) => event.kind === "tool" || event.type.startsWith("tool."));
+}
+
+function stepDetail(step: ActivityStep): string | null {
+  const event = step.event;
+  if (step.status === "completed") {
+    if (step.key.startsWith("tool:") && event.evidence_count !== undefined) {
+      return `找到 ${event.evidence_count} 条相关资料${event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}`;
+    }
+    if (step.key === "analysis") return "已完成问题分析";
+    if (step.key === "generation") return `回答生成完成${event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}`;
+    if (step.key === "validation") return "已核对回答来源";
+  }
+  return formatEventDetail(event);
 }
 
 function ToolPayload({ event }: { event: ProgressEvent }) {
@@ -247,12 +285,10 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
   );
 }
 
-function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEvent[]; live?: boolean; onRetry?: () => void }) {
+function ProcessTimeline({ events, live = false, onRetry, showHeader = true }: { events: ProgressEvent[]; live?: boolean; onRetry?: () => void; showHeader?: boolean }) {
   // 统一展示 Agent Activity：只展示执行摘要，不展示隐藏思维链。
   if (!hasToolActivity(events)) return null;
-  const visible = events
-    .filter((event) => event.type === "thought.summary" || event.type.startsWith("tool.") || event.type === "evidence.coverage" || event.type.startsWith("answer.") || (event.type.startsWith("generation.") && event.type !== "generation.delta"))
-    .slice(-12);
+  const visible = userVisibleActivityEvents(events).slice(-12);
   if (visible.length === 0) return null;
   const steps = activitySteps(visible).map((step) =>
     live || step.status === "failed" ? step : { ...step, status: "completed" as const },
@@ -260,13 +296,13 @@ function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEv
   const running = live && steps.some((step) => step.status === "running");
   return (
       <Box sx={{ mt: live ? 1.5 : 0, borderTop: live ? 1 : 0, borderColor: "divider", pt: live ? 1.5 : 0 }}>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
+      {showHeader && <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
         <AccountTreeOutlinedIcon sx={{ fontSize: 16, color: "primary.main" }} />
         <Typography variant="caption" sx={{ color: "primary.main", fontWeight: 700, letterSpacing: "0.04em" }}>
           {live ? "执行过程" : activitySummary(visible)}
         </Typography>
         {running && <CircularProgress size={11} thickness={6} color="primary" />}
-      </Stack>
+      </Stack>}
       <Stack spacing={0}>
         {steps.map((step, index) => (
           <Stack key={step.key} direction="row" spacing={1.25} alignItems="stretch" sx={{ minHeight: 42 }}>
@@ -280,9 +316,9 @@ function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEv
               <Typography variant="body2" sx={{ display: "block", lineHeight: 1.35, fontWeight: 600 }}>
                 {step.label}
               </Typography>
-              {formatEventDetail(step.event) && (
+              {stepDetail(step) && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
-                  {formatEventDetail(step.event)}
+                  {stepDetail(step)}
                 </Typography>
               )}
               {!live && step.status === "failed" && onRetry && (
@@ -607,6 +643,23 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
 
   return (
     <Box>
+      {answer.progress_events && answer.progress_events.length > 0 && hasToolActivity(answer.progress_events) && (
+        <Accordion
+          expanded={processOpen}
+          onChange={(_, expanded) => setProcessOpen(expanded)}
+          disableGutters
+          elevation={0}
+          sx={{ border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 42, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
+            <Typography variant="caption" color="text.secondary">{activitySummary(answer.progress_events)}</Typography>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <ProcessTimeline events={answer.progress_events} onRetry={onRetry} showHeader={false} />
+          </AccordionDetails>
+        </Accordion>
+      )}
+
       {/* 综合答案标题对齐原型 .answer-title */}
       {(answer.status === "FAILED" || showSummary) && (
         <Typography sx={{ fontSize: 20, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
@@ -657,23 +710,6 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
             <AnswerBlockView key={block.block_id} block={block} />
           ))}
         </Stack>
-      )}
-
-      {answer.progress_events && answer.progress_events.length > 0 && hasToolActivity(answer.progress_events) && (
-        <Accordion
-          expanded={processOpen}
-          onChange={(_, expanded) => setProcessOpen(expanded)}
-          disableGutters
-          elevation={0}
-          sx={{ mt: 1.5, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
-        >
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 42, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
-            <Typography variant="caption" color="text.secondary">{activitySummary(answer.progress_events)}</Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ pt: 0 }}>
-            <ProcessTimeline events={answer.progress_events} onRetry={onRetry} />
-          </AccordionDetails>
-        </Accordion>
       )}
 
       {answer.citations.length > 0 && <CitationList citations={answer.citations} />}

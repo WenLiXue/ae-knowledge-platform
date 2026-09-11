@@ -40,6 +40,10 @@ _KNOWLEDGE_QUERY_MARKERS = (
     "机器", "硬件", "性能", "CPU", "GPU", "DDR", "EOS", "补丁", "升级",
     "哪些", "多少", "如何", "怎么",
 )
+_GENERAL_TASK_MARKERS = (
+    "写一个", "写段", "代码", "编程", "算法", "函数", "实现", "示例",
+    "c语言", "python", "java", "javascript", "typescript", "sql",
+)
 
 
 def strip_greeting_prefix(question: str) -> str:
@@ -59,6 +63,13 @@ def looks_like_knowledge_question(question: str) -> bool:
     normalized = re.sub(r"[？?。！!]+$", "", text).strip().lower()
     if normalized in {item.lower() for item in _NON_KNOWLEDGE_CHAT}:
         return False
+    # Generic coding/how-to requests belong to the direct-answer capability.
+    # A product/model marker can still override this when the request is
+    # explicitly about an enterprise object.
+    if any(marker in normalized for marker in _GENERAL_TASK_MARKERS):
+        enterprise_markers = ("ae", "产品", "型号", "硬件", "知识库", "企业")
+        if not any(marker in normalized for marker in enterprise_markers):
+            return False
     return any(marker in text for marker in _KNOWLEDGE_QUERY_MARKERS)
 
 
