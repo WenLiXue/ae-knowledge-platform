@@ -254,7 +254,9 @@ function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEv
     .filter((event) => event.type === "thought.summary" || event.type.startsWith("tool.") || event.type === "evidence.coverage" || event.type.startsWith("answer.") || (event.type.startsWith("generation.") && event.type !== "generation.delta"))
     .slice(-12);
   if (visible.length === 0) return null;
-  const steps = activitySteps(visible);
+  const steps = activitySteps(visible).map((step) =>
+    live || step.status === "failed" ? step : { ...step, status: "completed" as const },
+  );
   const running = live && steps.some((step) => step.status === "running");
   return (
       <Box sx={{ mt: live ? 1.5 : 0, borderTop: live ? 1 : 0, borderColor: "divider", pt: live ? 1.5 : 0 }}>
