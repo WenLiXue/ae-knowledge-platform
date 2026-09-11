@@ -25,7 +25,7 @@ from ..core.config import get_settings
 from ..core.context import TaskContext, reset_task_context, set_service, set_task_context
 from ..core.logging import setup_logging
 from ..db.models.knowledge import DocumentVersion, KnowledgeSource
-from ..db.models.conversation import Answer
+from ..db.models.conversation import AgentRun, Answer
 from ..db.models.task import ProcessingTask, TaskAttempt
 from ..db.session import SessionLocal
 from ..feishu_auth.base import FeishuOAuthClient
@@ -288,13 +288,22 @@ class WorkerRunner:
         if not answer_id:
             return
         answer = session.get(Answer, answer_id)
-        if answer is None or answer.status not in ("PENDING", "RETRIEVING", "STREAMING"):
+        if answer is None:
             return
-        answer.status = "FAILED"
-        answer.progress_stage = None
-        answer.error_code = exc.code
-        answer.error_summary = exc.message[:500]
-        answer.completed_at = _now()
+        if answer.status not in ("SUCCEEDED", "FAILED", "CANCELED"):
+            answer.status = "CANCELED" if answer.cancel_requested else "FAILED"
+            answer.progress_stage = None
+            answer.progress_message = None
+            answer.draft_text = None
+            answer.error_code = "AGENT_CANCELED" if answer.cancel_requested else exc.code
+            answer.error_summary = "用户已取消回答" if answer.cancel_requested else exc.message[:500]
+            answer.completed_at = _now()
+        for run in session.execute(select(AgentRun).where(AgentRun.answer_id == answer.id)).scalars():
+            if run.status not in ("SUCCEEDED", "FAILED", "CANCELED"):
+                run.status = answer.status
+                run.error_code = answer.error_code
+                run.error_summary = answer.error_summary
+                run.completed_at = answer.completed_at or _now()
 
     def _handle_unexpected_error(self, task: ProcessingTask, exc: Exception) -> str:
         """未预期异常按 INTERNAL 可重试错误处理（回滚后重排）。"""

@@ -232,7 +232,7 @@ def route_after_validation(state: AgentState) -> str:
     errors = state.get("validation_errors", []) or []
     if not errors:
         return "update_memory"
-    if state.get("citation_repair_count", 0) < get_settings().agent_citation_repair_limit:
+    if not state.get("generation_completed") and state.get("citation_repair_count", 0) < get_settings().agent_citation_repair_limit:
         return "generate_grounded"
     return "finalize_insufficient"
 

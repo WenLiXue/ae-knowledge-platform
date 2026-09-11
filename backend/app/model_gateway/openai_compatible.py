@@ -13,6 +13,9 @@ import json
 import time
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
+
+from . import deadline
 
 import httpx
 
@@ -87,8 +90,11 @@ class OpenAICompatibleGateway:
         last_error: GatewayError | None = None
         for attempt in range(self.retries + 1):
             try:
-                response = self._client().post(url, json=payload, headers=self._headers())
-            except httpx.TimeoutException as exc:
+                if self.retries == 0 and self._http_client is None:
+                    response = deadline.post(url, payload=payload, headers=self._headers(), timeout=self.total_timeout)
+                else:
+                    response = self._client().post(url, json=payload, headers=self._headers())
+            except (httpx.TimeoutException, TimeoutError) as exc:
                 last_error = GatewayError("NETWORK", "TIMEOUT", "模型调用超时", retryable=True)
             except httpx.TransportError as exc:
                 last_error = GatewayError("NETWORK", "TRANSPORT_ERROR", "模型调用网络错误", retryable=True)
@@ -193,6 +199,20 @@ class OpenAICompatibleGateway:
         )
         return response
 
+    @contextmanager
+    def _stream_response(self, url, payload):
+        if self._http_client is not None:
+            with self._http_client.stream("POST", url, json=payload, headers=self._headers()) as response:
+                yield response
+            return
+        from types import SimpleNamespace
+
+        lines = deadline.stream_lines(url, payload=payload, headers=self._headers(), timeout=self.total_timeout)
+        try:
+            yield SimpleNamespace(status_code=next(lines), iter_lines=lambda: lines)
+        finally:
+            lines.close()
+
     def stream_chat(self, request: ChatRequest) -> Iterator[str]:
         """Stream assistant text deltas from an OpenAI-compatible endpoint.
 
@@ -213,7 +233,7 @@ class OpenAICompatibleGateway:
             payload["response_format"] = request.response_format
         url = f"{self.base_url}/{_ENDPOINTS['chat']}"
         try:
-            with self._client().stream("POST", url, json=payload, headers=self._headers()) as response:
+            with self._stream_response(url, payload) as response:
                 if response.status_code != 200:
                     # Reuse stable status handling without consuming partial
                     # data; callers get the same GatewayError categories.
@@ -236,7 +256,7 @@ class OpenAICompatibleGateway:
                     delta = (choices[0].get("delta") or {}).get("content")
                     if delta:
                         yield str(delta)
-        except httpx.TimeoutException as exc:
+        except (httpx.TimeoutException, TimeoutError) as exc:
             raise GatewayError("NETWORK", "TIMEOUT", "模型流调用超时", retryable=True) from exc
         except httpx.TransportError as exc:
             raise GatewayError("NETWORK", "TRANSPORT_ERROR", "模型流调用网络错误", retryable=True) from exc

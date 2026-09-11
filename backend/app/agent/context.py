@@ -97,6 +97,8 @@ class AgentModels:
                     **({"total_timeout": timeout_seconds, "retries": 0} if timeout_seconds else {}),
                 )
             except TypeError:
+                if timeout_seconds is not None:
+                    raise
                 gateway = self._gateway_factory(resolved)
             model_name = resolved.model_name
             # 读配置的短事务在此结束，外部 HTTP 不持有 DB 事务/行锁
@@ -125,6 +127,8 @@ class AgentModels:
             try:
                 gateway = self._gateway_factory(resolved, **kwargs)
             except TypeError:
+                if timeout_seconds is not None:
+                    raise
                 gateway = self._gateway_factory(resolved)
             model_name = resolved.model_name
             db.commit()

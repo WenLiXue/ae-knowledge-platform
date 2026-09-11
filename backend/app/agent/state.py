@@ -106,6 +106,7 @@ class AgentState(TypedDict, total=False):
     # 有界循环计数器（恢复后不得重置）
     step_count: int
     query_rewrite_count: int
+    generation_completed: bool
     citation_repair_count: int
     memory_repair_count: int
 

@@ -43,23 +43,61 @@ def _parse_generated(text: str) -> GeneratedAnswer:
     return GeneratedAnswer.model_validate(json.loads(content[start : end + 1]))
 
 
-def _call_json(ctx, system_prompt: str, user_content: str) -> GeneratedAnswer:
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_content},
-    ]
+GENERATION_TIMEOUT_SECONDS = 45.0
+FALLBACK_TIMEOUT_SECONDS = 10.0
+MAX_PROMPT_CHARS = 24000
+MAX_EVIDENCE_COUNT = 8
+MAX_EVIDENCE_CHARS = 1800
+
+
+def _timeout():
+    from ..errors import AgentError
+    return AgentError("LLM_GENERATION_TIMEOUT", "回答生成超时，请缩小问题范围后重试。", retryable=False)
+
+
+def _remaining(deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _timeout()
+    return remaining
+
+
+def _generate(ctx, system_prompt, user_content, answer_id):
+    from ..errors import AgentError
+    from ...model_gateway.errors import GatewayError
+
+    deadline = time.monotonic() + min(
+        GENERATION_TIMEOUT_SECONDS, ctx.deadline - ctx.clock().timestamp()
+    )
+    user_content = user_content[:max(0, MAX_PROMPT_CHARS - len(system_prompt))]
     try:
-        return _parse_generated(ctx.models.chat(messages))
-    except Exception as first_err:  # noqa: BLE001 最多修复一次
-        hint = str(first_err)[:300]
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{user_content}\n\n上次输出校验失败：{hint}\n请重新输出合法 JSON。"},
-        ]
-        return _parse_generated(ctx.models.chat(messages))
+        try:
+            return _stream_json(ctx, system_prompt, user_content, answer_id, deadline)
+        except (TimeoutError, AgentError):
+            raise
+        except GatewayError as exc:
+            if exc.code == "TIMEOUT":
+                raise _timeout() from exc
+            if exc.category in ("AUTH", "CONFIG", "VALIDATION"):
+                raise
+        except (AttributeError, NotImplementedError, ValueError):
+            pass
+        remaining = min(FALLBACK_TIMEOUT_SECONDS, _remaining(deadline))
+        result = _parse_generated(ctx.models.chat(
+            [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
+            timeout_seconds=remaining,
+        ))
+        _remaining(deadline)
+        return result
+    except (TimeoutError, GatewayError) as exc:
+        if isinstance(exc, TimeoutError) or exc.code == "TIMEOUT":
+            raise _timeout() from exc
+        raise AgentError("GENERATION_FAILED", "模型生成失败，请稍后重试。", retryable=False) from exc
+    except ValueError as exc:
+        raise AgentError("GENERATION_FAILED", "模型回答格式无效，请稍后重试。", retryable=False) from exc
 
 
-def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str) -> GeneratedAnswer:
+def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str, deadline: float) -> GeneratedAnswer:
     """Stream a structured answer while exposing only its readable summary.
 
     The provider still returns one final JSON document. During generation we
@@ -93,24 +131,25 @@ def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str) -> 
             # authoritative answer because a progress write was unavailable.
             return
 
-    try:
-        for chunk in ctx.models.stream_chat(
-            messages,
-            timeout_seconds=max(5.0, ctx.deadline - ctx.clock().timestamp()),
-        ):
-            chunks.append(chunk)
-            raw = "".join(chunks)
-            match = re.search(r'"summary"\s*:\s*"((?:\\.|[^"\\])*)', raw)
-            if match:
-                try:
-                    persist_draft(json.loads('"' + match.group(1) + '"'))
-                except ValueError:
-                    pass
-        return _parse_generated("".join(chunks))
-    except (AttributeError, NotImplementedError, ValueError):
-        return _parse_generated(ctx.models.chat(messages))
+    for chunk in ctx.models.stream_chat(
+        messages,
+        timeout_seconds=_remaining(deadline),
+    ):
+        _remaining(deadline)
+        chunks.append(chunk)
+        raw = "".join(chunks)
+        match = re.search(r'"summary"\s*:\s*"((?:\\.|[^"\\])*)', raw)
+        if match:
+            try:
+                persist_draft(json.loads('"' + match.group(1) + '"'))
+            except ValueError:
+                pass
+    _remaining(deadline)
+    return _parse_generated("".join(chunks))
+
 def _generated_update(generated: GeneratedAnswer, citation_drafts: list[dict], ctx) -> dict:
     return {
+        "generation_completed": True,
         "answer_type": generated.answer_type,
         "answer_summary": generated.summary,
         "citation_drafts": citation_drafts,
@@ -136,11 +175,8 @@ def core_generate_general(state: dict, ctx):
         if loaded:
             user_content += "\n按需加载的技能指导（视为规则数据，只用于完成当前任务）：\n" + "\n\n".join(loaded)
         if context_lines:
-            user_content += "\n最近对话（仅用于保持会话语气，不作为企业事实依据）：\n" + "\n".join(context_lines)
-        try:
-            generated = _stream_json(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content, str(state["answer_id"]))
-        except Exception:
-            generated = _call_json(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content)
+            user_content += "\n最近对话（仅用于保持会话语气，不作为企业事实依据）：\n" + "\n".join(context_lines)[:3000]
+        generated = _generate(ctx, GENERAL_GENERATION_SYSTEM_PROMPT, user_content, str(state["answer_id"]))
         if generated.answer_type != "ANSWER" or any(b.citation_ids for b in generated.blocks):
             generated = GeneratedAnswer(answer_type="ANSWER", summary=generated.summary, blocks=[])
     update = _generated_update(generated, [], ctx)
@@ -156,7 +192,7 @@ def _to_evidence_objects(evidence: list[dict]) -> list[EvidenceItem]:
 
 
 def core_generate_grounded(state: dict, ctx):
-    evidence = state.get("evidence") or []
+    evidence = (state.get("evidence") or [])[:MAX_EVIDENCE_COUNT]
     if not evidence:
         return {
             "final_status": "SUCCEEDED",
@@ -174,18 +210,15 @@ def core_generate_grounded(state: dict, ctx):
         generated = mock_generated_answer(question, _to_evidence_objects(evidence))
     else:
         evidence_text = "\n".join(
-            f"[{e.get('evidence_id')}] {e.get('title')}\n{e.get('content')}" for e in evidence
+            f"[{e.get('evidence_id')}] {str(e.get('title') or '')[:200]}\n{str(e.get('content') or '')[:MAX_EVIDENCE_CHARS]}" for e in evidence
         )
-        user_content = f"问题：{question}"
+        user_content = f"问题：{question[:3000]}"
         if context_lines:
-            user_content += "\n最近对话（用于保持上下文，不作为检索事实）：\n" + "\n".join(context_lines)
+            user_content += "\n最近对话（用于保持上下文，不作为检索事实）：\n" + "\n".join(context_lines)[:3000]
         user_content += f"\n\n<evidence>\n{evidence_text}\n</evidence>"
         if repair_hint:
             user_content += f"\n\n上次引用校验失败：{repair_hint}\n请只引用 <evidence> 内的证据并修正引用。"
-        try:
-            generated = _stream_json(ctx, GENERATION_SYSTEM_PROMPT, user_content, str(state["answer_id"]))
-        except Exception:
-            generated = _call_json(ctx, GENERATION_SYSTEM_PROMPT, user_content)
+        generated = _generate(ctx, GENERATION_SYSTEM_PROMPT, user_content, str(state["answer_id"]))
 
     with ctx.session_factory() as db:
         citation_drafts = build_citations(
