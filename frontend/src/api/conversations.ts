@@ -16,6 +16,7 @@ import type {
   Conversation,
   FeedbackRating,
   Message,
+  ProgressEvent,
   QueryFilters,
 } from "../types/conversations";
 
@@ -49,6 +50,7 @@ export interface StreamingAnswer {
   blocks: AnswerBlock[];
   citations: Citation[];
   degradation_flags: string[];
+  progress_events?: ProgressEvent[];
 }
 
 export function listConversations(signal?: AbortSignal): Promise<ApiList<Conversation>> {

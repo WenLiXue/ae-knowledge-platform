@@ -29,6 +29,9 @@ class QueryPlan(BaseModel):
     operation: Literal["ANSWER", "SUMMARIZE", "RELATE", "EXPLAIN", "CLARIFY"] = "ANSWER"
     normalized_question: str
     query_texts: list[str]
+    # 实体/型号等必须被证据覆盖的查询约束。用于多对象比较，避免重写或重排
+    # 只保留其中一个对象。
+    required_terms: list[str] = Field(default_factory=list)
     product_id: uuid.UUID | None = None
     version_ids: list[uuid.UUID] = Field(default_factory=list)
     document_type_ids: list[uuid.UUID] = Field(default_factory=list)

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 from datetime import datetime, timezone
 
@@ -16,6 +17,29 @@ from .. import policies
 from ..context import AgentRuntimeContext
 
 logger = logging.getLogger(__name__)
+
+_SENSITIVE_KEYS = {"token", "access_token", "api_key", "secret", "password", "authorization", "cookie"}
+
+
+def safe_tool_payload(value, *, limit: int = 1600):
+    """为前端工具详情提供可审计摘要，过滤密钥并限制正文大小。"""
+    def scrub(item):
+        if isinstance(item, dict):
+            return {
+                str(key): ("[已隐藏]" if str(key).casefold() in _SENSITIVE_KEYS else scrub(val))
+                for key, val in item.items()
+            }
+        if isinstance(item, (list, tuple)):
+            return [scrub(val) for val in item[:20]]
+        if isinstance(item, str):
+            return item[:600]
+        return item
+
+    payload = scrub(value)
+    encoded = json.dumps(payload, ensure_ascii=False, default=str)
+    if len(encoded) <= limit:
+        return payload
+    return {"summary": encoded[:limit], "_truncated": True}
 
 # 节点名 → SSE progress_stage（DD-21 §16）
 NODE_PROGRESS: dict[str, str] = {
@@ -129,7 +153,12 @@ def node(name: str, *, check_limits: bool = True):
                     return limit
             start = time.monotonic()
             if name == "retrieve":
-                _append_event(ctx, state["answer_id"], {"type": "tool.started", "tool": "knowledge_search", "message": "开始查找知识库资料"})
+                _append_event(ctx, state["answer_id"], {
+                    "type": "tool.started",
+                    "tool": "knowledge.search",
+                    "message": "开始调用工具",
+                    "input": safe_tool_payload({"query": state.get("normalized_question") or state.get("question") or ""}),
+                })
             result = core_fn(state, ctx) or {}
             result = dict(result)
             result["step_count"] = state.get("step_count", 0) + 1
@@ -143,7 +172,33 @@ def node(name: str, *, check_limits: bool = True):
             )
             result["node_trace"] = trace
             if name == "retrieve":
-                _append_event(ctx, state["answer_id"], {"type": "tool.completed", "tool": "knowledge_search", "message": "知识库检索完成", "duration_ms": round((time.monotonic() - start) * 1000, 3), "evidence_count": len(result.get("evidence") or [])})
+                retrieve_failed = result.get("final_status") == "FAILED" or bool(result.get("error_code"))
+                _append_event(ctx, state["answer_id"], {
+                    "type": "tool.failed" if retrieve_failed else "tool.completed",
+                    "tool": "knowledge.search",
+                    "message": result.get("error_summary") if retrieve_failed else "工具调用完成",
+                    "duration_ms": round((time.monotonic() - start) * 1000, 3),
+                    "evidence_count": len(result.get("evidence") or []),
+                    "status": "FAILED" if retrieve_failed else "SUCCEEDED",
+                    "output": safe_tool_payload({
+                        "status": "FAILED" if retrieve_failed else "SUCCEEDED",
+                        "summary": result.get("error_summary") if retrieve_failed else "工具调用完成",
+                        "evidence_count": len(result.get("evidence") or []),
+                        "coverage": result.get("retrieval_coverage"),
+                    }),
+                })
+                coverage = result.get("retrieval_coverage") or {}
+                if coverage.get("required_terms"):
+                    _append_event(ctx, state["answer_id"], {
+                        "type": "evidence.coverage",
+                        "message": "证据覆盖校验完成",
+                        "summary": (
+                            f"已覆盖 {len(coverage.get('covered_terms') or [])}/"
+                            f"{len(coverage.get('required_terms') or [])} 个关键对象"
+                        ),
+                        "missing_terms": coverage.get("missing_terms") or [],
+                        "evidence_count": len(result.get("evidence") or []),
+                    })
             _log(state, result, (time.monotonic() - start) * 1000, ctx)
             stage = NODE_PROGRESS.get(name)
             if stage and not result.get("_terminate"):

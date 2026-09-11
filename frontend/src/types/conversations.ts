@@ -101,13 +101,29 @@ export interface AnswerBlock {
   citation_nos: number[];
 }
 
+/** 可安全展示给用户的执行摘要，不包含模型原始思维链或完整工具参数。 */
+export interface ProgressEvent {
+  type: string;
+  stage?: string;
+  tool?: string;
+  message?: string;
+  summary?: string;
+  status?: string;
+  duration_ms?: number;
+  evidence_count?: number;
+  missing_terms?: string[];
+  input?: unknown;
+  output?: unknown;
+  at?: string;
+}
+
 /** 回答。 */
 export interface Answer {
   id: string;
   status: AnswerStatus;
   progress_stage?: AnswerStage | null;
   progress_message?: string | null;
-  progress_events?: Array<{ type: string; tool?: string; message?: string; duration_ms?: number; evidence_count?: number }>;
+  progress_events?: ProgressEvent[];
   answer_type: AnswerType | null;
   summary: string | null;
   /** 流式生成期间的未校验草稿，终态后由正式答案替代。 */

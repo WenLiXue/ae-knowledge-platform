@@ -70,6 +70,11 @@ def core_retrieve(state: dict, ctx):
         "evidence": [evidence_to_dict(ev) for ev in result.evidence],
         "evidence_status_raw": result.evidence_status,
         "retrieval_config_revision": result.config_revision,
+        "retrieval_coverage": {
+            "required_terms": result.candidate_counts.get("required_terms", []),
+            "covered_terms": result.candidate_counts.get("covered_terms", []),
+            "missing_terms": result.candidate_counts.get("missing_terms", []),
+        },
         "degradation_flags": dedupe_flags(
             state.get("degradation_flags", []) + result.degradation_flags
         ),

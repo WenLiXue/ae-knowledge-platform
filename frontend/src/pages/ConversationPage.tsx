@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
@@ -29,6 +31,10 @@ import ThumbUpOffAltIcon from "@mui/icons-material/ThumbUpOffAlt";
 import ThumbDownOffAltIcon from "@mui/icons-material/ThumbDownOffAlt";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import PsychologyOutlinedIcon from "@mui/icons-material/PsychologyOutlined";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import {
   cancelAnswer,
   createMessage,
@@ -46,7 +52,7 @@ import { useConversationWorkspace } from "../conversations/ConversationWorkspace
 import { EmptyState } from "../components/EmptyState";
 import { ErrorAlert } from "../components/ErrorAlert";
 import { FullPageLoading } from "../components/LoadingState";
-import type { AgentApproval, Answer, AnswerBlock, Citation, Conversation, FeedbackRating, Message } from "../types/conversations";
+import type { AgentApproval, Answer, AnswerBlock, Citation, Conversation, FeedbackRating, Message, ProgressEvent } from "../types/conversations";
 
 const FEEDBACK_REASONS = ["答案不准确", "缺少细节", "来源不可信", "未回答问题"];
 
@@ -70,29 +76,6 @@ function formatFullTime(value: string): string {
   });
 }
 
-function streamStageText(streaming: StreamingAnswer): string {
-  const stage = streaming.progress_stage ?? streaming.status;
-  const labels: Record<string, string> = {
-    PENDING: "正在准备回答…",
-    UNDERSTANDING: "正在理解你的问题…",
-    ROUTING: "正在确定查询范围…",
-    BUILDING_CONTEXT: "正在整理相关信息…",
-    RETRIEVING: "正在执行工具…",
-    RERANKING: "正在处理工具结果…",
-    GENERATING: "正在整理答案…",
-    VALIDATING: "正在核对来源…",
-    STREAMING: "正在输出答案…",
-    UPDATING_MEMORY: "正在保存本次对话…",
-    PERSISTING: "正在完成回答…",
-  };
-  return labels[stage] ?? "正在处理你的问题…";
-}
-
-const THINKING_STEPS = [
-  { key: "understand", label: "理解问题", stages: ["PENDING", "UNDERSTANDING", "ROUTING"] },
-  { key: "answer", label: "生成答案", stages: ["BUILDING_CONTEXT", "RETRIEVING", "RERANKING", "GENERATING", "STREAMING", "VALIDATING", "UPDATING_MEMORY", "PERSISTING"] },
-];
-
 function toolDisplayName(tool?: string): string {
   if (!tool) return "工具";
   const labels: Record<string, string> = {
@@ -107,10 +90,114 @@ function toolDisplayName(tool?: string): string {
   return labels[tool] ?? tool;
 }
 
-function thinkingStepIndex(streaming: StreamingAnswer): number {
-  const stage = streaming.progress_stage ?? streaming.status;
-  const index = THINKING_STEPS.findIndex((step) => step.stages.includes(stage));
-  return index >= 0 ? index : 0;
+function eventLabel(event: ProgressEvent): string {
+  if (event.type === "thought.summary") return event.message || "分析问题";
+  if (event.type === "tool.started") return `调用工具 · ${toolDisplayName(event.tool)}`;
+  if (event.type === "tool.completed") return `${toolDisplayName(event.tool)}调用成功`;
+  if (event.type === "tool.failed") return `${toolDisplayName(event.tool)}调用失败`;
+  if (event.type === "evidence.coverage") return "证据覆盖校验";
+  if (event.type === "evidence.selected") return "核对证据";
+  if (event.type === "answer.started") return "开始生成回答";
+  if (event.type === "answer.completed") return "回答已完成";
+  return event.message || event.summary || "处理步骤";
+}
+
+function eventIcon(event: ProgressEvent) {
+  if (event.type === "tool.failed" || event.status === "FAILED") return <ErrorOutlineIcon fontSize="small" color="error" />;
+  if (event.type === "tool.completed" || event.type === "answer.completed") return <CheckCircleOutlineIcon fontSize="small" color="success" />;
+  if (event.type === "evidence.coverage") return <CheckCircleOutlineIcon fontSize="small" color="success" />;
+  if (event.type === "tool.started") return <BuildOutlinedIcon fontSize="small" color="primary" />;
+  return <PsychologyOutlinedIcon fontSize="small" color="primary" />;
+}
+
+function formatEventDetail(event: ProgressEvent): string | null {
+  const parts = [event.summary || event.message];
+  if (event.evidence_count !== undefined) parts.push(`证据 ${event.evidence_count} 条`);
+  if (event.missing_terms?.length) parts.push(`待补齐：${event.missing_terms.join("、")}`);
+  if (event.duration_ms) parts.push(`${(event.duration_ms / 1000).toFixed(1)} 秒`);
+  return parts.filter(Boolean).join(" · ") || null;
+}
+
+function ToolPayload({ event }: { event: ProgressEvent }) {
+  if (event.input === undefined && event.output === undefined) return null;
+  const renderPayload = (value: unknown) => {
+    if (value === undefined) return "—";
+    if (typeof value === "string") return value;
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  };
+  return (
+    <Accordion
+      disableGutters
+      elevation={0}
+      sx={{ mt: 0.5, border: 1, borderColor: "divider", borderRadius: 0.75, "&:before": { display: "none" } }}
+    >
+      <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />} sx={{ minHeight: 28, px: 0.75, "& .MuiAccordionSummary-content": { my: 0.25 } }}>
+        <Typography variant="caption" color="text.secondary">查看工具输入 / 输出</Typography>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 0.5, px: 0.75, pb: 0.75 }}>
+        {event.input !== undefined && (
+          <Box sx={{ mb: event.output !== undefined ? 0.75 : 0 }}>
+            <Typography variant="caption" fontWeight={600} display="block">输入</Typography>
+            <Box component="pre" sx={{ m: 0, mt: 0.25, p: 0.75, bgcolor: "grey.50", borderRadius: 0.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, maxHeight: 180, overflow: "auto" }}>
+              {renderPayload(event.input)}
+            </Box>
+          </Box>
+        )}
+        {event.output !== undefined && (
+          <Box>
+            <Typography variant="caption" fontWeight={600} display="block">输出</Typography>
+            <Box component="pre" sx={{ m: 0, mt: 0.25, p: 0.75, bgcolor: "grey.50", borderRadius: 0.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, maxHeight: 220, overflow: "auto" }}>
+              {renderPayload(event.output)}
+            </Box>
+          </Box>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
+function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEvent[]; live?: boolean; onRetry?: () => void }) {
+  // 展示可审计的阶段摘要和工具调用，不展示模型的隐藏思维链或原始提示词。
+  const visible = events
+    .filter((event) => event.type === "thought.summary" || event.type.startsWith("tool.") || event.type === "evidence.coverage" || event.type.startsWith("answer."))
+    .slice(-12);
+  if (visible.length === 0) return null;
+  return (
+    <Box sx={{ mt: 1.25, borderTop: 1, borderColor: "divider", pt: 1 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+        {live ? "工具调用与证据" : `已完成 ${visible.length} 个工具与校验步骤`}
+      </Typography>
+      <Stack spacing={0.75}>
+        {visible.map((event, index) => (
+          <Stack key={`${event.type}-${event.at ?? index}-${index}`} direction="row" spacing={0.75} alignItems="flex-start">
+            <Box sx={{ display: "flex", mt: 0.1 }}>{eventIcon(event)}</Box>
+            <Box minWidth={0}>
+              <Typography variant="caption" sx={{ display: "block", lineHeight: 1.45 }}>
+                {eventLabel(event)}
+              </Typography>
+              {formatEventDetail(event) && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
+                  {formatEventDetail(event)}
+                </Typography>
+              )}
+              {!live && event.type === "tool.failed" && onRetry && (
+                <Button size="small" variant="text" sx={{ mt: 0.25, px: 0 }} onClick={onRetry}>
+                  重试本次回答
+                </Button>
+              )}
+              {(event.type === "tool.started" || event.type === "tool.completed" || event.type === "tool.failed") && (
+                <ToolPayload event={event} />
+              )}
+            </Box>
+          </Stack>
+        ))}
+      </Stack>
+    </Box>
+  );
 }
 
 function CitationList({ citations }: { citations: Citation[] }) {
@@ -279,10 +366,35 @@ function AnswerBlockView({ block }: { block: AnswerBlock }) {
   }
   if (block.type === "paragraph") {
     return (
-      // 答案正文对齐原型 .answer-copy：15px / 1.75 行高
-      <Typography sx={{ fontSize: 15, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
-        {textContent(block.content)}
-      </Typography>
+      <Box
+        className="answer-markdown"
+        sx={{
+          fontSize: 15,
+          lineHeight: 1.75,
+          overflowX: "auto",
+          "& p": { my: 0, mb: 1.25 },
+          "& p:last-child": { mb: 0 },
+          "& ul, & ol": { mt: 0.5, mb: 1.25, pl: 2.75 },
+          "& li": { mb: 0.35 },
+          "& h1, & h2, & h3, & h4": { mt: 1.5, mb: 0.75, lineHeight: 1.35 },
+          "& blockquote": { m: 0, mb: 1, pl: 1.5, borderLeft: "3px solid", borderColor: "divider", color: "text.secondary" },
+          "& table": { width: "100%", borderCollapse: "collapse", my: 1.25, fontSize: 14 },
+          "& th, & td": { border: "1px solid", borderColor: "divider", px: 1.25, py: 0.75, textAlign: "left", verticalAlign: "top" },
+          "& th": { bgcolor: "grey.50", fontWeight: 700 },
+          "& pre": { p: 1.5, borderRadius: 1, bgcolor: "grey.100", overflowX: "auto" },
+          "& code": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.9em" },
+          "& a": { color: "primary.main" },
+        }}
+      >
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+          }}
+        >
+          {textContent(block.content)}
+        </Markdown>
+      </Box>
     );
   }
   if (block.type === "table") {
@@ -332,6 +444,7 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
   const [submitted, setSubmitted] = useState(false);
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  const [processOpen, setProcessOpen] = useState(false);
 
   useEffect(() => {
     if (answer.status !== "WAITING") {
@@ -428,6 +541,23 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
             <AnswerBlockView key={block.block_id} block={block} />
           ))}
         </Stack>
+      )}
+
+      {answer.progress_events && answer.progress_events.length > 0 && (
+        <Accordion
+          expanded={processOpen}
+          onChange={(_, expanded) => setProcessOpen(expanded)}
+          disableGutters
+          elevation={0}
+          sx={{ mt: 1.25, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 42, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
+            <Typography variant="caption" color="text.secondary">查看处理进度与工具调用</Typography>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <ProcessTimeline events={answer.progress_events} onRetry={onRetry} />
+          </AccordionDetails>
+        </Accordion>
       )}
 
       {answer.citations.length > 0 && <CitationList citations={answer.citations} />}
@@ -560,10 +690,12 @@ export function ConversationPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingAnswer | null>(null);
-  const [progressEvents, setProgressEvents] = useState<Array<{ type: string; tool?: string; message?: string; duration_ms?: number; evidence_count?: number }>>([]);
+  const [progressEvents, setProgressEvents] = useState<ProgressEvent[]>([]);
   const toolEvents = progressEvents.filter((event) => event.type.startsWith("tool.")).slice(-4);
-  const latestToolEvent = toolEvents[toolEvents.length - 1];
-  const activeToolEvent = latestToolEvent?.type === "tool.started" ? latestToolEvent : undefined;
+  const activeToolEvent = [...toolEvents].reverse().find((event) => {
+    if (event.type !== "tool.started") return false;
+    return !toolEvents.some((candidate) => candidate.type === "tool.completed" && candidate.tool === event.tool && (candidate.at ?? "") > (event.at ?? ""));
+  });
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -575,6 +707,7 @@ export function ConversationPage() {
     const active = msgs.items.find((m) => m.answer && isInProgress(m.answer.status));
     if (active?.answer) {
       const a = active.answer;
+      setProgressEvents(a.progress_events ?? []);
       setStreaming({
         answer_id: a.id,
         status: a.status,
@@ -585,6 +718,7 @@ export function ConversationPage() {
         blocks: a.blocks,
         citations: a.citations,
         degradation_flags: a.degradation_flags,
+        progress_events: a.progress_events,
       });
     } else {
       setStreaming(null);
@@ -608,6 +742,7 @@ export function ConversationPage() {
       const active = msgs.items.find((m) => m.answer && isInProgress(m.answer.status));
       if (active?.answer) {
         const a = active.answer;
+        setProgressEvents(a.progress_events ?? []);
         setStreaming({
           answer_id: a.id,
           status: a.status,
@@ -618,6 +753,7 @@ export function ConversationPage() {
           blocks: a.blocks,
           citations: a.citations,
           degradation_flags: a.degradation_flags,
+          progress_events: a.progress_events,
         });
       } else {
     setStreaming(null);
@@ -644,6 +780,7 @@ export function ConversationPage() {
     const close = subscribeAnswerEvents(streaming.answer_id, {
       onSnapshot: (answer) => {
         if (cancelled) return;
+        setProgressEvents(answer.progress_events ?? []);
         setStreaming({
           answer_id: answer.id,
           status: answer.status,
@@ -655,6 +792,7 @@ export function ConversationPage() {
           blocks: answer.blocks,
           citations: answer.citations,
           degradation_flags: answer.degradation_flags,
+          progress_events: answer.progress_events,
         });
         if (!isInProgress(answer.status)) {
           close();
@@ -673,7 +811,7 @@ export function ConversationPage() {
       },
       onProgress: (payload) => {
         if (cancelled) return;
-        setProgressEvents((prev) => [...prev, payload].slice(-20));
+        setProgressEvents((prev) => [...prev, payload as ProgressEvent].slice(-40));
       },
       onBlock: (block) => {
         if (cancelled) return;
@@ -847,39 +985,16 @@ export function ConversationPage() {
           )}
 
           {streaming && (
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(255,255,255,0.62)" }}>
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(255,255,255,0.62)", borderColor: "rgba(25,103,210,0.22)" }}>
               <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <CircularProgress size={18} />
+                <CircularProgress size={18} thickness={5} />
                 <Box minWidth={0}>
                   <Typography variant="subtitle2">
                     {activeToolEvent
-                      ? `${activeToolEvent.type === "tool.completed" ? "工具调用完成" : "正在调用工具"} · ${toolDisplayName(activeToolEvent.tool)}`
-                      : streaming.progress_message || streamStageText(streaming)}
+                      ? `正在调用工具 · ${toolDisplayName(activeToolEvent.tool)}`
+                      : streaming.progress_message || "正在处理…"}
                   </Typography>
-                  <Stack direction="row" spacing={1.5} sx={{ mt: 1, mb: streaming.draft_text ? 1 : 0 }}>
-                    {THINKING_STEPS.map((step, index) => {
-                      const current = thinkingStepIndex(streaming);
-                      const done = index < current;
-                      const active = index === current;
-                      return (
-                        <Stack key={step.key} direction="row" spacing={0.5} alignItems="center">
-                          <Box
-                            component="span"
-                            sx={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: "50%",
-                              bgcolor: done || active ? "primary.main" : "divider",
-                              opacity: done || active ? 1 : 0.7,
-                            }}
-                          />
-                          <Typography variant="caption" color={active ? "primary.main" : "text.secondary"}>
-                            {step.label}
-                          </Typography>
-                        </Stack>
-                      );
-                    })}
-                  </Stack>
+                  <ProcessTimeline events={progressEvents} live />
                   {streaming.draft_text && (
                     <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 1 }}>
                       {streaming.draft_text}
@@ -890,13 +1005,6 @@ export function ConversationPage() {
                       ? "部分资料服务不可用，已使用可用结果继续回答。"
                       : "答案和来源会在生成过程中逐步显示。"}
                   </Typography>
-                  {toolEvents.map((event, index) => (
-                    <Typography key={`${event.type}-${index}`} variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {event.type === "tool.completed" ? "✓" : "•"} {toolDisplayName(event.tool)}
-                      {event.message ? `：${event.message}` : ""}
-                      {event.duration_ms ? ` · ${(event.duration_ms / 1000).toFixed(1)} 秒` : ""}
-                    </Typography>
-                  ))}
                 </Box>
                 <Box sx={{ flexGrow: 1 }} />
                 <Button size="small" color="inherit" onClick={() => void handleCancel()}>

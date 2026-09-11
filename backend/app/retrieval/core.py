@@ -61,6 +61,10 @@ def rrf_fuse(bm25_ranks: dict[str, int], vector_ranks: dict[str, int], k: int) -
 def _same_section(a: Candidate, b: Candidate) -> bool:
     if (a.doc.get("heading_path") or []) != (b.doc.get("heading_path") or []):
         return False
+    # 表格行块虽然共享 heading_path，但相邻行往往代表不同型号/记录；不能
+    # 按普通段落的相邻去重规则丢掉其中一行。
+    if a.doc.get("chunk_type") in ("table", "sheet_region") or b.doc.get("chunk_type") in ("table", "sheet_region"):
+        return False
     a_ord = a.doc.get("ordinal")
     b_ord = b.doc.get("ordinal")
     return isinstance(a_ord, int) and isinstance(b_ord, int) and abs(a_ord - b_ord) <= 1

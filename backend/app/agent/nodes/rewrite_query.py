@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 REWRITE_SYSTEM_PROMPT = (
     "你是检索查询改写器。只改写检索表达本身，不改变用户的问题边界与授权范围。"
     '只输出一个 JSON 对象：{"rewritten_query": string}。'
@@ -41,6 +43,16 @@ def core_rewrite_query(state: dict, ctx):
                     new_query = rewritten
         except Exception:  # noqa: BLE001 改写失败保持原问题
             pass
+    # 改写只扩展检索表达，不能丢失原问题中的稳定实体（型号、版本、
+    # 产品编号）。QueryPlan 会将这些 token 拆成独立召回路由。
+    original_terms = re.findall(
+        r"(?<![A-Za-z0-9])[A-Za-z]{1,8}\d{2,}[A-Za-z0-9-]*", question
+    )
+    missing_terms = [
+        term for term in original_terms if term.casefold() not in new_query.casefold()
+    ]
+    if missing_terms:
+        new_query = f"{new_query}\n必须覆盖的对象：{'、'.join(dict.fromkeys(missing_terms))}"
     return {
         "query_rewrite_count": count + 1,
         "normalized_question": new_query,

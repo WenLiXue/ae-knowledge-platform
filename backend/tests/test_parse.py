@@ -51,6 +51,21 @@ def test_raw_content_parses_markdown_structure() -> None:
     assert parsed.elements[5].heading_path == ["产品规格", "配置"]
 
 
+def test_raw_content_parses_table_with_title_prefix() -> None:
+    text = (
+        "AE硬件型号规格：| 厂商 | AE型号 | 内存 |\n"
+        "| --- | --- | --- |\n"
+        "| 集智达 | E380 | 16G DDR4 |\n"
+    )
+    parsed = parse_feishu_payload({"raw_content": text})
+    assert [element.type for element in parsed.elements] == ["paragraph", "table"]
+    assert parsed.elements[0].text == "AE硬件型号规格"
+    assert parsed.elements[1].table == {
+        "columns": ["厂商", "AE型号", "内存"],
+        "rows": [["集智达", "E380", "16G DDR4"]],
+    }
+
+
 def test_parse_is_deterministic() -> None:
     payload = {"raw_content": "# A\n\n段落一。\n\n- x\n- y\n"}
     assert parse_feishu_payload(payload).model_dump() == parse_feishu_payload(payload).model_dump()

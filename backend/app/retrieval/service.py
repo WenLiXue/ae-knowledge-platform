@@ -57,6 +57,55 @@ RERANK_INSTRUCTION = (
 )
 
 
+def _contains_required_term(candidate: Candidate, term: str) -> bool:
+    haystack = " ".join(
+        str(candidate.doc.get(key) or "")
+        for key in ("title", "content", "heading_path")
+    ).upper()
+    return term.upper() in haystack
+
+
+def _prioritize_required_terms(candidates: list[Candidate], terms: list[str]) -> list[Candidate]:
+    """把每个必需实体至少一个候选送入重排窗口，避免窗口截断。"""
+    if not terms:
+        return candidates
+    selected: list[Candidate] = []
+    selected_ids: set[str] = set()
+    for term in terms:
+        match = next((c for c in candidates if c.chunk_id not in selected_ids and _contains_required_term(c, term)), None)
+        if match is not None:
+            selected.append(match)
+            selected_ids.add(match.chunk_id)
+    selected.extend(c for c in candidates if c.chunk_id not in selected_ids)
+    return selected
+
+
+def _ensure_required_evidence(
+    selected: list[Candidate], candidates: list[Candidate], terms: list[str], evidence_max: int
+) -> list[Candidate]:
+    """证据选择后再做一次覆盖校验，优先补齐缺失实体。"""
+    if not terms:
+        return selected
+    result = list(selected)
+    for term in terms:
+        if any(_contains_required_term(c, term) for c in result):
+            continue
+        replacement = next((c for c in candidates if _contains_required_term(c, term)), None)
+        if replacement is None:
+            continue
+        if len(result) < evidence_max:
+            result.append(replacement)
+        else:
+            # 保留已覆盖实体的证据，替换最后一个非必需候选。
+            replace_at = next(
+                (i for i in range(len(result) - 1, -1, -1)
+                 if not any(_contains_required_term(result[i], required) for required in terms)),
+                len(result) - 1,
+            )
+            result[replace_at] = replacement
+    return result
+
+
 @dataclass(frozen=True)
 class EmbedOutcome:
     embedding: list[float]
@@ -276,7 +325,9 @@ class RetrievalService:
                     # default) even when rerank_top_k was 12, increasing
                     # request size and model latency without affecting the
                     # final evidence window.
-                    rerank_candidates = candidates[: config.rerank_top_k]
+                    rerank_candidates = _prioritize_required_terms(
+                        candidates, plan.required_terms
+                    )[: config.rerank_top_k]
                     outcome = self._rerank_fn(
                         db,
                         plan.normalized_question,
@@ -293,9 +344,29 @@ class RetrievalService:
                                 continue
                             cand.rerank_score = float(score)
                             reranked.append(cand)
+                        # A reranker may omit low-scoring documents. For a
+                        # comparison query, omission of one required entity
+                        # is not acceptable: keep its best candidate in the
+                        # evidence pool and let the coverage gate decide.
+                        reranked_ids = {c.chunk_id for c in reranked}
+                        for term in plan.required_terms:
+                            required = next(
+                                (
+                                    c for c in rerank_candidates
+                                    if c.chunk_id not in reranked_ids
+                                    and _contains_required_term(c, term)
+                                ),
+                                None,
+                            )
+                            if required is not None:
+                                required.rerank_score = required.rerank_score or required.rrf_score
+                                reranked.append(required)
+                                reranked_ids.add(required.chunk_id)
                         if config.rerank_min_score > 0:
                             reranked = [
-                                c for c in reranked if (c.rerank_score or 0.0) >= config.rerank_min_score
+                                c for c in reranked
+                                if (c.rerank_score or 0.0) >= config.rerank_min_score
+                                or any(_contains_required_term(c, term) for term in plan.required_terms)
                             ]
                         candidates = reranked
                     elif outcome is not None:
@@ -317,6 +388,12 @@ class RetrievalService:
                 score_floor=config.evidence_score_floor,
                 score_margin=config.evidence_score_margin,
             )
+            evidence_cands = _ensure_required_evidence(
+                evidence_cands,
+                [c for c in candidates if c.version_id in active_now],
+                plan.required_terms,
+                config.evidence_max,
+            )
 
             evidence = [
                 self._to_evidence(cand, refs_by_version, f"E{i}")
@@ -330,6 +407,16 @@ class RetrievalService:
                 "reranked": len(candidates),
                 "evidence": len(evidence_cands),
             }
+            if plan.required_terms:
+                covered_terms = [
+                    term for term in plan.required_terms
+                    if any(_contains_required_term(c, term) for c in evidence_cands)
+                ]
+                counts["required_terms"] = plan.required_terms
+                counts["covered_terms"] = covered_terms
+                counts["missing_terms"] = [
+                    term for term in plan.required_terms if term not in covered_terms
+                ]
         else:
             # 没有可查询版本：不调用外部模型/检索，直接返回空证据
             candidates = []

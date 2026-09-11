@@ -16,6 +16,19 @@ from pypdf import PdfReader
 SUPPORTED_FILE_EXTENSIONS = {".pdf", ".docx", ".xlsx"}
 
 
+def _render_markdown_table(rows: list[list[str]]) -> str:
+    """将 Office 表格转换为标准 GFM 表格，供统一解析/切片链路使用。"""
+    normalized = [[str(cell or "").replace("|", "\\|").replace("\n", " ").strip() for cell in row] for row in rows]
+    normalized = [row for row in normalized if any(row)]
+    if not normalized:
+        return ""
+    width = max(len(row) for row in normalized)
+    normalized = [row + [""] * (width - len(row)) for row in normalized]
+    lines = ["| " + " | ".join(normalized[0]) + " |", "| " + " | ".join("---" for _ in range(width)) + " |"]
+    lines.extend("| " + " | ".join(row) + " |" for row in normalized[1:])
+    return "\n".join(lines)
+
+
 def extract_file_text(filename: str, data: bytes) -> str:
     suffix = Path(filename).suffix.casefold()
     if suffix == ".pdf":
@@ -24,17 +37,23 @@ def extract_file_text(filename: str, data: bytes) -> str:
         document = Document(BytesIO(data))
         parts = [p.text for p in document.paragraphs if p.text.strip()]
         for table in document.tables:
-            parts.extend("\t".join(cell.text for cell in row.cells) for row in table.rows)
+            rendered = _render_markdown_table([[cell.text for cell in row.cells] for row in table.rows])
+            if rendered:
+                parts.append(rendered)
         return "\n".join(parts)
     if suffix == ".xlsx":
         workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
         parts: list[str] = []
         for sheet in workbook.worksheets:
             parts.append(f"# {sheet.title}")
+            rows = []
             for row in sheet.iter_rows(values_only=True):
                 values = ["" if value is None else str(value) for value in row]
                 if any(value.strip() for value in values):
-                    parts.append("\t".join(values))
+                    rows.append(values)
+            rendered = _render_markdown_table(rows)
+            if rendered:
+                parts.append(rendered)
         workbook.close()
         return "\n".join(parts)
     raise ValueError(f"unsupported file type: {suffix}")

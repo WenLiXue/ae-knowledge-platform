@@ -305,7 +305,9 @@ def test_build_query_plan_validates_and_assembles() -> None:
         db.commit()
         plan = build_query_plan(db, "E3800 的吞吐量是多少？")
         assert plan.normalized_question == "E3800 的吞吐量是多少？"
-        assert plan.query_texts == ["E3800 的吞吐量是多少？"]
+        assert plan.query_texts[0] == "E3800 的吞吐量是多少？"
+        assert "E3800" in plan.query_texts
+        assert plan.required_terms == ["E3800"]
         assert plan.operation == "ANSWER"
 
         with pytest.raises(RetrievalError) as exc:

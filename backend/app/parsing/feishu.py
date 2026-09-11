@@ -193,12 +193,23 @@ def _parse_markdown(text: str) -> list[ParsedElement]:
         if not stripped:
             i += 1
             continue
-        # 表格：连续以 | 开头的行，跳过分隔行，表头 + 数据行。
-        if stripped.startswith("|") and "|" in stripped[1:]:
+        # 表格：按 GFM 的“表头行 + 紧邻分隔行”确认，允许表头前有标题前缀。
+        # 不能仅凭出现 | 就判定为表格，否则普通规格文本会被拆坏。
+        first_pipe = stripped.find("|")
+        has_table_header = first_pipe >= 0 and "|" in stripped[first_pipe + 1 :]
+        has_separator = i + 1 < n and _is_table_separator(lines[i + 1])
+        if has_table_header and has_separator:
+            prefix = stripped[:first_pipe].strip().rstrip(":：")
+            header_line = stripped[first_pipe:]
             rows: list[list[str]] = []
+            if prefix:
+                elements.append(_element(seq, "paragraph", text=prefix, path=list(heading_stack)))
+                seq += 1
+            rows.append(_split_cells(header_line))
+            i += 1
             while i < n and lines[i].strip().startswith("|"):
                 cells = _split_cells(lines[i].strip())
-                if all(_TABLE_SEP_RE.match(c.strip()) for c in cells if c.strip()):
+                if _is_table_separator(lines[i]):
                     i += 1
                     continue
                 rows.append(cells)
@@ -256,6 +267,11 @@ def _split_cells(row: str) -> list[str]:
     if body.endswith("|"):
         body = body[:-1]
     return [c.strip() for c in body.split("|")]
+
+
+def _is_table_separator(row: str) -> bool:
+    cells = _split_cells(row.strip())
+    return len(cells) >= 2 and all(_TABLE_SEP_RE.match(cell.strip()) for cell in cells if cell.strip())
 
 
 def _element(
