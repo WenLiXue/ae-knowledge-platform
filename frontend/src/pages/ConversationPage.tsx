@@ -92,6 +92,17 @@ function toolDisplayName(tool?: string): string {
   return labels[tool] ?? tool;
 }
 
+function stageDisplayName(stage?: string | null): string {
+  const labels: Record<string, string> = {
+    UNDERSTANDING: "正在分析问题…",
+    RETRIEVING: "正在查询企业知识库…",
+    RERANKING: "正在整理检索结果…",
+    GENERATING: "正在生成回答…",
+    VALIDATING: "正在核对回答来源…",
+  };
+  return labels[stage || ""] || "正在生成回答…";
+}
+
 function eventLabel(event: ProgressEvent): string {
   if (event.type === "thought.summary") return event.message || "分析问题";
   if (event.type === "tool.started") return `调用工具 · ${toolDisplayName(event.tool)}`;
@@ -120,6 +131,69 @@ function formatEventDetail(event: ProgressEvent): string | null {
   return parts.filter(Boolean).join(" · ") || null;
 }
 
+interface ActivityStep {
+  key: string;
+  label: string;
+  status: "running" | "completed" | "failed";
+  event: ProgressEvent;
+}
+
+function activityLabel(event: ProgressEvent): string {
+  if (event.kind === "tool" || event.type.startsWith("tool.")) {
+    return event.display_name || toolDisplayName(event.tool);
+  }
+  if (event.stage === "UNDERSTANDING") return "分析问题";
+  if (event.stage === "GENERATING") return "整理回答";
+  if (event.stage === "VALIDATING") return "核对来源";
+  if (event.type === "answer.completed") return "生成回答";
+  return event.display_name || event.summary || event.message || "执行步骤";
+}
+
+function activitySteps(events: ProgressEvent[]): ActivityStep[] {
+  const steps: ActivityStep[] = [];
+  const byKey = new Map<string, number>();
+  for (const event of events) {
+    const isTool = event.kind === "tool" || event.type.startsWith("tool.");
+    const key = isTool
+      ? `tool:${event.step_id || event.event_id || event.tool || event.display_name || "unknown"}`
+      : event.stage === "UNDERSTANDING"
+        ? "analysis"
+        : event.stage === "GENERATING" || event.type.startsWith("answer.")
+          ? "generation"
+          : `step:${event.stage || event.type}`;
+    const failed = event.type.endsWith("failed") || event.status === "FAILED";
+    const completed = event.type.endsWith("completed") || event.status === "SUCCEEDED";
+    const status = failed ? "failed" : completed ? "completed" : "running";
+    const existingIndex = byKey.get(key);
+    if (existingIndex === undefined) {
+      byKey.set(key, steps.length);
+      steps.push({ key, label: activityLabel(event), status, event });
+      continue;
+    }
+    const previous = steps[existingIndex];
+    steps[existingIndex] = {
+      ...previous,
+      status: failed ? "failed" : completed ? "completed" : previous.status,
+      event: {
+        ...previous.event,
+        ...event,
+        input: event.input ?? previous.event.input,
+        output: event.output ?? previous.event.output,
+        message: event.message ?? previous.event.message,
+      },
+    };
+  }
+  return steps;
+}
+
+function activitySummary(events: ProgressEvent[]): string {
+  const steps = activitySteps(events);
+  const tools = steps.filter((step) => step.key.startsWith("tool:")).length;
+  const duration = steps.reduce((total, step) => total + (step.event.duration_ms || 0), 0);
+  const durationText = duration > 0 ? ` · ${(duration / 1000).toFixed(1)}s` : "";
+  return `已完成 · ${steps.length} 个步骤 · ${tools} 个工具${durationText}`;
+}
+
 function ToolPayload({ event }: { event: ProgressEvent }) {
   if (event.input === undefined && event.output === undefined) return null;
   const renderPayload = (value: unknown) => {
@@ -138,9 +212,14 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
       sx={{ mt: 0.75, border: 1, borderColor: "divider", borderRadius: 0.75, "&:before": { display: "none" } }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />} sx={{ minHeight: 28, px: 0.75, "& .MuiAccordionSummary-content": { my: 0.25 } }}>
-        <Typography variant="caption" color="text.secondary">查看工具输入 / 输出</Typography>
+        <Typography variant="caption" color="text.secondary">查看详情</Typography>
       </AccordionSummary>
       <AccordionDetails sx={{ pt: 0.5, px: 0.75, pb: 0.75 }}>
+        <Stack spacing={0.25} sx={{ mb: 1 }}>
+          <Typography variant="body2" fontWeight={600}>{event.display_name || toolDisplayName(event.tool)}</Typography>
+          {event.tool && <Typography variant="caption" color="text.secondary">工具：{event.tool}</Typography>}
+          {event.summary && <Typography variant="caption" color="text.secondary">结果：{event.summary}</Typography>}
+        </Stack>
         {event.input !== undefined && (
           <Box sx={{ mb: event.output !== undefined ? 0.75 : 0 }}>
             <Typography variant="caption" fontWeight={600} display="block">输入</Typography>
@@ -165,45 +244,45 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
 function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEvent[]; live?: boolean; onRetry?: () => void }) {
   // 统一展示 Agent Activity：只展示执行摘要，不展示隐藏思维链。
   const visible = events
-    .filter((event) => event.type === "thought.summary" || event.type.startsWith("tool.") || event.type === "evidence.coverage" || event.type.startsWith("answer."))
+    .filter((event) => event.type === "thought.summary" || event.type.startsWith("tool.") || event.type === "evidence.coverage" || event.type.startsWith("answer.") || (event.type.startsWith("generation.") && event.type !== "generation.delta"))
     .slice(-12);
   if (visible.length === 0) return null;
-  const completed = visible.filter((event) => event.type.endsWith("completed") || event.type === "tool.completed").length;
-  const running = live && visible.some((event) => event.type.endsWith("started") || event.status === "RUNNING");
+  const steps = activitySteps(visible);
+  const running = live && steps.some((step) => step.status === "running");
   return (
-    <Box sx={{ mt: live ? 1.5 : 0, borderTop: live ? "1px solid rgba(198,255,74,0.18)" : 0, pt: live ? 1.5 : 0 }}>
+      <Box sx={{ mt: live ? 1.5 : 0, borderTop: live ? 1 : 0, borderColor: "divider", pt: live ? 1.5 : 0 }}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
         <AccountTreeOutlinedIcon sx={{ fontSize: 16, color: "primary.main" }} />
         <Typography variant="caption" sx={{ color: "primary.main", fontWeight: 700, letterSpacing: "0.04em" }}>
-          {live ? "AGENT ACTIVITY" : `执行记录 · ${completed || visible.length} 个步骤`}
+          {live ? "执行过程" : activitySummary(visible)}
         </Typography>
         {running && <CircularProgress size={11} thickness={6} color="primary" />}
       </Stack>
       <Stack spacing={0}>
-        {visible.map((event, index) => (
-          <Stack key={`${event.type}-${event.at ?? index}-${index}`} direction="row" spacing={1.25} alignItems="stretch" sx={{ minHeight: 42 }}>
+        {steps.map((step, index) => (
+          <Stack key={step.key} direction="row" spacing={1.25} alignItems="stretch" sx={{ minHeight: 42 }}>
             <Box sx={{ width: 18, display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <Box sx={{ display: "flex", mt: 0.1, color: event.type.includes("failed") ? "error.main" : event.type.includes("completed") ? "success.main" : "primary.main" }}>
-                {eventIcon(event)}
+              <Box sx={{ display: "flex", mt: 0.1, color: step.status === "failed" ? "error.main" : step.status === "completed" ? "success.main" : "primary.main" }}>
+                {step.status === "failed" ? <ErrorOutlineIcon fontSize="small" /> : step.status === "completed" ? <CheckCircleOutlineIcon fontSize="small" /> : <CircularProgress size={16} thickness={5} />}
               </Box>
-              {index < visible.length - 1 && <Box sx={{ width: 1, flex: 1, bgcolor: "divider", my: 0.4 }} />}
+              {index < steps.length - 1 && <Box sx={{ width: 1, flex: 1, bgcolor: "divider", my: 0.4 }} />}
             </Box>
             <Box minWidth={0} sx={{ pb: 1 }}>
               <Typography variant="body2" sx={{ display: "block", lineHeight: 1.35, fontWeight: 600 }}>
-                {eventLabel(event)}
+                {step.label}
               </Typography>
-              {formatEventDetail(event) && (
+              {formatEventDetail(step.event) && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
-                  {formatEventDetail(event)}
+                  {formatEventDetail(step.event)}
                 </Typography>
               )}
-              {!live && event.type === "tool.failed" && onRetry && (
+              {!live && step.status === "failed" && onRetry && (
                 <Button size="small" variant="text" sx={{ mt: 0.25, px: 0 }} onClick={onRetry}>
                   重试本次回答
                 </Button>
               )}
-              {(event.type === "tool.started" || event.type === "tool.completed" || event.type === "tool.failed") && (
-                <ToolPayload event={event} />
+              {step.key.startsWith("tool:") && (
+                <ToolPayload event={step.event} />
               )}
             </Box>
           </Stack>
@@ -548,7 +627,22 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
         </Alert>
       ))}
 
-      {visibleBlocks.length > 0 && (
+      {(answer.markdown || answer.draft_text) && answer.status !== "FAILED" ? (
+        <Box
+          className="answer-markdown"
+          sx={{
+            mt: 1.5,
+            fontSize: 15,
+            lineHeight: 1.7,
+            "& p": { my: 0, mb: 1 },
+            "& table": { width: "100%", borderCollapse: "collapse", my: 1 },
+            "& th, & td": { border: "1px solid", borderColor: "divider", px: 1, py: 0.5, textAlign: "left" },
+            "& th": { bgcolor: "grey.50" },
+          }}
+        >
+          <Markdown remarkPlugins={[remarkGfm]}>{answer.markdown || answer.draft_text}</Markdown>
+        </Box>
+      ) : visibleBlocks.length > 0 && (
         <Stack spacing={1} sx={{ mt: 1.5 }}>
           {visibleBlocks.map((block) => (
             <AnswerBlockView key={block.block_id} block={block} />
@@ -565,7 +659,7 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
           sx={{ mt: 1.5, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
         >
           <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 42, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
-            <Typography variant="caption" color="text.secondary">查看执行记录</Typography>
+            <Typography variant="caption" color="text.secondary">{activitySummary(answer.progress_events)}</Typography>
           </AccordionSummary>
           <AccordionDetails sx={{ pt: 0 }}>
             <ProcessTimeline events={answer.progress_events} onRetry={onRetry} />
@@ -828,6 +922,15 @@ export function ConversationPage() {
       },
       onProgress: (payload) => {
         if (cancelled) return;
+        if (payload.type === "generation.delta") {
+          const output = payload.output;
+          const delta = output && typeof output === "object" && "text" in output
+            ? String((output as { text?: unknown }).text ?? "")
+            : "";
+          if (delta) {
+            setStreaming((prev) => prev ? { ...prev, draft_text: `${prev.draft_text ?? ""}${delta}` } : prev);
+          }
+        }
         setProgressEvents((prev) => {
           if (payload.seq !== undefined && payload.seq <= lastProgressSeqRef.current) return prev;
           if (payload.event_id && prev.some((event) => event.event_id === payload.event_id)) return prev;
@@ -1007,20 +1110,20 @@ export function ConversationPage() {
           )}
 
           {streaming && (
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(255,255,255,0.62)", borderColor: "rgba(25,103,210,0.22)" }}>
+            <Paper elevation={0} sx={{ p: 0.5, bgcolor: "transparent", border: 0 }}>
               <Stack direction="row" spacing={1.5} alignItems="flex-start">
                 <CircularProgress size={18} thickness={5} />
                 <Box minWidth={0}>
                   <Typography variant="subtitle2">
                     {activeToolEvent
-                      ? `正在调用工具 · ${toolDisplayName(activeToolEvent.tool)}`
-                      : streaming.progress_message || "正在处理…"}
+                      ? `正在查询${toolDisplayName(activeToolEvent.tool)}…`
+                      : streaming.progress_message || stageDisplayName(streaming.progress_stage)}
                   </Typography>
                   <ProcessTimeline events={progressEvents} live />
                   {streaming.draft_text && (
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 1 }}>
-                      {streaming.draft_text}
-                    </Typography>
+                    <Box className="answer-markdown" sx={{ mt: 1, fontSize: 15, lineHeight: 1.7, "& p": { my: 0, mb: 1 }, "& table": { width: "100%", borderCollapse: "collapse", my: 1 }, "& th, & td": { border: "1px solid", borderColor: "divider", px: 1, py: 0.5, textAlign: "left" }, "& th": { bgcolor: "grey.50" } }}>
+                      <Markdown remarkPlugins={[remarkGfm]}>{streaming.draft_text}</Markdown>
+                    </Box>
                   )}
                   <Typography variant="caption" color="text.secondary">
                     {streaming.degradation_flags.length > 0

@@ -92,6 +92,8 @@ class AnswerOut(BaseModel):
     progress_events: list[dict] = Field(default_factory=list)
     answer_type: str | None = None
     summary: str | None = None
+    # Canonical validated Markdown body used for streaming replay and final rendering.
+    markdown: str | None = None
     draft_text: str | None = None
     blocks: list[AnswerBlock] = Field(default_factory=list)
     citations: list[AnswerCitationOut] = Field(default_factory=list)

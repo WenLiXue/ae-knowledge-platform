@@ -77,6 +77,7 @@ def core_execute_tool(state: dict, ctx):
     _append_event(ctx, state["answer_id"], {
         "type": "tool.started",
         "tool": proposal.tool_name,
+        "step_id": step.id,
         "message": f"开始调用 {proposal.tool_name}",
         "input": safe_tool_payload(proposal.arguments),
     })
@@ -84,6 +85,7 @@ def core_execute_tool(state: dict, ctx):
     _append_event(ctx, state["answer_id"], {
         "type": "tool.completed" if result.status == "SUCCEEDED" else "tool.failed",
         "tool": proposal.tool_name,
+        "step_id": step.id,
         "message": result.summary,
         "duration_ms": round((time.monotonic() - started) * 1000, 3),
         "output": safe_tool_payload({

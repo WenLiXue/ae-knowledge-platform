@@ -1,6 +1,7 @@
 """Stable contracts shared by the tool registry, planner and executor."""
 
 from .goal import CompletionCriterion, Constraint, EntityRef, GoalUnderstanding
+from .events import AgentEvent
 from .plan import AgentPlan, PlanStep
 from .tool import (
     ToolCallProposal,
@@ -20,4 +21,8 @@ __all__ = [
     "ToolDefinition",
     "ToolResultEnvelope",
     "ToolStatus",
+    "AgentEvent",
 ]
+from .events import AgentEvent
+
+__all__ = ["AgentEvent"]

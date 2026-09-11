@@ -227,13 +227,20 @@ def answer_events(
                 # 终结回答按确定性序号重建事件；已收 done 的客户端不再重发（AC-QA-002）
                 finals = list(_final_events(session, answer))
                 last_seq = 2 + len(finals)
-                if after_no >= last_seq:
+                progress_after = _progress_cursor(after)
+                if after_no >= last_seq and not progress_after:
                     return
                 if after_no < 1:
                     payload = service.build_answer_out(session, answer).model_dump(mode="json")
                     yield _sse_event("e1:snapshot", "answer.snapshot", payload)
                 if after_no < 2:
                     yield _status_event(answer)
+                # 终态连接也必须回放持久化的生成/工具事件；否则刷新或断线重连
+                # 只能拿到最终 block，看不到 generation.completed/answer.finalized。
+                for index, progress in enumerate(answer.progress_events or [], start=1):
+                    progress_seq = int(progress.get("seq", index)) if isinstance(progress, dict) else index
+                    if progress_seq > progress_after:
+                        yield _sse_event(f"p{progress_seq}", _progress_event_name(progress), progress)
                 for seq, name, data in finals:
                     if seq > after_no:
                         yield _sse_event(f"e{seq}:{name}:{_event_suffix(name, data)}", name, data)
@@ -247,7 +254,7 @@ def answer_events(
             for index, progress in enumerate(answer.progress_events or [], start=1):
                 progress_seq = int(progress.get("seq", index)) if isinstance(progress, dict) else index
                 if progress_seq > progress_after:
-                    yield _sse_event(f"p{progress_seq}", "answer.progress", progress)
+                    yield _sse_event(f"p{progress_seq}", _progress_event_name(progress), progress)
             progress_seen = len(answer.progress_events or [])
         while time.monotonic() < deadline:
             with SessionLocal() as session:
@@ -262,7 +269,7 @@ def answer_events(
                 if len(events) > progress_seen:
                     for index, progress in enumerate(events[progress_seen:], start=progress_seen + 1):
                         progress_seq = int(progress.get("seq", index)) if isinstance(progress, dict) else index
-                        yield _sse_event(f"p{progress_seq}", "answer.progress", progress)
+                        yield _sse_event(f"p{progress_seq}", _progress_event_name(progress), progress)
                     progress_seen = len(events)
                 if answer.draft_text and answer.draft_text != last_draft:
                     last_draft = answer.draft_text
@@ -359,6 +366,13 @@ def _progress_cursor(after: str | None) -> int:
     """读取持久化进度事件游标（p{seq}）。"""
     match = re.search(r"p(\d+)$", after or "")
     return int(match.group(1)) if match else 0
+
+
+def _progress_event_name(progress: dict) -> str:
+    event_type = str(progress.get("type", "answer.progress"))
+    if event_type.startswith("generation.") or event_type == "answer.finalized":
+        return event_type
+    return "answer.progress"
 
 
 def _event_suffix(name: str, data: dict) -> str:

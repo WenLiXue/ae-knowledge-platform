@@ -15,9 +15,10 @@ import time
 from ...qa.llm import mock_generated_answer, mock_general_answer
 from ...qa.prompts import GENERAL_GENERATION_SYSTEM_PROMPT, GENERATION_SYSTEM_PROMPT
 from ...qa.schemas import GeneratedAnswer, GeneratedBlock
+from ...qa.llm import render_generated_markdown
 from ...retrieval.schemas import EvidenceItem
 from ..citations import build_citations, map_blocks
-from . import dedupe_flags
+from . import _append_event, dedupe_flags
 
 
 def _turns_to_lines(turns: list[dict]) -> list[str]:
@@ -154,6 +155,7 @@ def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str, dea
     ]
     chunks: list[str] = []
     last_write = 0.0
+    last_streamed_text = ""
 
     def persist_draft(text: str) -> None:
         nonlocal last_write
@@ -184,13 +186,24 @@ def _stream_json(ctx, system_prompt: str, user_content: str, answer_id: str, dea
         match = re.search(r'"summary"\s*:\s*"((?:\\.|[^"\\])*)', raw)
         if match:
             try:
-                persist_draft(json.loads('"' + match.group(1) + '"'))
+                text = json.loads('"' + match.group(1) + '"')
+                persist_draft(text)
+                if text.startswith(last_streamed_text):
+                    delta = text[len(last_streamed_text):]
+                    if delta:
+                        _append_event(ctx, answer_id, {
+                            "type": "generation.delta", "kind": "generation", "phase": "GENERATING",
+                            "step_id": "generation", "display_name": "生成回答", "status": "RUNNING",
+                            "output": {"text": delta},
+                        })
+                        last_streamed_text = text
             except ValueError:
                 pass
     _remaining(deadline)
     return _parse_generated("".join(chunks))
 
 def _generated_update(generated: GeneratedAnswer, citation_drafts: list[dict], ctx) -> dict:
+    citation_id_to_no = {f"E{index}": index for index in range(1, len(citation_drafts) + 1)}
     update = {
         "generation_completed": True,
         "answer_type": generated.answer_type,
@@ -198,6 +211,9 @@ def _generated_update(generated: GeneratedAnswer, citation_drafts: list[dict], c
         "citation_drafts": citation_drafts,
         "model_key": ctx.models.last_model_key,
         "final_status": "SUCCEEDED",
+        "answer_markdown": render_generated_markdown(
+            generated, citation_id_to_no=citation_id_to_no
+        )[:12000],
     }
     if generated.answer_type == "PARTIAL":
         update["degradation_flags"] = ["LLM_GENERATION_PARTIAL"]
@@ -346,10 +362,12 @@ def _extract_evidence_table(content: str, evidence_id: str) -> GeneratedBlock | 
 def core_generate_grounded(state: dict, ctx):
     evidence = (state.get("evidence") or [])[:MAX_EVIDENCE_COUNT]
     if not evidence:
+        summary = "当前知识库中没有找到足以回答该问题的资料。"
         return {
             "final_status": "SUCCEEDED",
             "answer_type": "INSUFFICIENT",
-            "answer_summary": "当前知识库中没有找到足以回答该问题的资料。",
+            "answer_summary": summary,
+            "answer_markdown": summary,
             "answer_blocks": [],
             "citation_drafts": [],
             "model_key": ctx.models.last_model_key,
@@ -401,6 +419,7 @@ def core_finalize_clarification(state: dict, ctx):
         "final_status": "SUCCEEDED",
         "answer_type": "CLARIFICATION",
         "answer_summary": question,
+        "answer_markdown": question,
         "answer_blocks": [],
         "citation_drafts": [],
         "model_key": ctx.models.last_model_key,
@@ -408,10 +427,12 @@ def core_finalize_clarification(state: dict, ctx):
 
 
 def core_finalize_insufficient(state: dict, ctx):
+    summary = "当前知识库中没有找到足以回答该问题的资料，建议调整筛选条件或换个问法。"
     return {
         "final_status": "SUCCEEDED",
         "answer_type": "INSUFFICIENT",
-        "answer_summary": "当前知识库中没有找到足以回答该问题的资料，建议调整筛选条件或换个问法。",
+        "answer_summary": summary,
+        "answer_markdown": summary,
         "answer_blocks": [],
         "citation_drafts": [],
         "model_key": ctx.models.last_model_key,

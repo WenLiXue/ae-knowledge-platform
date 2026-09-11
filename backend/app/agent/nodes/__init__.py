@@ -87,6 +87,8 @@ def _append_event(ctx: AgentRuntimeContext, answer_id, event: dict) -> None:
                     "seq": max((item.get("seq", 0) for item in events if isinstance(item, dict)), default=0) + 1,
                     "timestamp": timestamp,
                     "kind": kind,
+                    "step_id": event.get("step_id") or (event.get("tool_call_id") if kind == "tool" else event.get("phase") or event.get("stage") or "agent"),
+                    "phase": event.get("phase") or event.get("stage"),
                     "display_name": event.get("display_name") or event.get("summary") or event.get("type", "执行步骤"),
                     **event,
                     "at": timestamp,
@@ -99,7 +101,7 @@ def _append_event(ctx: AgentRuntimeContext, answer_id, event: dict) -> None:
 
 def _set_progress(ctx: AgentRuntimeContext, answer_id, stage: str, message: str | None = None) -> None:
     """短事务更新 Answer.progress_stage（仅观测，不用于业务恢复）。"""
-    from ...db.models.conversation import Answer
+    from ...db.models.conversation import AgentRun, Answer
 
     try:
         with ctx.session_factory() as db:
@@ -116,6 +118,8 @@ def _set_progress(ctx: AgentRuntimeContext, answer_id, stage: str, message: str 
                     "timestamp": timestamp,
                     "type": "thought.summary",
                     "kind": "reasoning",
+                    "phase": stage,
+                    "step_id": stage.lower(),
                     "display_name": "分析问题",
                     "stage": stage,
                     "message": answer.progress_message,
@@ -176,15 +180,51 @@ def node(name: str, *, check_limits: bool = True):
                     _log(state, limit, 0.0, ctx, terminated=True)
                     return limit
             start = time.monotonic()
+            if name.startswith("generate"):
+                _append_event(ctx, state["answer_id"], {
+                    "type": "generation.started",
+                    "kind": "generation",
+                    "phase": "GENERATING",
+                    "step_id": "generation",
+                    "display_name": "生成回答",
+                    "status": "RUNNING",
+                    "message": "正在生成回答…",
+                })
             if name == "retrieve":
                 _append_event(ctx, state["answer_id"], {
                     "type": "tool.started",
                     "tool": "knowledge.search",
+                    "step_id": "retrieval",
                     "message": "开始调用工具",
                     "input": safe_tool_payload({"query": state.get("normalized_question") or state.get("question") or ""}),
                 })
-            result = core_fn(state, ctx) or {}
+            try:
+                result = core_fn(state, ctx) or {}
+            except Exception as exc:
+                if name.startswith("generate"):
+                    _append_event(ctx, state["answer_id"], {
+                        "type": "generation.completed",
+                        "kind": "generation",
+                        "phase": "GENERATING",
+                        "step_id": "generation",
+                        "display_name": "生成回答",
+                        "status": "FAILED",
+                        "summary": str(getattr(exc, "message", exc))[:300],
+                        "duration_ms": (time.monotonic() - start) * 1000,
+                    })
+                raise
             result = dict(result)
+            if name.startswith("generate") and result.get("generation_completed"):
+                _append_event(ctx, state["answer_id"], {
+                    "type": "generation.completed",
+                    "kind": "generation",
+                    "phase": "GENERATING",
+                    "step_id": "generation",
+                    "display_name": "生成回答",
+                    "status": "SUCCEEDED" if result.get("final_status") != "FAILED" else "FAILED",
+                    "summary": "回答内容生成完成" if result.get("final_status") != "FAILED" else result.get("error_summary"),
+                    "duration_ms": (time.monotonic() - start) * 1000,
+                })
             result["step_count"] = state.get("step_count", 0) + 1
             trace = list(state.get("node_trace", []))
             trace.append(
@@ -200,6 +240,7 @@ def node(name: str, *, check_limits: bool = True):
                 _append_event(ctx, state["answer_id"], {
                     "type": "tool.failed" if retrieve_failed else "tool.completed",
                     "tool": "knowledge.search",
+                    "step_id": "retrieval",
                     "message": result.get("error_summary") if retrieve_failed else "工具调用完成",
                     "duration_ms": round((time.monotonic() - start) * 1000, 3),
                     "evidence_count": len(result.get("evidence") or []),

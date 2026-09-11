@@ -18,6 +18,10 @@ class ToolDefinition(BaseModel):
     name: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
     version: str = Field(pattern=r"^\d+\.\d+$")
     description: str = Field(min_length=1, max_length=1000)
+    display_name: str | None = Field(default=None, max_length=256)
+    running_text: str | None = Field(default=None, max_length=500)
+    completed_text: str | None = Field(default=None, max_length=500)
+    category: str | None = Field(default=None, max_length=64)
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     # Tool taxonomy is metadata for routing/observability; execution remains

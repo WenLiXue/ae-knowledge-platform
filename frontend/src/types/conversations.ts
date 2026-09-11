@@ -109,6 +109,8 @@ export interface ProgressEvent {
   timestamp?: string;
   type: string;
   kind?: "reasoning" | "tool" | "skill" | "retrieval" | "mcp" | "workflow" | "generation" | string;
+  phase?: string;
+  step_id?: string;
   display_name?: string;
   description?: string;
   stage?: string;
@@ -133,7 +135,8 @@ export interface Answer {
   progress_events?: ProgressEvent[];
   answer_type: AnswerType | null;
   summary: string | null;
-  /** 流式生成期间的未校验草稿，终态后由正式答案替代。 */
+  /** 已校验并持久化的 canonical Markdown；流式阶段是当前安全可展示前缀。 */
+  markdown?: string | null;
   draft_text?: string | null;
   blocks: AnswerBlock[];
   citations: Citation[];

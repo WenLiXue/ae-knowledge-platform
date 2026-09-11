@@ -29,6 +29,7 @@ from ..db.models.rag import DocumentMetadata
 from ..llm.runtime import resolve_service_model
 from ..llm.service import LLMConfigError
 from ..model_gateway import create_gateway
+from ..model_gateway.base import ChatRequest
 from ..model_gateway.errors import GatewayError
 from ..retrieval.errors import RetrievalError
 from ..retrieval.filters import validate_filters as validate_retrieval_filters
@@ -43,6 +44,7 @@ from .llm import (
     local_query_understanding,
     mock_general_answer,
     mock_generated_answer,
+    render_generated_markdown,
     understand_query,
     validate_generated,
 )
@@ -70,6 +72,7 @@ def _record_progress_event(
     duration_ms: float | None = None,
     input_data=None,
     output_data=None,
+    step_id: str | None = None,
 ) -> None:
     """Persist a safe, user-visible execution summary for the legacy QA path.
 
@@ -86,6 +89,10 @@ def _record_progress_event(
         "tool.completed": "企业知识检索",
         "tool.failed": "企业知识检索",
         "answer.completed": "生成回答",
+        "generation.started": "生成回答",
+        "generation.delta": "生成回答",
+        "generation.completed": "生成回答",
+        "answer.finalized": "整理最终答案",
     }.get(event_type, event_type)
     event = {
         "event_id": f"evt_{uuid.uuid4().hex}",
@@ -94,6 +101,8 @@ def _record_progress_event(
         "timestamp": timestamp,
         "type": event_type,
         "kind": kind,
+        "phase": stage,
+        "step_id": step_id or ("retrieval" if event_type.startswith("tool.") else "generation" if event_type.startswith("answer.") else "analysis"),
         "display_name": display_name,
         "at": timestamp,
     }
@@ -396,6 +405,15 @@ def _run_generate_answer(
     flags: list[str] = []
     model_key: str | None = None
     chat = chat_fn
+    stream_fn = None
+
+    def record_generation_delta(delta: str) -> None:
+        fresh = session.get(Answer, answer.id)
+        if fresh is not None and fresh.status not in ("FAILED", "CANCELED", "SUCCEEDED"):
+            _record_progress_event(
+                session, fresh, "generation.delta", stage="GENERATING", step_id="generation",
+                status="RUNNING", output_data={"text": delta},
+            )
 
     # ---- 查询理解（QA 模型；失败降级原问题） ----
     normalized = question
@@ -406,6 +424,14 @@ def _run_generate_answer(
             model_key = resolved.model_config_id
             gateway = create_gateway(resolved)
             chat = lambda msgs: chat_with_retry(gateway, resolved.model_name, msgs)  # noqa: E731
+            stream_fn = lambda msgs: gateway.stream_chat(  # noqa: E731
+                ChatRequest(
+                    model=resolved.model_name,
+                    messages=msgs,
+                    max_tokens=4096,
+                    response_format={"type": "json_object"},
+                )
+            )
         except (LLMConfigError, GatewayError) as exc:
             _fail_answer(session, answer, exc.code, f"QA 模型不可用: {exc.message}")
             raise PipelineError("CONFIG", exc.code, exc.message, retryable=False) from exc
@@ -477,6 +503,10 @@ def _run_generate_answer(
             stage="GENERATING",
             message="无需调用知识库工具，直接生成回答…",
         )
+        _record_progress_event(
+            session, answer, "generation.started", stage="GENERATING", step_id="generation",
+            status="RUNNING", message="正在生成回答…",
+        )
         answer = session.get(Answer, answer.id)
         try:
             if settings.feature_real_qa and chat is not None:
@@ -486,10 +516,16 @@ def _run_generate_answer(
                     operation=operation,
                     context_lines=_context_lines(session, conversation.id, answer.message_id),
                     chat_fn=chat,
+                    stream_fn=stream_fn,
+                    on_delta=record_generation_delta,
                 )
             else:
                 generated = mock_general_answer(normalized, operation)
         except (QaError, GatewayError, LLMConfigError) as exc:
+            _record_progress_event(
+                session, answer, "generation.completed", stage="GENERATING", step_id="generation",
+                status="FAILED", summary=f"答案生成失败: {exc.message}",
+            )
             _fail_answer(session, answer, exc.code, f"答案生成失败: {exc.message}")
             raise PipelineError(
                 getattr(exc, "category", "PROVIDER"), exc.code, exc.message,
@@ -498,9 +534,11 @@ def _run_generate_answer(
         _record_progress_event(
             session,
             answer,
-            "answer.completed",
+            "generation.completed",
+            stage="GENERATING",
+            step_id="generation",
             status="SUCCEEDED",
-            summary="回答生成完成",
+            summary="回答内容生成完成",
         )
         _persist_answer(
             session, answer, generated, citations_data=[], flags=flags + ["NO_KNOWLEDGE_RETRIEVAL"],
@@ -565,7 +603,7 @@ def _run_generate_answer(
         status="SUCCEEDED",
         duration_ms=(_now() - retrieval_started_at).total_seconds() * 1000,
         output_data={"evidence_count": len(retrieval.evidence)},
-        summary=f"检索完成，找到 {len(retrieval.evidence)} 条证据",
+        summary=f"找到 {len(retrieval.evidence)} 条相关资料",
     )
 
     answer.status = "STREAMING"
@@ -584,6 +622,11 @@ def _run_generate_answer(
     )
 
     # ---- 生成 ----
+    generation_started_at = _now()
+    _record_progress_event(
+        session, answer, "generation.started", stage="GENERATING", step_id="generation",
+        status="RUNNING", message="正在生成回答…",
+    )
     try:
         if not retrieval.evidence:
             generated = GeneratedAnswer(
@@ -599,18 +642,30 @@ def _run_generate_answer(
                 session,
                 question=normalized,
                 evidence_text=evidence_text,
-                context_lines=_context_lines(session, conversation.id, answer.message_id),
-                chat_fn=chat,
+                    context_lines=_context_lines(session, conversation.id, answer.message_id),
+                    chat_fn=chat,
+                    stream_fn=stream_fn,
+                    on_delta=record_generation_delta,
             )
             validate_generated(generated, [ev.evidence_id for ev in retrieval.evidence])
         else:
             generated = mock_generated_answer(normalized, retrieval.evidence)
     except (QaError, GatewayError, LLMConfigError) as exc:
+        _record_progress_event(
+            session, answer, "generation.completed", stage="GENERATING", step_id="generation",
+            status="FAILED", summary=f"答案生成失败: {exc.message}",
+        )
         _fail_answer(session, answer, exc.code, f"答案生成失败: {exc.message}")
         raise PipelineError(
             getattr(exc, "category", "PROVIDER"), exc.code, exc.message,
             retryable=getattr(exc, "retryable", False),
         ) from exc
+
+    _record_progress_event(
+        session, answer, "generation.completed", stage="GENERATING", step_id="generation",
+        status="SUCCEEDED", summary="回答内容生成完成",
+        duration_ms=(_now() - generation_started_at).total_seconds() * 1000,
+    )
 
     # ---- 引用快照（只保留生成结果实际使用的证据） ----
     used_evidence_ids = {
@@ -767,12 +822,32 @@ def _persist_answer(
     answer.answer_type = generated.answer_type
     answer.summary = generated.summary
     answer.blocks_json = blocks
+    answer.draft_text = render_generated_markdown(
+        generated, citation_id_to_no=citation_id_to_no
+    )[:12000]
     answer.degradation_flags = list(dict.fromkeys(flags))
     answer.retrieval_config_revision = retrieval_config_revision
     answer.model_key = model_key
     answer.error_code = None
     answer.error_summary = None
     answer.completed_at = _now()
+    events = list(answer.progress_events or [])
+    timestamp = _now().isoformat()
+    events.append({
+        "event_id": f"evt_{uuid.uuid4().hex}",
+        "run_id": str(answer.id),
+        "seq": max((item.get("seq", 0) for item in events if isinstance(item, dict)), default=0) + 1,
+        "timestamp": timestamp,
+        "type": "answer.finalized",
+        "kind": "generation",
+        "phase": "FINALIZING",
+        "step_id": "generation",
+        "display_name": "整理最终答案",
+        "status": "SUCCEEDED",
+        "summary": "答案、引用和元数据已保存",
+        "at": timestamp,
+    })
+    answer.progress_events = events[-100:]
     for citation in citations_data:
         db.add(AnswerCitation(**citation))
     db.commit()

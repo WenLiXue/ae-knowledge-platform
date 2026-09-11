@@ -109,6 +109,7 @@ def core_persist_result(state: dict, ctx):
         answer.answer_type = state.get("answer_type")
         answer.summary = state.get("answer_summary")
         answer.blocks_json = state.get("answer_blocks") or []
+        answer.draft_text = (state.get("answer_markdown") or "")[:12000]
         answer.degradation_flags = dedupe_flags(state.get("degradation_flags") or [])
         if state.get("retrieval_run_id"):
             answer.retrieval_run_id = uuid.UUID(str(state["retrieval_run_id"]))
@@ -117,6 +118,24 @@ def core_persist_result(state: dict, ctx):
         answer.error_code = None
         answer.error_summary = None
         answer.completed_at = _now()
+
+        events = list(answer.progress_events or [])
+        timestamp = _now().isoformat()
+        events.append({
+            "event_id": f"evt_{uuid.uuid4().hex}",
+            "run_id": str(run.id) if run is not None else str(answer.id),
+            "seq": max((item.get("seq", 0) for item in events if isinstance(item, dict)), default=0) + 1,
+            "timestamp": timestamp,
+            "type": "answer.finalized",
+            "kind": "generation",
+            "phase": "FINALIZING",
+            "step_id": "generation",
+            "display_name": "整理最终答案",
+            "status": "SUCCEEDED",
+            "summary": "答案、引用和元数据已保存",
+            "at": timestamp,
+        })
+        answer.progress_events = events[-100:]
 
         # 幂等引用：删除未发布引用再插入（同一 run 重复执行不产生重复引用）
         db.execute(delete(AnswerCitation).where(AnswerCitation.answer_id == answer.id))

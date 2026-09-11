@@ -46,6 +46,7 @@ export interface StreamingAnswer {
   progress_message?: string | null;
   answer_type: AnswerType | null;
   summary: string | null;
+  markdown?: string | null;
   draft_text?: string | null;
   blocks: AnswerBlock[];
   citations: Citation[];
@@ -154,7 +155,7 @@ export function subscribeAnswerEvents(
     else if (eventName === "answer.block") handlers.onBlock?.(payload);
     else if (eventName === "answer.citation") handlers.onCitation?.(payload);
     else if (eventName === "answer.delta") handlers.onDelta?.(payload);
-    else if (eventName === "answer.progress") handlers.onProgress?.(payload);
+    else if (eventName === "answer.progress" || eventName.startsWith("generation.") || eventName === "answer.finalized") handlers.onProgress?.(payload);
     else if (eventName === "answer.done") handlers.onDone?.(payload);
   };
 

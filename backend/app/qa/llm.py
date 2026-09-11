@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Callable
+import re
+from typing import Callable, Iterator
 
 from pydantic import ValidationError
 
@@ -42,6 +43,88 @@ class QaError(Exception):
 
 
 ChatFn = Callable[[list[dict]], str]
+StreamFn = Callable[[list[dict]], Iterator[str]]
+
+
+def render_generated_markdown(
+    generated: GeneratedAnswer,
+    *,
+    citation_id_to_no: dict[str, int] | None = None,
+) -> str:
+    """Render the validated answer once; this is the persisted answer contract."""
+    citation_id_to_no = citation_id_to_no or {}
+    lines: list[str] = []
+    if generated.summary.strip():
+        lines.append(generated.summary.strip())
+    for block in generated.blocks:
+        content = block.content
+        if isinstance(content, dict):
+            if block.type == "list":
+                content = "\n".join(f"- {value}" for value in content.values())
+            else:
+                content = "\n".join(f"**{key}**：{value}" for key, value in content.items())
+        text = str(content).strip()
+        if not text:
+            continue
+        lines.append(text)
+        refs = [citation_id_to_no[cid] for cid in block.citation_ids if cid in citation_id_to_no]
+        if refs:
+            lines[-1] = f"{lines[-1]} " + " ".join(f"[{ref}]" for ref in refs)
+    if generated.follow_up_suggestions:
+        lines.append("\n你还可以继续了解：\n" + "\n".join(f"- {item}" for item in generated.follow_up_suggestions))
+    return "\n\n".join(lines).strip()
+
+
+def render_persisted_markdown(summary: str | None, blocks: list[dict] | None) -> str:
+    """Render the normalized Answer shape for replay and historical messages."""
+    lines = [summary.strip()] if (summary or "").strip() else []
+    for block in blocks or []:
+        if not isinstance(block, dict):
+            continue
+        content = block.get("content")
+        if isinstance(content, dict):
+            content = "\n".join(
+                f"**{key}**：{value}" for key, value in content.items()
+            )
+        text = str(content or "").strip()
+        if text:
+            refs = block.get("citation_nos") or []
+            lines.append(text + (" " + " ".join(f"[{ref}]" for ref in refs) if refs else ""))
+    return "\n\n".join(lines).strip()
+
+
+def _stream_json_answer(
+    stream: StreamFn,
+    messages: list[dict],
+    *,
+    on_delta: Callable[[str], None] | None = None,
+) -> GeneratedAnswer:
+    """Consume provider JSON stream and expose readable summary deltas."""
+    chunks: list[str] = []
+    emitted = ""
+    for chunk in stream(messages):
+        chunks.append(chunk)
+        raw = "".join(chunks)
+        marker = raw.find('"summary"')
+        if marker < 0:
+            continue
+        tail = raw[marker + len('"summary"'):]
+        colon = tail.find(":")
+        if colon < 0:
+            continue
+        match = re.match(r'\s*"((?:\\.|[^"\\])*)', tail[colon + 1:])
+        if not match:
+            continue
+        try:
+            text = json.loads('"' + match.group(1) + '"')
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if text.startswith(emitted):
+            delta = text[len(emitted):]
+            if delta and on_delta:
+                on_delta(delta)
+            emitted = text
+    return GeneratedAnswer.model_validate(_parse_json("".join(chunks)))
 
 
 def chat_with_retry(
@@ -185,6 +268,8 @@ def generate_answer(
     evidence_text: str,
     context_lines: list[str] | None = None,
     chat_fn: ChatFn | None = None,
+    stream_fn: StreamFn | None = None,
+    on_delta: Callable[[str], None] | None = None,
 ) -> GeneratedAnswer:
     """基于证据生成答案（DD-07 §12）：JSON + Schema + 引用校验。"""
     chat = chat_fn or (lambda msgs: default_chat_fn(db, msgs))
@@ -203,6 +288,12 @@ def generate_answer(
         data = _parse_json(content)
         return GeneratedAnswer.model_validate(data)
 
+    if stream_fn is not None:
+        try:
+            streamed = _stream_json_answer(stream_fn, build(), on_delta=on_delta)
+            return parse_and_validate(streamed.model_dump_json())
+        except (QaError, ValidationError, json.JSONDecodeError, GatewayError):
+            pass
     return _with_repair(lambda hint=None: chat(build(hint)), parse_and_validate, "生成输出不符合要求")
 
 
@@ -213,6 +304,8 @@ def generate_general_answer(
     operation: str,
     context_lines: list[str] | None = None,
     chat_fn: ChatFn | None = None,
+    stream_fn: StreamFn | None = None,
+    on_delta: Callable[[str], None] | None = None,
 ) -> GeneratedAnswer:
     """生成不依赖知识库证据的回答。
 
@@ -239,6 +332,12 @@ def generate_general_answer(
             raise QaError("SCHEMA", "QA_GENERAL_CITATION_INVALID", "通用回答不能包含知识库引用", retryable=False)
         return parsed
 
+    if stream_fn is not None:
+        try:
+            streamed = _stream_json_answer(stream_fn, build(), on_delta=on_delta)
+            return parse_and_validate(streamed.model_dump_json())
+        except (QaError, ValidationError, json.JSONDecodeError, GatewayError):
+            pass
     return _with_repair(lambda hint=None: chat(build(hint)), parse_and_validate, "通用回答输出不符合要求")
 
 
