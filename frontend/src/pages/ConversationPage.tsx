@@ -156,11 +156,13 @@ function activitySteps(events: ProgressEvent[]): ActivityStep[] {
     const isTool = event.kind === "tool" || event.type.startsWith("tool.");
     const key = isTool
       ? `tool:${event.step_id || event.event_id || event.tool || event.display_name || "unknown"}`
-      : event.stage === "UNDERSTANDING"
+      : event.type.startsWith("generation.") || event.type === "answer.finalized"
+        ? "generation"
+        : (event.stage || event.phase) === "UNDERSTANDING"
         ? "analysis"
-        : event.stage === "GENERATING" || event.type.startsWith("answer.")
+        : (event.stage || event.phase) === "GENERATING" || event.type.startsWith("answer.")
           ? "generation"
-          : `step:${event.stage || event.type}`;
+          : `step:${event.step_id || event.stage || event.phase || event.type}`;
     const failed = event.type.endsWith("failed") || event.status === "FAILED";
     const completed = event.type.endsWith("completed") || event.status === "SUCCEEDED";
     const status = failed ? "failed" : completed ? "completed" : "running";
@@ -192,6 +194,10 @@ function activitySummary(events: ProgressEvent[]): string {
   const duration = steps.reduce((total, step) => total + (step.event.duration_ms || 0), 0);
   const durationText = duration > 0 ? ` · ${(duration / 1000).toFixed(1)}s` : "";
   return `已完成 · ${steps.length} 个步骤 · ${tools} 个工具${durationText}`;
+}
+
+function hasToolActivity(events: ProgressEvent[]): boolean {
+  return events.some((event) => event.kind === "tool" || event.type.startsWith("tool."));
 }
 
 function ToolPayload({ event }: { event: ProgressEvent }) {
@@ -243,6 +249,7 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
 
 function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEvent[]; live?: boolean; onRetry?: () => void }) {
   // 统一展示 Agent Activity：只展示执行摘要，不展示隐藏思维链。
+  if (!hasToolActivity(events)) return null;
   const visible = events
     .filter((event) => event.type === "thought.summary" || event.type.startsWith("tool.") || event.type === "evidence.coverage" || event.type.startsWith("answer.") || (event.type.startsWith("generation.") && event.type !== "generation.delta"))
     .slice(-12);
@@ -650,7 +657,7 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
         </Stack>
       )}
 
-      {answer.progress_events && answer.progress_events.length > 0 && (
+      {answer.progress_events && answer.progress_events.length > 0 && hasToolActivity(answer.progress_events) && (
         <Accordion
           expanded={processOpen}
           onChange={(_, expanded) => setProcessOpen(expanded)}
