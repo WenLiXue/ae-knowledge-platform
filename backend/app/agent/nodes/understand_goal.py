@@ -73,7 +73,15 @@ def conservative_goal(question: str) -> GoalUnderstanding:
                 ambiguity=["TASK_ID_REQUIRED"],
                 confidence=0.9,
             )
+    if not policies.looks_like_knowledge_question(question):
         return GoalUnderstanding(
+            decision="RESPOND",
+            operation="EXPLAIN",
+            goal=question,
+            requires_enterprise_evidence=False,
+            confidence=0.8,
+        )
+    return GoalUnderstanding(
             decision="CALL_TOOL",
             operation="ANSWER",
             goal=question,
