@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import json
 import time
+import uuid
 from datetime import datetime, timezone
 
 from .. import policies
@@ -72,13 +73,24 @@ NODE_PROGRESS_MESSAGE: dict[str, str] = {
 
 
 def _append_event(ctx: AgentRuntimeContext, answer_id, event: dict) -> None:
-    from ...db.models.conversation import Answer
+    from ...db.models.conversation import AgentRun, Answer
     try:
         with ctx.session_factory() as db:
             answer = db.get(Answer, answer_id)
             if answer is not None and answer.status not in ("SUCCEEDED", "FAILED", "CANCELED"):
                 events = list(answer.progress_events or [])
-                events.append({**event, "at": datetime.now(timezone.utc).isoformat()})
+                timestamp = datetime.now(timezone.utc).isoformat()
+                kind = event.get("kind") or ("tool" if str(event.get("type", "")).startswith("tool.") else "reasoning")
+                events.append({
+                    "event_id": f"evt_{uuid.uuid4().hex}",
+                    "run_id": str(db.query(AgentRun.id).filter(AgentRun.answer_id == answer.id).scalar() or answer.id),
+                    "seq": max((item.get("seq", 0) for item in events if isinstance(item, dict)), default=0) + 1,
+                    "timestamp": timestamp,
+                    "kind": kind,
+                    "display_name": event.get("display_name") or event.get("summary") or event.get("type", "执行步骤"),
+                    **event,
+                    "at": timestamp,
+                })
                 answer.progress_events = events[-100:]
                 db.commit()
     except Exception:
@@ -96,7 +108,19 @@ def _set_progress(ctx: AgentRuntimeContext, answer_id, stage: str, message: str 
                 answer.progress_stage = stage
                 answer.progress_message = message or "正在处理你的问题…"
                 events = list(answer.progress_events or [])
-                events.append({"type": "thought.summary", "stage": stage, "message": answer.progress_message, "at": datetime.now(timezone.utc).isoformat()})
+                timestamp = datetime.now(timezone.utc).isoformat()
+                events.append({
+                    "event_id": f"evt_{uuid.uuid4().hex}",
+                    "run_id": str(db.query(AgentRun.id).filter(AgentRun.answer_id == answer.id).scalar() or answer.id),
+                    "seq": max((item.get("seq", 0) for item in events if isinstance(item, dict)), default=0) + 1,
+                    "timestamp": timestamp,
+                    "type": "thought.summary",
+                    "kind": "reasoning",
+                    "display_name": "分析问题",
+                    "stage": stage,
+                    "message": answer.progress_message,
+                    "at": timestamp,
+                })
                 answer.progress_events = events[-100:]
                 db.commit()
     except Exception:  # noqa: BLE001 进度记录失败不阻断节点

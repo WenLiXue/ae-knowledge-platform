@@ -103,7 +103,14 @@ export interface AnswerBlock {
 
 /** 可安全展示给用户的执行摘要，不包含模型原始思维链或完整工具参数。 */
 export interface ProgressEvent {
+  event_id?: string;
+  run_id?: string;
+  seq?: number;
+  timestamp?: string;
   type: string;
+  kind?: "reasoning" | "tool" | "skill" | "retrieval" | "mcp" | "workflow" | "generation" | string;
+  display_name?: string;
+  description?: string;
   stage?: string;
   tool?: string;
   message?: string;

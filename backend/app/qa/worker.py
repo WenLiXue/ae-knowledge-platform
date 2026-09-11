@@ -57,6 +57,73 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _record_progress_event(
+    session: Session,
+    answer: Answer,
+    event_type: str,
+    *,
+    stage: str | None = None,
+    message: str | None = None,
+    summary: str | None = None,
+    tool: str | None = None,
+    status: str | None = None,
+    duration_ms: float | None = None,
+    input_data=None,
+    output_data=None,
+) -> None:
+    """Persist a safe, user-visible execution summary for the legacy QA path.
+
+    This deliberately records orchestration facts only (never hidden chain of
+    thought or prompts).  Keeping it on Answer makes the same SSE/UI contract
+    work whether the rollout uses the Agent graph or the legacy worker.
+    """
+    events = list(answer.progress_events or [])
+    timestamp = _now().isoformat()
+    kind = "tool" if event_type.startswith("tool.") else "reasoning" if event_type.startswith("thought.") else "generation"
+    display_name = {
+        "thought.summary": "分析问题",
+        "tool.started": "企业知识检索",
+        "tool.completed": "企业知识检索",
+        "tool.failed": "企业知识检索",
+        "answer.completed": "生成回答",
+    }.get(event_type, event_type)
+    event = {
+        "event_id": f"evt_{uuid.uuid4().hex}",
+        "run_id": str(answer.id),
+        "seq": max((item.get("seq", 0) for item in events if isinstance(item, dict)), default=0) + 1,
+        "timestamp": timestamp,
+        "type": event_type,
+        "kind": kind,
+        "display_name": display_name,
+        "at": timestamp,
+    }
+    for key, value in (
+        ("stage", stage),
+        ("message", message),
+        ("summary", summary),
+        ("tool", tool),
+        ("status", status),
+        ("duration_ms", round(duration_ms, 1) if duration_ms is not None else None),
+        ("input", input_data),
+        ("output", output_data),
+    ):
+        if value is not None:
+            event[key] = value
+    answer.progress_events = (events + [event])[-100:]
+    session.commit()
+
+
+def _service_tool_name(service) -> str:
+    """Resolve the adapter's registered capability name for observability.
+
+    The legacy worker may receive a test/custom retrieval adapter, so it must
+    not bake a UI/tool identifier into every call site.  Registered Agent tools
+    provide their own definition name; older adapters fall back to a neutral
+    service label.
+    """
+    return str(getattr(service, "tool_name", None) or "retrieval")
+
+
 def _filters_text(db: Session, snapshot: dict) -> str:
     parts: list[str] = []
     if snapshot.get("product_id"):
@@ -318,6 +385,13 @@ def _run_generate_answer(
     answer.progress_stage = "UNDERSTANDING"
     answer.progress_message = "正在理解你的问题…"
     session.commit()
+    _record_progress_event(
+        session,
+        answer,
+        "thought.summary",
+        stage="UNDERSTANDING",
+        message="正在理解问题并确定是否需要调用知识库工具…",
+    )
 
     flags: list[str] = []
     model_key: str | None = None
@@ -396,6 +470,13 @@ def _run_generate_answer(
         answer.progress_message = "正在组织回答…"
         answer.degradation_flags = list(dict.fromkeys(flags + ["NO_KNOWLEDGE_RETRIEVAL"]))
         session.commit()
+        _record_progress_event(
+            session,
+            answer,
+            "thought.summary",
+            stage="GENERATING",
+            message="无需调用知识库工具，直接生成回答…",
+        )
         answer = session.get(Answer, answer.id)
         try:
             if settings.feature_real_qa and chat is not None:
@@ -414,6 +495,13 @@ def _run_generate_answer(
                 getattr(exc, "category", "PROVIDER"), exc.code, exc.message,
                 retryable=getattr(exc, "retryable", False),
             ) from exc
+        _record_progress_event(
+            session,
+            answer,
+            "answer.completed",
+            status="SUCCEEDED",
+            summary="回答生成完成",
+        )
         _persist_answer(
             session, answer, generated, citations_data=[], flags=flags + ["NO_KNOWLEDGE_RETRIEVAL"],
             model_key=model_key, retrieval_config_revision=None,
@@ -422,14 +510,45 @@ def _run_generate_answer(
 
     # ---- 检索（Phase 5） ----
     svc = retrieval_service or build_retrieval_service(search=search)
+    retrieval_tool_name = _service_tool_name(svc)
+    retrieval_started_at = _now()
+    _record_progress_event(
+        session,
+        answer,
+        "tool.started",
+        stage="RETRIEVING",
+        tool=retrieval_tool_name,
+        input_data={"query": normalized},
+        message="正在调用知识检索工具…",
+    )
     try:
         retrieval = svc.retrieve(
             session, normalized, filters=_retrieval_filters_from_snapshot(conversation.filters_snapshot),
             operation=operation,
         )
     except RetrievalError as exc:
+        _record_progress_event(
+            session,
+            answer,
+            "tool.failed",
+            tool=retrieval_tool_name,
+            status="FAILED",
+            summary=exc.message[:300],
+            duration_ms=(_now() - retrieval_started_at).total_seconds() * 1000,
+        )
         _fail_answer(session, answer, exc.code, f"检索失败: {exc.message}")
         raise PipelineError(exc.category, exc.code, exc.message, retryable=exc.retryable) from exc
+    except Exception as exc:  # noqa: BLE001
+        _record_progress_event(
+            session,
+            answer,
+            "tool.failed",
+            tool=retrieval_tool_name,
+            status="FAILED",
+            summary="检索服务异常",
+            duration_ms=(_now() - retrieval_started_at).total_seconds() * 1000,
+        )
+        raise
     # retrieve 内部已提交；重新加载会话与答案
     answer = session.get(Answer, answer.id)
     conversation = session.get(Conversation, conversation.id)
@@ -438,6 +557,17 @@ def _run_generate_answer(
             _mark_canceled(session, answer)
         return None
 
+    _record_progress_event(
+        session,
+        answer,
+        "tool.completed",
+        tool=retrieval_tool_name,
+        status="SUCCEEDED",
+        duration_ms=(_now() - retrieval_started_at).total_seconds() * 1000,
+        output_data={"evidence_count": len(retrieval.evidence)},
+        summary=f"检索完成，找到 {len(retrieval.evidence)} 条证据",
+    )
+
     answer.status = "STREAMING"
     answer.progress_stage = "GENERATING"
     answer.progress_message = "正在依据资料整理答案…"
@@ -445,6 +575,13 @@ def _run_generate_answer(
     answer.degradation_flags = list(dict.fromkeys(flags + retrieval.degradation_flags))
     session.commit()
     answer = session.get(Answer, answer.id)
+    _record_progress_event(
+        session,
+        answer,
+        "thought.summary",
+        stage="GENERATING",
+        message="正在依据检索证据整理答案…",
+    )
 
     # ---- 生成 ----
     try:
@@ -491,6 +628,13 @@ def _run_generate_answer(
     }
     citations = _build_citations(session, answer.id, cited_evidence)
 
+    _record_progress_event(
+        session,
+        answer,
+        "answer.completed",
+        status="SUCCEEDED",
+        summary="回答生成完成",
+    )
     _persist_answer(
         session, answer,
         generated,

@@ -238,13 +238,16 @@ def answer_events(
                     if seq > after_no:
                         yield _sse_event(f"e{seq}:{name}:{_event_suffix(name, data)}", name, data)
                 return
-            # 进行中：发当前快照 + 状态，轮询状态变化（进度事件为瞬时态，断线后不逐条补发）
+            # 进行中：发当前快照 + 状态，轮询状态变化；持久化进度按 p{seq} 续传。
             payload = service.build_answer_out(session, answer).model_dump(mode="json")
             yield _sse_event("e1:snapshot", "answer.snapshot", payload)
             last_signal = (answer.status, answer.progress_stage)
             yield _status_event(answer)
+            progress_after = _progress_cursor(after)
             for index, progress in enumerate(answer.progress_events or [], start=1):
-                yield _sse_event(f"p{index}", "answer.progress", progress)
+                progress_seq = int(progress.get("seq", index)) if isinstance(progress, dict) else index
+                if progress_seq > progress_after:
+                    yield _sse_event(f"p{progress_seq}", "answer.progress", progress)
             progress_seen = len(answer.progress_events or [])
         while time.monotonic() < deadline:
             with SessionLocal() as session:
@@ -258,7 +261,8 @@ def answer_events(
                 events = answer.progress_events or []
                 if len(events) > progress_seen:
                     for index, progress in enumerate(events[progress_seen:], start=progress_seen + 1):
-                        yield _sse_event(f"p{index}", "answer.progress", progress)
+                        progress_seq = int(progress.get("seq", index)) if isinstance(progress, dict) else index
+                        yield _sse_event(f"p{progress_seq}", "answer.progress", progress)
                     progress_seen = len(events)
                 if answer.draft_text and answer.draft_text != last_draft:
                     last_draft = answer.draft_text
@@ -348,6 +352,12 @@ def _sse_event(event_id: str, event_name: str, data: dict) -> str:
 def _cursor_seq(after: str | None) -> int:
     """从事件 id 提取序号（e{seq}:...）。非数字形式返回 0。"""
     match = re.search(r"e(\d+):", after or "")
+    return int(match.group(1)) if match else 0
+
+
+def _progress_cursor(after: str | None) -> int:
+    """读取持久化进度事件游标（p{seq}）。"""
+    match = re.search(r"p(\d+)$", after or "")
     return int(match.group(1)) if match else 0
 
 

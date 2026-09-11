@@ -128,7 +128,7 @@ export interface AnswerEventsHandlers {
   onBlock?: (block: AnswerBlock) => void;
   onCitation?: (citation: Citation) => void;
   onDelta?: (payload: { answer_id: string; text: string }) => void;
-  onProgress?: (payload: { type: string; tool?: string; message?: string; duration_ms?: number; evidence_count?: number }) => void;
+  onProgress?: (payload: ProgressEvent) => void;
   onDone?: (payload: { answer_id: string; status: string; answer_type: string }) => void;
   onEnd?: () => void;
 }
