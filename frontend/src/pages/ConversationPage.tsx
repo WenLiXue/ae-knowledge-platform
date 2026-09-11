@@ -135,7 +135,7 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
     <Accordion
       disableGutters
       elevation={0}
-      sx={{ mt: 0.75, border: "1px solid rgba(255,255,255,0.14)", bgcolor: "#0b0c0a", color: "#e7f0e4", borderRadius: 0.75, "&:before": { display: "none" }, "& .MuiAccordionSummary-expandIconWrapper": { color: "#c6ff4a" } }}
+      sx={{ mt: 0.75, border: 1, borderColor: "divider", borderRadius: 0.75, "&:before": { display: "none" } }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />} sx={{ minHeight: 28, px: 0.75, "& .MuiAccordionSummary-content": { my: 0.25 } }}>
         <Typography variant="caption" color="text.secondary">查看工具输入 / 输出</Typography>
@@ -144,7 +144,7 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
         {event.input !== undefined && (
           <Box sx={{ mb: event.output !== undefined ? 0.75 : 0 }}>
             <Typography variant="caption" fontWeight={600} display="block">输入</Typography>
-            <Box component="pre" sx={{ m: 0, mt: 0.25, p: 0.75, bgcolor: "#151a13", color: "#c9d7c3", borderRadius: 0.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, maxHeight: 180, overflow: "auto" }}>
+            <Box component="pre" sx={{ m: 0, mt: 0.25, p: 0.75, bgcolor: "grey.50", borderRadius: 0.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, maxHeight: 180, overflow: "auto" }}>
               {renderPayload(event.input)}
             </Box>
           </Box>
@@ -152,7 +152,7 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
         {event.output !== undefined && (
           <Box>
             <Typography variant="caption" fontWeight={600} display="block">输出</Typography>
-            <Box component="pre" sx={{ m: 0, mt: 0.25, p: 0.75, bgcolor: "#151a13", color: "#c9d7c3", borderRadius: 0.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, maxHeight: 220, overflow: "auto" }}>
+            <Box component="pre" sx={{ m: 0, mt: 0.25, p: 0.75, bgcolor: "grey.50", borderRadius: 0.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, maxHeight: 220, overflow: "auto" }}>
               {renderPayload(event.output)}
             </Box>
           </Box>
@@ -173,27 +173,27 @@ function ProcessTimeline({ events, live = false, onRetry }: { events: ProgressEv
   return (
     <Box sx={{ mt: live ? 1.5 : 0, borderTop: live ? "1px solid rgba(198,255,74,0.18)" : 0, pt: live ? 1.5 : 0 }}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
-        <AccountTreeOutlinedIcon sx={{ fontSize: 16, color: "#c6ff4a" }} />
-        <Typography variant="caption" sx={{ color: "#c6ff4a", fontWeight: 700, letterSpacing: "0.04em" }}>
+        <AccountTreeOutlinedIcon sx={{ fontSize: 16, color: "primary.main" }} />
+        <Typography variant="caption" sx={{ color: "primary.main", fontWeight: 700, letterSpacing: "0.04em" }}>
           {live ? "AGENT ACTIVITY" : `执行记录 · ${completed || visible.length} 个步骤`}
         </Typography>
-        {running && <CircularProgress size={11} thickness={6} sx={{ color: "#c6ff4a" }} />}
+        {running && <CircularProgress size={11} thickness={6} color="primary" />}
       </Stack>
       <Stack spacing={0}>
         {visible.map((event, index) => (
           <Stack key={`${event.type}-${event.at ?? index}-${index}`} direction="row" spacing={1.25} alignItems="stretch" sx={{ minHeight: 42 }}>
             <Box sx={{ width: 18, display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <Box sx={{ display: "flex", mt: 0.1, color: event.type.includes("failed") ? "#ff3b30" : event.type.includes("completed") ? "#c6ff4a" : "#ffb800" }}>
+              <Box sx={{ display: "flex", mt: 0.1, color: event.type.includes("failed") ? "error.main" : event.type.includes("completed") ? "success.main" : "primary.main" }}>
                 {eventIcon(event)}
               </Box>
-              {index < visible.length - 1 && <Box sx={{ width: 1, flex: 1, bgcolor: "rgba(255,255,255,0.12)", my: 0.4 }} />}
+              {index < visible.length - 1 && <Box sx={{ width: 1, flex: 1, bgcolor: "divider", my: 0.4 }} />}
             </Box>
             <Box minWidth={0} sx={{ pb: 1 }}>
-              <Typography variant="body2" sx={{ display: "block", lineHeight: 1.35, color: "#f0f4ed", fontWeight: 600 }}>
+              <Typography variant="body2" sx={{ display: "block", lineHeight: 1.35, fontWeight: 600 }}>
                 {eventLabel(event)}
               </Typography>
               {formatEventDetail(event) && (
-                <Typography variant="caption" sx={{ display: "block", lineHeight: 1.4, color: "rgba(230,239,226,0.62)" }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
                   {formatEventDetail(event)}
                 </Typography>
               )}
@@ -222,7 +222,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
       onChange={(_event, nextExpanded) => setExpanded(nextExpanded)}
       disableGutters
       elevation={0}
-      sx={{ mt: 1.5, border: "1px solid rgba(255,255,255,0.14)", bgcolor: "#10130f", color: "#e7f0e4", borderRadius: 1, "&:before": { display: "none" }, "& .MuiAccordionSummary-expandIconWrapper": { color: "#c6ff4a" } }}
+      sx={{ mt: 1.5, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />} sx={{ minHeight: 36, px: 1, "& .MuiAccordionSummary-content": { my: 0.5 } }}>
         <Stack direction="row" spacing={0.75} alignItems="center">
@@ -518,7 +518,7 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
   };
 
   return (
-    <Box sx={{ color: "#e7f0e4", "& .MuiTypography-root": { color: "inherit" }, "& .MuiChip-root": { color: "#c6ff4a", borderColor: "rgba(198,255,74,0.3)", bgcolor: "#182016" } }}>
+    <Box>
       {/* 综合答案标题对齐原型 .answer-title */}
       {(answer.status === "FAILED" || showSummary) && (
         <Typography sx={{ fontSize: 20, fontWeight: 650, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
@@ -562,10 +562,10 @@ function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () => void 
           onChange={(_, expanded) => setProcessOpen(expanded)}
           disableGutters
           elevation={0}
-          sx={{ mt: 1.5, border: "1px solid rgba(198,255,74,0.22)", borderRadius: 1, bgcolor: "#10130f", color: "#e7f0e4", "&:before": { display: "none" }, "& .MuiAccordionSummary-expandIconWrapper": { color: "#c6ff4a" } }}
+          sx={{ mt: 1.5, border: 1, borderColor: "divider", borderRadius: 1, "&:before": { display: "none" } }}
         >
           <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 42, "& .MuiAccordionSummary-content": { my: 0.75 } }}>
-            <Typography variant="caption" sx={{ color: "#c6ff4a", fontWeight: 700 }}>查看执行记录</Typography>
+            <Typography variant="caption" color="text.secondary">查看执行记录</Typography>
           </AccordionSummary>
           <AccordionDetails sx={{ pt: 0 }}>
             <ProcessTimeline events={answer.progress_events} onRetry={onRetry} />
@@ -655,8 +655,8 @@ function MessageRow({ message, onRetry }: { message: Message; onRetry?: () => vo
           sx={{
             maxWidth: { xs: "88%", sm: "72%" },
             // 问句气泡对齐原型 .question-bubble：浅蓝底 + 深蓝文字
-            bgcolor: "#c6ff4a",
-            color: "#10130f",
+            bgcolor: "#e6f4ff",
+            color: "#17376f",
             borderRadius: "16px 16px 4px 16px",
             px: 2,
             py: 1.25,
@@ -673,7 +673,6 @@ function MessageRow({ message, onRetry }: { message: Message; onRetry?: () => vo
             width: "100%",
             maxWidth: 1040,
             py: { xs: 1.5, sm: 2.25 },
-            color: "#e7f0e4",
             "&:hover .answer-feedback": { opacity: 1 },
           }}
         >
@@ -932,7 +931,6 @@ export function ConversationPage() {
         pt: { xs: 1.5, sm: 2 },
         display: "flex",
         flexDirection: "column",
-        color: "#e7f0e4",
       }}
     >
       <Stack
@@ -945,16 +943,16 @@ export function ConversationPage() {
           <ArrowBackIcon />
         </IconButton>
         <Box minWidth={0}>
-          <Typography variant="h6" noWrap sx={{ color: "#f1f6ee", letterSpacing: "-0.02em" }}>
+          <Typography variant="h6" noWrap>
             {conversation.title}
           </Typography>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-            {conversation.filters.product_id && <Chip label={`产品：${conversation.filters.product_id}`} size="small" sx={{ bgcolor: "#182016", color: "#c6ff4a", border: "1px solid rgba(198,255,74,0.3)" }} />}
+            {conversation.filters.product_id && <Chip label={`产品：${conversation.filters.product_id}`} size="small" />}
             {conversation.filters.product_version_id && (
-              <Chip label={`版本：${conversation.filters.product_version_id}`} size="small" sx={{ bgcolor: "#182016", color: "#c6ff4a", border: "1px solid rgba(198,255,74,0.3)" }} />
+              <Chip label={`版本：${conversation.filters.product_version_id}`} size="small" />
             )}
             {conversation.filters.document_type_id && (
-              <Chip label={`类型：${conversation.filters.document_type_id}`} size="small" sx={{ bgcolor: "#182016", color: "#c6ff4a", border: "1px solid rgba(198,255,74,0.3)" }} />
+              <Chip label={`类型：${conversation.filters.document_type_id}`} size="small" />
             )}
           </Stack>
         </Box>
@@ -970,8 +968,9 @@ export function ConversationPage() {
           flex: 1,
           minHeight: 0,
           overflow: "hidden",
-          bgcolor: "#0b0c0a",
-          border: "1px solid rgba(255,255,255,0.14)",
+          bgcolor: "background.paper",
+          border: 1,
+          borderColor: "divider",
           borderRadius: 2,
         }}
       >
@@ -1008,11 +1007,11 @@ export function ConversationPage() {
           )}
 
           {streaming && (
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: "#10130f", color: "#e7f0e4", borderColor: "rgba(198,255,74,0.28)", borderRadius: 1 }}>
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(255,255,255,0.62)", borderColor: "rgba(25,103,210,0.22)" }}>
               <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <CircularProgress size={18} thickness={5} sx={{ color: "#c6ff4a" }} />
+                <CircularProgress size={18} thickness={5} />
                 <Box minWidth={0}>
-                  <Typography variant="subtitle2" sx={{ color: "#c6ff4a" }}>
+                  <Typography variant="subtitle2">
                     {activeToolEvent
                       ? `正在调用工具 · ${toolDisplayName(activeToolEvent.tool)}`
                       : streaming.progress_message || "正在处理…"}
@@ -1023,14 +1022,14 @@ export function ConversationPage() {
                       {streaming.draft_text}
                     </Typography>
                   )}
-                  <Typography variant="caption" sx={{ color: "rgba(230,239,226,0.6)" }}>
+                  <Typography variant="caption" color="text.secondary">
                     {streaming.degradation_flags.length > 0
                       ? "部分资料服务不可用，已使用可用结果继续回答。"
                       : "答案和来源会在生成过程中逐步显示。"}
                   </Typography>
                 </Box>
                 <Box sx={{ flexGrow: 1 }} />
-                <Button size="small" sx={{ color: "#c6ff4a" }} onClick={() => void handleCancel()}>
+                <Button size="small" color="inherit" onClick={() => void handleCancel()}>
                   停止生成
                 </Button>
               </Stack>
@@ -1080,7 +1079,7 @@ export function ConversationPage() {
             py: { xs: 1.5, sm: 2 },
             borderTop: 1,
             borderColor: "divider",
-            bgcolor: "#10130f",
+            bgcolor: "#f8fafc",
           }}
         >
           <Stack direction="row" spacing={1.5} alignItems="flex-end" sx={{ maxWidth: 1040, mx: "auto" }}>
@@ -1096,13 +1095,8 @@ export function ConversationPage() {
               inputProps={{ "aria-label": "继续追问" }}
               sx={{
                 "& .MuiOutlinedInput-root": {
-                  bgcolor: "#0b0c0a",
-                  color: "#f1f6ee",
-                  "& fieldset": { borderColor: "rgba(255,255,255,0.2)" },
-                  "&:hover fieldset": { borderColor: "#c6ff4a" },
-                  "&.Mui-focused fieldset": { borderColor: "#c6ff4a", boxShadow: "0 0 0 2px rgba(198,255,74,0.12)" },
+                  bgcolor: "#ffffff",
                 },
-                "& .MuiInputBase-input::placeholder": { color: "rgba(230,239,226,0.45)", opacity: 1 },
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -1120,9 +1114,9 @@ export function ConversationPage() {
                   sx={{
                     width: 44,
                     height: 44,
-                    color: "#10130f",
-                    bgcolor: "#c6ff4a",
-                    "&:hover": { bgcolor: "#d7ff82" },
+                    color: "common.white",
+                    bgcolor: "primary.main",
+                    "&:hover": { bgcolor: "primary.dark" },
                     "&.Mui-disabled": { bgcolor: "grey.200", color: "grey.400" },
                   }}
                 >
