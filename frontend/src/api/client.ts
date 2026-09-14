@@ -8,7 +8,10 @@
  */
 import { ApiError, type ApiEnvelope } from "../types/api";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+// 生产环境通过 Nginx 同源转发 /api；本地开发时才直连 FastAPI。
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE_URL =
+  configuredApiBaseUrl || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
 export { API_BASE_URL };
 
