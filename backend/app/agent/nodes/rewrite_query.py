@@ -1,4 +1,4 @@
-"""rewrite_query：只改写检索表达；最多一次；不扩大用户授权与过滤范围。"""
+"""Legacy RAG query rewrite; the native Agent lets knowledge.search receive the user goal directly."""
 
 from __future__ import annotations
 

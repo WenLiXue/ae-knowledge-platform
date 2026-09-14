@@ -294,7 +294,7 @@ function ToolPayload({ event }: { event: ProgressEvent }) {
 function ProcessTimeline({ events, live = false, onRetry, showHeader = true }: { events: ProgressEvent[]; live?: boolean; onRetry?: () => void; showHeader?: boolean }) {
   // 统一展示 Agent Activity：只展示执行摘要，不展示隐藏思维链。
   if (!hasToolActivity(events)) return null;
-  const visible = userVisibleActivityEvents(events).slice(-12);
+  const visible = userVisibleActivityEvents(events).slice(-24);
   if (visible.length === 0) return null;
   const steps = activitySteps(visible).map((step) =>
     live || step.status === "failed" ? step : { ...step, status: "completed" as const },
@@ -853,7 +853,11 @@ export function ConversationPage() {
   const toolEvents = progressEvents.filter((event) => event.type.startsWith("tool.")).slice(-4);
   const activeToolEvent = [...toolEvents].reverse().find((event) => {
     if (event.type !== "tool.started") return false;
-    return !toolEvents.some((candidate) => candidate.type === "tool.completed" && candidate.tool === event.tool && (candidate.at ?? "") > (event.at ?? ""));
+    return !toolEvents.some((candidate) =>
+      candidate.type === "tool.completed"
+      && (candidate.call_id || candidate.step_id) === (event.call_id || event.step_id)
+      && (candidate.at ?? "") >= (event.at ?? "")
+    );
   });
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -986,7 +990,7 @@ export function ConversationPage() {
           if (payload.seq !== undefined && payload.seq <= lastProgressSeqRef.current) return prev;
           if (payload.event_id && prev.some((event) => event.event_id === payload.event_id)) return prev;
           if (payload.seq !== undefined) lastProgressSeqRef.current = payload.seq;
-          return [...prev, payload].slice(-40);
+          return [...prev, payload].slice(-100);
         });
       },
       onBlock: (block) => {
@@ -1001,6 +1005,10 @@ export function ConversationPage() {
         if (cancelled) return;
         close();
         void refreshMessages();
+      },
+      onError: (err) => {
+        if (cancelled) return;
+        setError(err);
       },
       onEnd: () => {
         if (!cancelled) void refreshMessages();

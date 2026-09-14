@@ -44,6 +44,7 @@ def safe_tool_payload(value, *, limit: int = 1600):
 
 # 节点名 → SSE progress_stage（DD-21 §16）
 NODE_PROGRESS: dict[str, str] = {
+    "agent_loop": "EXECUTING",
     "build_context": "BUILDING_CONTEXT",
     "retrieve": "RETRIEVING",
     "rewrite_query": "ROUTING",
@@ -58,6 +59,7 @@ NODE_PROGRESS: dict[str, str] = {
 }
 
 NODE_PROGRESS_MESSAGE: dict[str, str] = {
+    "agent_loop": "正在自主分析并执行任务…",
     "build_context": "正在整理对话上下文…",
     "retrieve": "正在查找知识库中的相关资料…",
     "rewrite_query": "正在确定最合适的查询范围…",
@@ -193,6 +195,7 @@ def node(name: str, *, check_limits: bool = True):
             if name == "retrieve":
                 _append_event(ctx, state["answer_id"], {
                     "type": "tool.started",
+                    "call_id": "retrieval",
                     "tool": "knowledge.search",
                     "step_id": "retrieval",
                     "message": "开始调用工具",
@@ -239,6 +242,7 @@ def node(name: str, *, check_limits: bool = True):
                 retrieve_failed = result.get("final_status") == "FAILED" or bool(result.get("error_code"))
                 _append_event(ctx, state["answer_id"], {
                     "type": "tool.failed" if retrieve_failed else "tool.completed",
+                    "call_id": "retrieval",
                     "tool": "knowledge.search",
                     "step_id": "retrieval",
                     "message": result.get("error_summary") if retrieve_failed else "工具调用完成",

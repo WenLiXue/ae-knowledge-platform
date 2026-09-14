@@ -111,6 +111,7 @@ export interface ProgressEvent {
   kind?: "reasoning" | "tool" | "skill" | "retrieval" | "mcp" | "workflow" | "generation" | string;
   phase?: string;
   step_id?: string;
+  call_id?: string;
   display_name?: string;
   description?: string;
   stage?: string;

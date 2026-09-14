@@ -53,8 +53,8 @@ class Settings(BaseSettings):
 
     # ---- LangGraph 知识助手 Agent（DD-21） ----
     # 初始关闭：新任务走旧 qa.worker 编排；灰度和验收通过后再开启（DD-21 §19 阶段 D）。
-    agent_graph_enabled: bool = False
-    agent_graph_version: str = "knowledge-assistant-v1"
+    agent_graph_enabled: bool = True
+    agent_graph_version: str = "general-agent-v1"
     # Tool-Agent rollout flags. Disabled by default so DD-21 remains the
     # production fallback until the new execution path passes its gates.
     agent_tools_enabled: bool = False

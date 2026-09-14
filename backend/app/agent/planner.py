@@ -2,6 +2,9 @@
 
 The model may propose a plan, but this module is the authority for graph
 shape, registered capabilities, permissions and execution budgets.
+
+The planner prompt is a compatibility fallback for non-native runs. The
+production Agent uses the canonical message-driven prompt in ``prompts.py``.
 """
 
 from __future__ import annotations

@@ -227,8 +227,7 @@ def run_generate_answer(
 ) -> str | None:
     """执行 GENERATE_ANSWER（薄适配器，DD-21 §12）。
 
-    - agent_graph_enabled=True：走 LangGraph 知识助手（checkpoint 恢复）；
-    - 否则走旧手写编排（回滚路径）。
+    - 统一走 LangGraph 通用 Agent（checkpoint 恢复）。
 
     使用独立短会话（与分类阶段一致）：不提交/污染 WorkerRunner 外层
     `with session.begin()` 事务。返回 None（无后续阶段）。
@@ -239,23 +238,10 @@ def run_generate_answer(
     if not answer_id:
         raise PipelineError("VALIDATION", "ANSWER_ID_MISSING", "答案任务缺少 answer_id", retryable=False)
 
-    if settings.agent_graph_enabled:
-        return _run_agent_flow(
-            answer_id,
-            search=search, retrieval_service=retrieval_service, chat_fn=chat_fn, settings=settings,
-        )
-
-    # ---- 旧手写编排（feature flag 关闭时的回滚路径） ----
-    from ..db.session import SessionLocal
-
-    with SessionLocal() as session:
-        answer = session.get(Answer, uuid.UUID(str(answer_id)))
-        if answer is None:
-            raise PipelineError("NOT_FOUND", "ANSWER_NOT_FOUND", "答案不存在", retryable=False)
-        return _run_generate_answer(
-            session, answer,
-            search=search, retrieval_service=retrieval_service, chat_fn=chat_fn, settings=settings,
-        )
+    return _run_agent_flow(
+        answer_id,
+        search=search, retrieval_service=retrieval_service, chat_fn=chat_fn, settings=settings,
+    )
 
 
 def _run_agent_flow(

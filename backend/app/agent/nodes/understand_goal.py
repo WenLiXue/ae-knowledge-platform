@@ -1,4 +1,4 @@
-"""Goal understanding for the tool-agent path.
+"""Legacy goal understanding for the compatibility path.
 
 This node produces a bounded task description. It does not execute tools and
 does not grant permissions.

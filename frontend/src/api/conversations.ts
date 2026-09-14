@@ -131,6 +131,7 @@ export interface AnswerEventsHandlers {
   onDelta?: (payload: { answer_id: string; text: string }) => void;
   onProgress?: (payload: ProgressEvent) => void;
   onDone?: (payload: { answer_id: string; status: string; answer_type: string }) => void;
+  onError?: (error: Error) => void;
   onEnd?: () => void;
 }
 
@@ -149,7 +150,13 @@ export function subscribeAnswerEvents(
     const eventName = block.match(/^event:\s*(.+)$/m)?.[1];
     const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
     if (!eventName || !dataLine) return;
-    const payload = JSON.parse(dataLine.slice(5).trim());
+    let payload: any;
+    try {
+      payload = JSON.parse(dataLine.slice(5).trim());
+    } catch (error) {
+      handlers.onError?.(error instanceof Error ? error : new Error("SSE 数据格式错误"));
+      return;
+    }
     if (eventName === "answer.snapshot") handlers.onSnapshot?.(payload);
     else if (eventName === "answer.status") handlers.onStatus?.(payload);
     else if (eventName === "answer.block") handlers.onBlock?.(payload);
@@ -182,7 +189,7 @@ export function subscribeAnswerEvents(
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return; // 主动取消/清理
-      // 连接中断：不做自动重连，交由页面刷新或重新提问恢复
+      handlers.onError?.(err instanceof Error ? err : new Error("SSE 连接中断"));
     } finally {
       if (!cancelled) handlers.onEnd?.();
     }

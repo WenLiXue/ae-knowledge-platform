@@ -24,6 +24,18 @@ def core_build_context(state: dict, ctx):
     constraints = list(memory.constraints) if memory else []
     unresolved = list(memory.unresolved_topics) if memory else []
 
+    # On checkpoint resume, preserve the exact assistant/tool message
+    # adjacency required by provider tool-call protocols. Rebuilding only
+    # from business conversation turns would orphan a resumed tool result.
+    messages = list(state.get("messages") or [])
+    if not messages:
+        for turn in turns:
+            if turn.get("user"):
+                messages.append({"role": "user", "content": str(turn["user"])})
+            if turn.get("assistant"):
+                messages.append({"role": "assistant", "content": str(turn["assistant"])[:12000]})
+        messages.append({"role": "user", "content": state.get("question") or ""})
+
     question_tokens = ctx.tokenizer.estimate(state.get("question") or "")
     summary_tokens = ctx.tokenizer.estimate(summary)
     context_estimate = (
@@ -40,4 +52,5 @@ def core_build_context(state: dict, ctx):
         "memory_constraints": constraints,
         "unresolved_topics": unresolved,
         "context_token_estimate": context_estimate,
+        "messages": messages,
     }

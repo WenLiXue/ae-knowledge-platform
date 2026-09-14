@@ -36,7 +36,7 @@ def persist_plan(session_factory, *, answer_id: str, plan: AgentPlan) -> None:
                 answer_id=answer.id,
                 conversation_id=answer.conversation_id,
                 status="RUNNING",
-                graph_version="knowledge-assistant-v1",
+                graph_version="general-agent-v1",
                 checkpoint_thread_id=str(answer.id),
                 max_steps=12,
                 degradation_flags=[],

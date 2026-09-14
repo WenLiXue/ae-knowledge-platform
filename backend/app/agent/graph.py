@@ -10,28 +10,14 @@ from langgraph.graph import END, START, StateGraph
 
 from .context import AgentRuntimeContext
 from .nodes import (
-    assess_evidence as assess_node,
-    answer_identity as identity_node,
+    agent_loop as agent_loop_node,
     build_context as build_context_node,
-    create_plan as create_plan_node,
-    execute_tool as execute_tool_node,
-    generate as generate_node,
     load_state as load_state_node,
     persist_result as persist_node,
-    retrieve as retrieve_node,
-    rewrite_query as rewrite_node,
-    understand_goal as understand_goal_node,
     update_memory as update_memory_node,
-    validate as validate_node,
 )
 from .nodes import node as wrap
-from .policies import (
-    route_after_evidence,
-    route_after_goal,
-    route_after_tool,
-    route_after_load,
-    route_after_validation,
-)
+from .policies import route_after_load
 from .state import AgentState
 
 
@@ -49,68 +35,14 @@ def build_agent_graph(*, checkpointer=None, context_schema=AgentRuntimeContext):
 
     builder.add_node("load_state", wrap("load_state")(load_state_node.core_load_state))
     builder.add_node("build_context", wrap("build_context")(build_context_node.core_build_context))
-    builder.add_node("understand_goal", wrap("understand_goal")(understand_goal_node.core_understand_goal))
-    builder.add_node("answer_identity", wrap("answer_identity")(identity_node.core_answer_identity))
-    builder.add_node("create_plan", wrap("create_plan")(create_plan_node.core_create_plan))
-    builder.add_node("execute_tool", wrap("execute_tool")(execute_tool_node.core_execute_tool))
-    builder.add_node("generate_general", wrap("generate_general")(generate_node.core_generate_general))
-    builder.add_node("generate_grounded", wrap("generate_grounded")(generate_node.core_generate_grounded))
-    builder.add_node("finalize_clarification", wrap("finalize_clarification")(generate_node.core_finalize_clarification))
-    builder.add_node("finalize_insufficient", wrap("finalize_insufficient")(generate_node.core_finalize_insufficient))
-    builder.add_node("retrieve", wrap("retrieve")(retrieve_node.core_retrieve))
-    builder.add_node("assess_evidence", wrap("assess_evidence")(assess_node.core_assess_evidence))
-    builder.add_node("rewrite_query", wrap("rewrite_query")(rewrite_node.core_rewrite_query))
-    builder.add_node("validate_citations", wrap("validate_citations")(validate_node.core_validate_citations))
+    builder.add_node("agent_loop", wrap("agent_loop")(agent_loop_node.core_agent_loop))
     builder.add_node("update_memory", wrap("update_memory")(update_memory_node.core_update_memory))
     builder.add_node("persist_result", wrap("persist_result", check_limits=False)(persist_node.core_persist_result))
 
     builder.add_edge(START, "load_state")
     builder.add_conditional_edges("load_state", route_after_load, ["build_context", "persist_result"])
-    builder.add_conditional_edges(
-        "build_context",
-        lambda state: "understand_goal",
-        ["understand_goal"],
-    )
-    builder.add_conditional_edges(
-        "understand_goal", route_after_goal,
-        ["create_plan", "answer_identity", "generate_general", "finalize_clarification", "retrieve", "persist_result"],
-    )
-    builder.add_conditional_edges(
-        "create_plan", _route_fixed("execute_tool"), ["execute_tool", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "execute_tool", route_after_tool,
-        ["execute_tool", "create_plan", "assess_evidence", "generate_general", "update_memory", "persist_result"],
-    )
-    builder.add_conditional_edges(
-        "answer_identity", _route_fixed("update_memory"), ["update_memory", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "retrieve", _route_fixed("assess_evidence"), ["assess_evidence", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "assess_evidence",
-        lambda state: route_after_evidence(state),
-        ["rewrite_query", "generate_grounded", "finalize_insufficient", "persist_result"],
-    )
-    builder.add_conditional_edges("rewrite_query", _route_fixed("retrieve"), ["retrieve", "persist_result"])
-    builder.add_conditional_edges(
-        "generate_general", _route_fixed("update_memory"), ["update_memory", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "finalize_clarification", _route_fixed("update_memory"), ["update_memory", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "finalize_insufficient", _route_fixed("update_memory"), ["update_memory", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "generate_grounded", _route_fixed("validate_citations"), ["validate_citations", "persist_result"]
-    )
-    builder.add_conditional_edges(
-        "validate_citations",
-        lambda state: route_after_validation(state),
-        ["update_memory", "generate_grounded", "finalize_insufficient", "persist_result"],
-    )
+    builder.add_edge("build_context", "agent_loop")
+    builder.add_conditional_edges("agent_loop", _route_fixed("update_memory"), ["update_memory", "persist_result"])
     builder.add_conditional_edges("update_memory", _route_fixed("persist_result"), ["persist_result"])
     builder.add_edge("persist_result", END)
 

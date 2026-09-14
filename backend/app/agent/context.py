@@ -85,7 +85,12 @@ class AgentModels:
     ) -> str:
         """调用 QA 模型。messages 为 [{role, content}, ...]；返回文本。"""
         if self._chat_fn is not None:
-            return self._chat_fn(messages)
+            response = self._chat_fn(messages)
+            if isinstance(response, ChatResponse):
+                return response.content
+            if isinstance(response, dict):
+                return str(response.get("content") or "")
+            return response
         if self._session_factory is None:
             raise ValueError("AgentModels 未配置 session_factory，无法解析 QA 模型")
         with self._session_factory() as db:
@@ -144,7 +149,14 @@ class AgentModels:
     ) -> ChatResponse:
         """Structured model response for planning; preserves the text-only API."""
         if self._chat_fn is not None:
-            raise ValueError("注入式 chat_fn 不支持工具调用响应，请注入结构化 gateway")
+            # Tests and local harnesses may inject a provider-shaped
+            # ChatResponse without constructing a model gateway.
+            response = self._chat_fn(messages)
+            if isinstance(response, ChatResponse):
+                return response
+            if isinstance(response, dict):
+                return ChatResponse.model_validate(response)
+            raise ValueError("注入式 chat_fn 必须返回 ChatResponse 或对象字典")
         if self._session_factory is None:
             raise ValueError("AgentModels 未配置 session_factory，无法解析 QA 模型")
         from ..model_gateway.base import ChatRequest

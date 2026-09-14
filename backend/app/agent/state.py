@@ -72,6 +72,10 @@ class AgentState(TypedDict, total=False):
     query_entities: list[str]
     route_reason_code: str
 
+    # Unified transcript consumed by the model-driven loop.
+    messages: list[dict]
+    pending_tool_calls: list[dict]
+
     # 工具型 Agent 计划与观察（全部为可 JSON 序列化 DTO）
     plan_id: str | None
     plan_revision: int
@@ -142,6 +146,8 @@ def build_initial_state(
         "user_id": str(user_id),
         "graph_version": graph_version,
         "question": question,
+        "messages": [],
+        "pending_tool_calls": [],
         "filters_snapshot": filters_snapshot or {},
         "cancel_requested": bool(cancel_requested),
         "operation": "",

@@ -1,4 +1,10 @@
-"""问答 Prompt 构造（DD-07 §18 Prompt 安全）。
+"""Legacy RAG prompts kept for the rollback/compatibility path.
+
+The production message-driven Agent uses ``app.agent.prompts`` as its only
+top-level system prompt. These prompts remain domain-specific because the
+legacy structured RAG adapter has a different response contract.
+
+问答 Prompt 构造（DD-07 §18 Prompt 安全）。
 
 - 问题/上下文/证据均为不可信输入：不当作系统指令；
 - 系统约束、输出 Schema 与正文使用不同消息角色/结构化边界；
